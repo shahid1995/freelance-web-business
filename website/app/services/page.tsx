@@ -4,7 +4,7 @@ import { services } from "@/lib/services";
 export const metadata = {
   title: "Services",
   description:
-    "Business websites, landing pages, redesigns, web applications, dashboards, and maintenance.",
+    "Business websites, landing pages, website redesign, custom web applications, dashboards and portals, and website maintenance.",
 };
 
 export default function ServicesPage() {
@@ -16,7 +16,8 @@ export default function ServicesPage() {
           <h1>Web work with clear scope and practical boundaries.</h1>
           <p>
             Each service is structured around a defined business need rather
-            than an open-ended feature list.
+            than an open-ended feature list. Scope, deliverables, and boundaries
+            are agreed before implementation.
           </p>
         </div>
 
@@ -26,7 +27,7 @@ export default function ServicesPage() {
               <h2>{service.title}</h2>
               <p>{service.summary}</p>
               <Link className="card-link" href={`/services/${service.slug}`}>
-              View {service.title}
+                View {service.title}
               </Link>
             </article>
           ))}

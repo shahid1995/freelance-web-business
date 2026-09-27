@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
+import { site } from "@/lib/content";
 
 export const metadata: Metadata = {
   title: {
-    default: "Freelance Web Development",
-    template: "%s | Freelance Web Development",
+    default: site.name,
+    template: "%s | " + site.name,
   },
-  description:
-    "Build, modernize, and maintain business websites and focused web applications.",
+  description: site.description,
 };
 
 const navigation = [
@@ -34,7 +34,7 @@ export default function RootLayout({
         <header className="site-header">
           <div className="site-header-inner">
             <Link className="brand" href="/">
-              Freelance Web Development
+              {site.name}
             </Link>
 
             <nav className="site-nav" aria-label="Primary navigation">
@@ -53,7 +53,7 @@ export default function RootLayout({
 
         <footer className="site-footer">
           <div className="site-footer-inner">
-            <p>Build, modernize, and maintain business websites and web applications.</p>
+            <p>{site.shortDescription}</p>
             <p>Public website foundation — publication controlled separately.</p>
           </div>
         </footer>

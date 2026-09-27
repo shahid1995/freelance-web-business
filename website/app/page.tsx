@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { services } from "@/lib/services";
 
+export const metadata = {
+  title: "Freelance Web Development",
+  description:
+    "Build, modernize, and maintain business websites and focused web applications with clear scope, practical usability, and maintainable implementation.",
+};
+
 export default function HomePage() {
   return (
     <>
@@ -17,7 +23,7 @@ export default function HomePage() {
 
             <div className="cta-row">
               <Link className="button" href="/contact">
-                Discuss your project
+                Discuss your website project
               </Link>
               <Link className="button button-secondary" href="/services">
                 Explore services
@@ -29,8 +35,8 @@ export default function HomePage() {
             <p className="eyebrow">How the work is approached</p>
             <p>
               Start from the actual business need, define the work clearly,
-              implement the agreed solution, verify the important behavior,
-              and hand over a maintainable result.
+              implement the agreed solution, verify the important behavior, and
+              hand over a maintainable result.
             </p>
           </aside>
         </div>
@@ -40,10 +46,13 @@ export default function HomePage() {
         <div className="container">
           <div className="section-heading">
             <p className="eyebrow">Services</p>
-            <h2 id="services-heading">Focused help across the web lifecycle.</h2>
+            <h2 id="services-heading">
+              Focused help across the web lifecycle.
+            </h2>
             <p>
-              Choose the service that matches the work you need today. Scope,
-              deliverables, and boundaries are defined before implementation.
+              Each service is structured around a defined business need rather
+              than an open-ended feature list. Scope, deliverables, and
+              boundaries are agreed before implementation.
             </p>
           </div>
 
@@ -53,8 +62,8 @@ export default function HomePage() {
                 <h3>{service.title}</h3>
                 <p>{service.summary}</p>
                 <Link className="card-link" href={`/services/${service.slug}`}>
-                View {service.title}
-              </Link>
+                  View {service.title}
+                </Link>
               </article>
             ))}
           </div>
@@ -66,15 +75,17 @@ export default function HomePage() {
           <div className="panel service-summary">
             <div className="section-heading">
               <p className="eyebrow">Work</p>
-              <h2 id="work-heading">Portfolio work is evidence-led.</h2>
+              <h2 id="work-heading">
+                Portfolio work appears only after publication review.
+              </h2>
               <p>
-                Published work will appear here only after ownership, evidence,
-                confidentiality, factual accuracy, and any required permission
-                have been reviewed.
+                Public portfolio work will appear here only after ownership,
+                evidence, confidentiality, factual accuracy, and any required
+                permission have been reviewed.
               </p>
             </div>
             <Link className="button button-secondary" href="/work">
-              View portfolio
+              View portfolio status
             </Link>
           </div>
         </div>

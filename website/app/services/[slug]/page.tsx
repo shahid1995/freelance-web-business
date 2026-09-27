@@ -15,11 +15,17 @@ export async function generateMetadata({
   const { slug } = await params;
   const service = getService(slug);
 
+  if (!service) {
+    return {
+      title: "Service",
+      description:
+        "Web development services with clear scope and practical implementation.",
+    };
+  }
+
   return {
-    title: service?.title ?? "Service",
-    description:
-      service?.summary ??
-      "Web development services with clear scope and practical implementation.",
+    title: service.title,
+    description: service.summary,
   };
 }
 
