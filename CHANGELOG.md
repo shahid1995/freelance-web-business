@@ -4,7 +4,9 @@
 
 ### Phase 3
 - Advanced the roadmap to the Client Delivery System.
-- Identified Discovery, Scope, Milestones, QA, Handover, and Project Closure as the next reusable delivery components.
+- Established the reusable Client Discovery process, including entry conditions, discovery stages, questions, outputs, boundaries, change control, privacy rules, record structure, and handoff to scope.
+- Marked Discovery as the first active Phase 3 delivery component.
+- Identified Scope, Milestones, QA, Handover, and Project Closure as the remaining delivery components.
 
 ### Phase 2 completion
 - Completed the Phase 2 Sales System structural review.
