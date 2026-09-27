@@ -57,7 +57,8 @@ Commercial requirement:
 Known dependencies:
 Risks / open questions:
 Next action:
-Next-action date:
+Next-action date, when applicable:
+Reason no next-action date exists, when applicable:
 Owner:
 Last updated:
 Outcome / closure reason:
@@ -105,14 +106,18 @@ Qualification state:
 Lead lifecycle state:
 - New
 - Reviewing
+- Clarification required
+- Qualified
 - Proposal prepared
 - Proposal sent
 - Discussion
 - Accepted
+- Not a fit
+- No decision
 - Lost
 - Closed
 
-This separation prevents a lead from appearing qualified merely because a proposal was sent, or lost merely because qualification stopped.
+The lifecycle list above is the complete set of states defined in Section 3. Qualification state remains a separate field and should not be inferred from lifecycle state.
 
 ## 8. Next-action discipline
 
@@ -120,7 +125,11 @@ Every active lead should have:
 
 - one clear next action;
 - an owner;
-- a target date or explicit reason no date exists.
+- either a target date or an explicit reason why no next-action date exists.
+
+If a target date is available, record it in Next-action date and leave the reason field empty.
+
+If a target date is not appropriate or cannot yet be determined, leave Next-action date empty and record the factual reason in Reason no next-action date exists.
 
 Examples:
 
@@ -205,7 +214,8 @@ Commercial requirement:
 Known dependencies:  
 Risks / open questions:  
 Next action:  
-Next-action date:  
+Next-action date, when applicable:  
+Reason no next-action date exists, when applicable:  
 Owner:  
 Last updated:  
 Outcome / closure reason:
@@ -242,9 +252,9 @@ The lead tracker does not replace the eventual project scope, agreement, deliver
 - [ ] Service category is identified or marked unclear.
 - [ ] Problem and requested deliverables are captured.
 - [ ] Qualification state is current.
-- [ ] Lifecycle state is current.
+- [ ] Lifecycle state is current and uses one of the states defined in Section 3.
 - [ ] Next action is explicit.
-- [ ] Active leads have appropriate next-action timing.
+- [ ] Active leads have either an appropriate next-action date or a factual reason no date exists.
 - [ ] Material risks and dependencies are recorded.
 - [ ] No unsupported client or business claims are present.
 - [ ] No public-repository-sensitive data is stored.
