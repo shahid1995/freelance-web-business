@@ -27,7 +27,7 @@ Never store client passwords, API keys, production secrets, private customer dat
 
 ## Current phase
 
-**Phase 2 — Sales System**
+**Phase 3 — Client Delivery System**
 
 Phase 0 is complete:
 - 0.1 — Dedicated GitHub repository and initial structure
@@ -45,11 +45,20 @@ Phase 1 is structurally complete:
 - Portfolio registry
 - Phase 1 completion review
 
-Phase 2 current work:
+Phase 2 is structurally complete:
 - Canonical freelancer profile
 - Proposal templates
 - Qualification flow
 - Lead tracker
+- Phase 2 completion review
+
+Phase 3 current work:
+- Discovery
+- Scope
+- Milestones
+- QA
+- Handover
+- Project closure
 
 Portfolio and sales content remains evidence-based: no client work, results, credentials, ratings, or public claims are created unless they are real and verified.
 
