@@ -110,10 +110,11 @@ The website must follow the portfolio evidence controls.
 A portfolio item may be publicly shown only when:
 
 - ownership/status is accurate;
-- the project record exists;
+- a completed project record exists with the defined scope and actual role;
 - the actual role is accurately represented;
 - major claims are evidence-backed;
 - required client/publication permission exists;
+- the case study or public portfolio content has passed confidentiality and factual-accuracy review;
 - confidential information has been removed;
 - screenshots and links are approved;
 - unsupported outcomes, rankings, or superlatives are excluded.
@@ -273,22 +274,22 @@ The website must not become a second source of truth for project status, ownersh
 
 Where a conflict exists, the approved repository record takes precedence and the website content should be corrected.
 
-## 15. Acceptance criteria for the website foundation
+## 15. Foundation readiness verification
 
-Before the website foundation is considered ready for implementation:
+The following readiness criteria are satisfied by this Phase 4 foundation:
 
-- [ ] Information architecture is defined.
-- [ ] Initial public routes are identified.
-- [ ] Source hierarchy is defined.
-- [ ] Portfolio publication boundaries are explicit.
-- [ ] Claims controls are explicit.
-- [ ] Accessibility requirements are defined.
-- [ ] Performance requirements are defined.
-- [ ] Privacy/security boundaries are defined.
-- [ ] Deployment/publication authority is preserved.
-- [ ] Website source is clearly separated from client project repositories.
-- [ ] Contact flow is identified as a separate work item.
-- [ ] Domain/hosting and analytics remain separate Phase 4 work items.
+- [x] Information architecture is defined.
+- [x] Initial public routes are identified.
+- [x] Source hierarchy is defined.
+- [x] Portfolio publication boundaries are explicit.
+- [x] Claims controls are explicit.
+- [x] Accessibility requirements are defined.
+- [x] Performance requirements are defined.
+- [x] Privacy/security boundaries are defined.
+- [x] Deployment/publication authority is preserved.
+- [x] Website source is clearly separated from client project repositories.
+- [x] Contact flow is identified as a separate work item.
+- [x] Domain/hosting and analytics remain separate Phase 4 work items.
 
 ## 16. Next implementation step
 
