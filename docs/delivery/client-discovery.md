@@ -44,11 +44,11 @@ Use the following sources in order:
 1. Founder-approved business and delivery rules
 2. Accepted proposal and approved commercial scope
 3. Verified qualification and sales records
-4. Client-provided requirements and project inputs
-5. Discovery decisions and clarifications
+4. Approved discovery decisions and clarifications for questions they resolve
+5. Client-provided requirements and project inputs that have not been superseded or clarified
 6. Implementation detail created during delivery
 
-When a later discovery finding conflicts materially with accepted scope, stop and record the difference before implementation. Handle the change through the agreed change-control process.
+An approved discovery decision or clarification supersedes an earlier client requirement for the specific point it resolves. It must not be used to silently expand or reduce the accepted commercial scope. When a discovery finding would materially change accepted scope, stop and record the difference before implementation and handle it through the agreed change-control process.
 
 ## 5. Discovery process
 
