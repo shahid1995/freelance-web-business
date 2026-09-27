@@ -8,6 +8,8 @@ Use one directory per project when a project has multiple screenshots or a case 
 
 portfolio/projects/project-name/
 
+The project directory name is the canonical Project ID for that project. It must match the Project ID recorded in its project.md, the portfolio registry, and any related case-study references.
+
 Recommended contents:
 
 - project.md — canonical project record based on portfolio/project-template.md
@@ -20,6 +22,7 @@ Use lowercase kebab-case for project directory names.
 
 Every project record should identify:
 
+- canonical Project ID
 - ownership/status
 - service category
 - actual role

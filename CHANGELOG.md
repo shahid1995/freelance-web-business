@@ -3,6 +3,8 @@
 ## 2026-09-27
 
 ### Phase 1
+- Established canonical Project IDs across the portfolio registry and project-record structure.
+- Added explicit project-directory ID conventions for consistent case-study and evidence references.
 - Established the portfolio project-record intake structure.
 - Added conventions for individual project records.
 - Added case-study directory conventions.
