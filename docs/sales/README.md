@@ -5,7 +5,7 @@ Phase 2 contains the reusable material used to present the business, qualify opp
 ## Current components
 
 - freelancer-profile.md — canonical master profile and profile-source rules
-- proposal-templates.md — planned proposal structures
+- proposal-templates.md — canonical proposal structure and service-specific prompts
 - qualification-flow.md — planned lead qualification process
 - lead-tracker.md — planned lead tracking structure
 
@@ -26,10 +26,12 @@ Never invent:
 
 Platform-specific profile versions should be derived from the canonical freelancer profile rather than becoming independent sources of truth.
 
-Pricing is intentionally excluded until the Founder approves a pricing policy.
+Proposals must derive scope from qualified client requirements and the approved service definitions. Commercial amounts must come only from Founder-approved pricing.
 
 ## Workflow
 
 Positioning → Master Profile → Platform Variant → Proposal → Qualification → Lead Record
 
 The master profile is the source for reusable public positioning. Platform-specific wording may be shortened or reformatted without changing the underlying facts.
+
+The proposal system converts a qualified need into a bounded scope, deliverables, assumptions, acceptance conditions, and approved commercial terms.
