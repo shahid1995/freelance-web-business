@@ -62,12 +62,13 @@ Current:
 
 - Public portfolio website foundation — established
 - Website application scaffold — established
-- Website content and portfolio integration — next
-- Domain/hosting
+- Website content and portfolio integration — established
+- Website QA hardening — route-level verification established; interactive browser QA pending
+- Domain/hosting — next
 - Contact flow
 - Analytics
 
-The Phase 4 foundation and application scaffold define the public-facing route structure and implementation baseline. They do not authorize production deployment or publication.
+The Phase 4 foundation, application scaffold, content integration, and QA hardening define the public-facing route structure, implementation baseline, and rendered-site verification state. They do not authorize production deployment or publication.
 
 ## Phase 5 — Acquisition and Improvement
 
