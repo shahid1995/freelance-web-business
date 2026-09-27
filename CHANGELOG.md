@@ -2,6 +2,12 @@
 
 ## 2026-09-27
 
+### Phase 4.2 website scaffold
+- Established the Next.js 16 App Router application scaffold under `website/`.
+- Added shared accessible navigation, footer, skip-link, responsive styling, service content model, service detail routes, about route, portfolio-safe work route, contact placeholder, and not-found route.
+- Kept the scaffold server-rendered and dependency-light with plain CSS.
+- Kept live contact integrations, analytics, domain/hosting, deployment, and publication outside the scaffold.
+
 ### Phase 4 foundation
 - Established the Public Portfolio Website foundation, including information architecture, public route map, content source hierarchy, portfolio publication rules, claims controls, accessibility and performance requirements, privacy/security boundaries, environment/deployment boundaries, and website acceptance criteria.
 - Created the website/ source-directory contract for the public portfolio website.
