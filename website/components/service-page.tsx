@@ -13,7 +13,7 @@ export function ServicePage({ service }: Readonly<{ service: Service }>) {
               <p>{service.summary}</p>
               <div className="cta-row">
                 <Link className="button" href="/contact">
-                  Discuss this project
+                  {service.cta}
                 </Link>
                 <Link className="button button-secondary" href="/services">
                   View all services
@@ -23,6 +23,16 @@ export function ServicePage({ service }: Readonly<{ service: Service }>) {
           </div>
 
           <div className="detail-grid">
+            <section className="detail-card" aria-labelledby="purpose">
+              <h2 id="purpose">What this service is for</h2>
+              <p>{service.purpose}</p>
+            </section>
+
+            <section className="detail-card" aria-labelledby="client-need">
+              <h2 id="client-need">Typical client need</h2>
+              <p>{service.clientNeed}</p>
+            </section>
+
             <section className="detail-card" aria-labelledby="ideal-for">
               <h2 id="ideal-for">Good fit for</h2>
               <ul>
@@ -30,6 +40,11 @@ export function ServicePage({ service }: Readonly<{ service: Service }>) {
                   <li key={item}>{item}</li>
                 ))}
               </ul>
+            </section>
+
+            <section className="detail-card" aria-labelledby="typical-scope">
+              <h2 id="typical-scope">Typical scope</h2>
+              <p>{service.typicalScope}</p>
             </section>
 
             <section className="detail-card" aria-labelledby="deliverables">
