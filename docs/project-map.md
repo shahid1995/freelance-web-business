@@ -14,19 +14,25 @@ Pricing policy is a material business decision and will be documented separately
 
 ## Phase 1 — Portfolio Foundation
 
-Current:
+Completed:
 
 - Portfolio system structure
 - Project record template
-- Case-study template
-- Screenshot standards
+- Canonical Project IDs
+- Case-study template and source linkage
+- Screenshot standards and evidence organization
 - Portfolio registry
 - Portfolio project-record intake structure
 - Case-study directory conventions
 - Screenshot evidence directory conventions
 - Initial portfolio slots
+- Phase 1 completion review
+
+Phase 1 creates the portfolio operating system. It does not create or imply completed client work, verified business results, or public portfolio claims without evidence.
 
 ## Phase 2 — Sales System
+
+Current:
 
 - Freelancer profile
 - Proposal templates
