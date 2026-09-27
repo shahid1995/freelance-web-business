@@ -1,17 +1,17 @@
 # Project Map
 
-## Phase 0 — Foundation
+## Phase 0 — Business Foundation
 
-- 0.1 Dedicated repository and initial structure
+- 0.1 Dedicated GitHub repository and initial structure
 - 0.2 Constitution and governance
 - 0.3 Business positioning
 - 0.4 Service catalog
-- 0.5 Initial pricing model
+- 0.5 Pricing model
 
-## Phase 1 — Portfolio Factory
+## Phase 1 — Portfolio Foundation
 
 - Portfolio templates
-- Five initial portfolio projects
+- Initial portfolio projects
 - Case-study system
 - Screenshot standards
 
@@ -22,7 +22,7 @@
 - Qualification flow
 - Lead tracker
 
-## Phase 3 — Delivery System
+## Phase 3 — Client Delivery System
 
 - Discovery
 - Scope
@@ -40,8 +40,8 @@
 
 ## Phase 5 — Acquisition and Improvement
 
-- Targeted bidding
+- Targeted acquisition
 - Client conversion tracking
 - Reviews/testimonials
 - Repeat business
-- Monthly system review
+- Periodic system review
