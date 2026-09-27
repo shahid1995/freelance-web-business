@@ -26,16 +26,18 @@ Implementation agents and tools do not supersede Founder decisions.
 
 ## 3. Source-of-Truth Boundaries
 
-### GitHub — Implementation and Project Authority
-GitHub is the implementation and project authority for this business repository. It contains the versioned business documents, approved templates, operating procedures, portfolio source material, and website source intentionally stored here. GitHub records what has actually been implemented in the repository.
+### GitHub — Sole System of Record and Implementation Authority
 
-### Second Brain — Knowledge and Context Authority
-The Obsidian **Second Brain** contains broader knowledge, research, reasoning context, and decision context that may inform the business. Accepted business decisions should be reflected in GitHub when implementation or operational documentation depends on them. A repository artifact must not silently reinterpret or override an accepted business decision.
+GitHub is the sole system of record for this business. It contains the versioned business strategy, decisions, research and reference material, approved templates, operating procedures, portfolio source material, and website source intentionally stored here.
+
+GitHub records what has actually been decided and implemented in the business repository. Material Founder decisions should be recorded in GitHub so that the repository remains the durable source of business context and execution history.
 
 ### Founder — Decision Authority
-Where sources conflict on an unresolved material business decision, implementation pauses and the Founder resolves the conflict.
+
+The Founder is the final authority for material business decisions. When a decision has not yet been documented in GitHub, the Founder's direction controls and should be recorded in GitHub before it becomes part of the operating system.
 
 ### Execution Agents and Tools
+
 Agents and tools are execution support. They may inspect evidence, propose implementation details, implement approved work, run verification, and report findings. They may not redefine accepted business strategy, invent business decisions, silently change scope, publish or deploy without authorization, or introduce client or business secrets into this repository.
 
 ## 4. Client Separation
@@ -102,7 +104,7 @@ Material pricing policy belongs in docs/pricing/ and requires Founder approval.
 
 ## 9. Reusability
 
-When a project produces a genuinely reusable pattern, checklist, component, template, or lesson, capture it in the business system where appropriate.
+When a project produces a genuinely reusable pattern, checklist, component, template, or lesson, capture it in GitHub where appropriate.
 
 Reusable material must be sanitized and must not expose client-confidential information. Client-specific code remains in the client repository.
 
@@ -110,7 +112,7 @@ Reusable material must be sanitized and must not expose client-confidential info
 
 The business operating loop is:
 
-**Strategy → Services → Portfolio → Sales → Client Delivery → Review → Knowledge Capture → System Improvement**
+**Strategy → Services → Portfolio → Sales → Client Delivery → Review → Document Learnings → System Improvement**
 
 Completed work should generate evidence and lessons that can improve future decisions, templates, quality controls, and delivery practices.
 
