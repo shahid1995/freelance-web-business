@@ -37,7 +37,7 @@ Current:
 - Freelancer profile — master profile foundation
 - Proposal templates — master proposal system
 - Qualification flow — lead qualification foundation
-- Lead tracker
+- Lead tracker — opportunity tracking foundation
 
 The master freelancer profile is the source for future platform-specific profile variants.
 
