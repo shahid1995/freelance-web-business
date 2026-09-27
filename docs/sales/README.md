@@ -7,7 +7,7 @@ Phase 2 contains the reusable material used to present the business, qualify opp
 - freelancer-profile.md — canonical master profile and profile-source rules
 - proposal-templates.md — canonical proposal structure and service-specific prompts
 - qualification-flow.md — canonical lead qualification process
-- lead-tracker.md — planned lead tracking structure
+- lead-tracker.md — canonical lead tracking structure and workflow
 
 ## Authority and evidence
 
@@ -30,6 +30,8 @@ Proposals must derive scope from qualified client requirements and the approved 
 
 Qualification should establish sufficient clarity before proposal preparation without inventing requirements, pricing, deadlines, or client commitments.
 
+The lead tracker records process state and next actions; it must not become a public repository for personal or confidential prospect data.
+
 ## Workflow
 
 Positioning → Master Profile → Platform Variant → Proposal → Qualification → Lead Record
@@ -39,3 +41,5 @@ The master freelancer profile is the source for reusable public positioning. Pla
 The proposal system converts a qualified need into a bounded scope, deliverables, assumptions, acceptance conditions, and approved commercial terms.
 
 The qualification system determines whether an opportunity is ready for proposal, needs clarification, is not a fit, or should remain undecided.
+
+The lead tracker preserves opportunity continuity from first contact through qualification, proposal, decision, and closure while keeping sensitive live lead data outside the public repository.
