@@ -23,7 +23,10 @@ Freelancer.com is the initial marketplace acquisition channel. The longer-term o
 2. Landing pages
 3. Website redesign and modernization
 4. Custom web applications
-5. Maintenance and improvements
+5. Dashboards and portals
+6. Website maintenance and improvements
+
+The detailed public service definitions, boundaries, and acceptance criteria are maintained in docs/services/.
 
 ## Business principles
 

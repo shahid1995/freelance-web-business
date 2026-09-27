@@ -33,9 +33,9 @@ Completed:
 - 0.1 — Dedicated GitHub repository and initial structure
 - 0.2 — Constitution and governance
 - 0.3 — Business positioning
+- 0.4 — Service catalog
 
 Next:
-- 0.4 — Service catalog
 - 0.5 — Repository and documentation conventions
 
 Pricing remains a separate material business decision and will be documented when the Founder approves the pricing phase/order.
