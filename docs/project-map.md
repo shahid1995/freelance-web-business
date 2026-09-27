@@ -21,6 +21,9 @@ Current:
 - Case-study template
 - Screenshot standards
 - Portfolio registry
+- Portfolio project-record intake structure
+- Case-study directory conventions
+- Screenshot evidence directory conventions
 - Initial portfolio slots
 
 ## Phase 2 — Sales System
