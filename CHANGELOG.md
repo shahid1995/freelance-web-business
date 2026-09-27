@@ -6,6 +6,8 @@
 - Started the Sales System.
 - Established a canonical master freelancer profile.
 - Established a reusable proposal template system with scope, deliverables, assumptions, acceptance, and service-specific prompts.
+- Established a qualification flow for relevance, scope clarity, dependencies, readiness, decision process, commercial readiness, and risk checks.
+- Defined qualification outcomes and handoff rules before proposal preparation.
 - Defined proposal controls so commercial terms use only Founder-approved pricing.
 - Defined evidence and claims controls for platform-specific profile variants.
 - Kept pricing, unverified credentials, client results, ratings, and fabricated portfolio proof out of the profile and proposal system.
