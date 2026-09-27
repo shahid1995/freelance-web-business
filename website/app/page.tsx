@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { services } from "@/lib/services";
+import { messaging, portfolioStatus, site } from "@/lib/content";
 
 export const metadata = {
-  title: "Freelance Web Development",
-  description:
-    "Build, modernize, and maintain business websites and focused web applications with clear scope, practical usability, and maintainable implementation.",
+  title: messaging.primary,
+  description: site.description,
 };
 
 export default function HomePage() {
@@ -14,30 +14,22 @@ export default function HomePage() {
         <div className="container hero-grid">
           <div>
             <p className="eyebrow">Web development</p>
-            <h1>Build, modernize, and maintain a better web presence.</h1>
-            <p className="lede">
-              Business websites, landing pages, and focused web applications
-              with clear scope, practical usability, and maintainable
-              implementation.
-            </p>
+            <h1>{messaging.primary}</h1>
+            <p className="lede">{messaging.supporting}</p>
 
             <div className="cta-row">
               <Link className="button" href="/contact">
-                Discuss your website project
+                {messaging.ctaPrimary}
               </Link>
               <Link className="button button-secondary" href="/services">
-                Explore services
+                {messaging.ctaSecondary}
               </Link>
             </div>
           </div>
 
           <aside className="panel hero-note" aria-label="Working approach">
             <p className="eyebrow">How the work is approached</p>
-            <p>
-              Start from the actual business need, define the work clearly,
-              implement the agreed solution, verify the important behavior, and
-              hand over a maintainable result.
-            </p>
+            <p>{messaging.approach}</p>
           </aside>
         </div>
       </section>
@@ -78,14 +70,10 @@ export default function HomePage() {
               <h2 id="work-heading">
                 Portfolio work appears only after publication review.
               </h2>
-              <p>
-                Public portfolio work will appear here only after ownership,
-                evidence, confidentiality, factual accuracy, and any required
-                permission have been reviewed.
-              </p>
+              <p>{portfolioStatus.summary}</p>
             </div>
             <Link className="button button-secondary" href="/work">
-              View portfolio status
+              {messaging.ctaWork}
             </Link>
           </div>
         </div>

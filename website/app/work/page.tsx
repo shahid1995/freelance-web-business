@@ -1,3 +1,5 @@
+import { portfolioStatus } from "@/lib/content";
+
 export const metadata = {
   title: "Work",
   description:
@@ -25,18 +27,11 @@ export default function WorkPage() {
               The portfolio registry includes concept slots for:
             </p>
             <ul>
-              <li>Modern Business Website</li>
-              <li>SaaS Landing Page</li>
-              <li>Financial Analytics Dashboard</li>
-              <li>Customer Portal</li>
-              <li>Website Redesign — Before/After</li>
+              {portfolioStatus.currentSlots.map((slot) => (
+                <li key={slot}>{slot}</li>
+              ))}
             </ul>
-            <p>
-              These are portfolio slots, not claims of completed client work. A
-              slot does not become a project record until real work, an
-              intentionally created demonstration, or a clearly labeled concept
-              is documented.
-            </p>
+            <p>{portfolioStatus.slotNote}</p>
           </section>
 
           <section aria-labelledby="publication-heading">
@@ -51,18 +46,11 @@ export default function WorkPage() {
               contain:
             </p>
             <ul>
-              <li>A completed project record with its canonical Project ID</li>
-              <li>Accurate ownership and role</li>
-              <li>Defined scope</li>
-              <li>Evidence supporting major claims</li>
-              <li>Approved screenshots where applicable</li>
-              <li>Permission confirmation where client material is involved</li>
-              <li>A case study reviewed for confidentiality and factual accuracy</li>
+              {portfolioStatus.publicationRequirements.map((req) => (
+                <li key={req}>{req}</li>
+              ))}
             </ul>
-            <p>
-              Concept or demonstration work remains clearly labeled, and client
-              projects do not automatically grant public portfolio rights.
-            </p>
+            <p>{portfolioStatus.conceptNote}</p>
           </section>
 
           <section aria-labelledby="ownership-heading">
@@ -72,10 +60,9 @@ export default function WorkPage() {
               of these ownership categories:
             </p>
             <ul>
-              <li>Client — real client project</li>
-              <li>Founder-owned — work owned and created by the Founder/business</li>
-              <li>Demonstration — intentionally created to demonstrate capability</li>
-              <li>Concept — design or implementation concept that is not represented as delivered client work</li>
+              {portfolioStatus.ownershipCategories.map((cat) => (
+                <li key={cat}>{cat}</li>
+              ))}
             </ul>
           </section>
         </div>
