@@ -2,6 +2,11 @@
 
 ## 2026-09-27
 
+### Phase 4 foundation
+- Established the Public Portfolio Website foundation, including information architecture, public route map, content source hierarchy, portfolio publication rules, claims controls, accessibility and performance requirements, privacy/security boundaries, environment/deployment boundaries, and website acceptance criteria.
+- Created the website/ source-directory contract for the public portfolio website.
+- Kept domain/hosting, contact flow, analytics, production deployment, and publication as separate Phase 4 work items.
+
 ### Phase 3 completion
 - Completed the Phase 3 Client Delivery System structural review.
 - Verified continuity across Discovery, Scope, Milestones, QA, Handover, and Project Closure.
