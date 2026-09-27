@@ -27,7 +27,7 @@ Never store client passwords, API keys, production secrets, private customer dat
 
 ## Current phase
 
-**Phase 1 — Portfolio Foundation**
+**Phase 2 — Sales System**
 
 Phase 0 is complete:
 - 0.1 — Dedicated GitHub repository and initial structure
@@ -36,15 +36,22 @@ Phase 0 is complete:
 - 0.4 — Service catalog
 - 0.5 — Repository and documentation conventions
 
-Current Phase 1 work:
+Phase 1 is structurally complete:
 - Portfolio system structure
 - Project record template
-- Case-study template
-- Screenshot standards
+- Canonical Project IDs
+- Case-study template and source linkage
+- Screenshot standards and evidence organization
 - Portfolio registry
+- Phase 1 completion review
+
+Portfolio content remains evidence-based: no client work, results, or public claims are created unless they are real and verified.
 
 Next:
-- Phase 1 completion review, then Phase 2 — Sales System
+- Freelancer profile
+- Proposal templates
+- Qualification flow
+- Lead tracker
 
 Pricing remains a separate material business decision and will be documented when the Founder approves the pricing phase/order.
 
