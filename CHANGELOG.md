@@ -3,6 +3,13 @@
 ## 2026-09-27
 
 ### Phase 1
+- Established the portfolio project-record intake structure.
+- Added conventions for individual project records.
+- Added case-study directory conventions.
+- Added screenshot evidence directory conventions.
+- Kept the portfolio system evidence-based and separated from invented client work.
+
+### Earlier Phase 1 foundation
 - Started the Portfolio Foundation.
 - Added the portfolio directory orientation document.
 - Added a standard portfolio project record template.

@@ -1,10 +1,13 @@
 # Project Name
 
+**Project ID:** project-name  
 **Status:** Draft / In progress / Complete / Published / Archived  
 **Ownership:** Client / Founder-owned / Demonstration / Concept  
 **Client:** N/A for founder-owned, demonstration, or concept work  
 **Service:** Business Website / Landing Page / Redesign / Custom Web Application / Dashboard / Portal / Maintenance  
 **Last updated:** YYYY-MM-DD
+
+The Project ID is the canonical identifier for this portfolio project. Use the same ID for its project directory and case-study reference. Once a project record is created, do not silently rename its Project ID; update dependent references in the same reviewed change if a rename is genuinely required.
 
 ## 1. Overview
 
@@ -74,6 +77,7 @@ Identify reusable patterns, components, lessons, or templates that can be saniti
 
 ## 10. Review checklist
 
+- [ ] Project ID is present and matches the project directory name.
 - [ ] Ownership/status is accurate.
 - [ ] Role is accurately represented.
 - [ ] Scope is accurately represented.
