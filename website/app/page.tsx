@@ -53,8 +53,8 @@ export default function HomePage() {
                 <h3>{service.title}</h3>
                 <p>{service.summary}</p>
                 <Link className="card-link" href={`/services/${service.slug}`}>
-                  View service
-                </Link>
+                View {service.title}
+              </Link>
               </article>
             ))}
           </div>

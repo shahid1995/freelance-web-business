@@ -26,7 +26,7 @@ export default function ServicesPage() {
               <h2>{service.title}</h2>
               <p>{service.summary}</p>
               <Link className="card-link" href={`/services/${service.slug}`}>
-                View service
+              View {service.title}
               </Link>
             </article>
           ))}
