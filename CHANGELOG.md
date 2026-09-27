@@ -7,8 +7,9 @@
 - Established the reusable Client Discovery process, including entry conditions, discovery stages, questions, outputs, boundaries, change control, privacy rules, record structure, and handoff to scope.
 - Established the reusable Project Scope process, including scope authority, included and excluded work, deliverables, acceptance criteria, client responsibilities, assumptions, dependencies, constraints, open items, traceability, versioning, and change control.
 - Established the reusable Project Milestones process, including sequencing, readiness conditions, dependency management, completion criteria, blocker states, timeline discipline, change control, review, and handoff to QA and closure.
-- Marked Discovery, Scope, and Milestones as the active Phase 3 delivery foundations.
-- Identified QA, Handover, and Project Closure as the remaining delivery components.
+- Established the reusable Quality Assurance and Verification process, including test planning, functional and cross-environment checks, accessibility, performance, security/privacy, integrations, defect classification, evidence, QA gates, accepted limitations, and handoff to handover.
+- Marked Discovery, Scope, Milestones, and QA as the active Phase 3 delivery foundations.
+- Identified Handover and Project Closure as the remaining delivery components.
 
 ### Phase 2 completion
 - Completed the Phase 2 Sales System structural review.
