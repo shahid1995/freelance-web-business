@@ -6,7 +6,9 @@
 - 0.2 Constitution and governance
 - 0.3 Business positioning
 - 0.4 Service catalog
-- 0.5 Pricing model
+- 0.5 Repository and documentation conventions
+
+Pricing policy is a material business decision and will be documented separately when approved.
 
 ## Phase 1 — Portfolio Foundation
 
