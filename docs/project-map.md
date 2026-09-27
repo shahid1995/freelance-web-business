@@ -60,13 +60,14 @@ Phase 3 provides a reusable foundation from accepted opportunity through project
 
 Current:
 
-- Public portfolio website foundation
-- Website application scaffold — next
+- Public portfolio website foundation — established
+- Website application scaffold — established
+- Website content and portfolio integration — next
 - Domain/hosting
 - Contact flow
 - Analytics
 
-The public portfolio foundation defines the information architecture, public-content rules, evidence boundaries, accessibility/performance requirements, and source-of-truth relationship for the website. It does not by itself authorize production deployment or publication.
+The Phase 4 foundation and application scaffold define the public-facing route structure and implementation baseline. They do not authorize production deployment or publication.
 
 ## Phase 5 — Acquisition and Improvement
 
