@@ -27,24 +27,31 @@ Never store client passwords, API keys, production secrets, private customer dat
 
 ## Current phase
 
-**Phase 0 — Business Foundation**
+**Phase 1 — Portfolio Foundation**
 
-Completed:
+Phase 0 is complete:
 - 0.1 — Dedicated GitHub repository and initial structure
 - 0.2 — Constitution and governance
 - 0.3 — Business positioning
 - 0.4 — Service catalog
 - 0.5 — Repository and documentation conventions
 
+Current Phase 1 work:
+- Portfolio system structure
+- Project record template
+- Case-study template
+- Screenshot standards
+- Portfolio registry
+
 Next:
-- Phase 1 — Portfolio Foundation
+- Phase 1 completion review, then Phase 2 — Sales System
 
 Pricing remains a separate material business decision and will be documented when the Founder approves the pricing phase/order.
 
 ## Repository map
 
-docs/          Strategy, governance, positioning, services, pricing, sales, delivery, quality, finance, decisions
-portfolio/     Portfolio projects, screenshots, case studies, and portfolio index
+docs/          Strategy, governance, positioning, services, pricing, sales, delivery, quality, finance, decisions, conventions
+portfolio/     Portfolio projects, screenshots, case studies, project templates, and portfolio index
 templates/     Reusable proposals, discovery, scope, milestones, QA, handover, communication
 operations/    Checklists, workflows, and trackers
 website/       Public portfolio website source (later phase)

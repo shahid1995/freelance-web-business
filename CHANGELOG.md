@@ -2,6 +2,15 @@
 
 ## 2026-09-27
 
+### Phase 1
+- Started the Portfolio Foundation.
+- Added the portfolio directory orientation document.
+- Added a standard portfolio project record template.
+- Added a standard public case-study template.
+- Added screenshot/evidence standards for the public repository.
+- Reworked the portfolio index into a registry with ownership, publication-status, and evidence controls.
+- Kept initial portfolio slots explicitly labeled as concepts rather than completed client work.
+
 ### Phase 0.5
 - Established repository and documentation conventions.
 - Defined directory ownership, filename rules, document structure, decision-record conventions, changelog usage, branch naming, commit style, pull request expectations, verification records, link conventions, public-repository safety, and archival rules.
