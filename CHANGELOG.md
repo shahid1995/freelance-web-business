@@ -2,6 +2,13 @@
 
 ## 2026-09-27
 
+### Phase 0.4
+- Established the initial six-service public catalog.
+- Defined purpose, target use cases, core deliverables, typical scope, exclusions, optional extensions, client inputs, and acceptance criteria for each service.
+- Added explicit catalog-wide scope boundaries.
+- Kept pricing separate from service definitions as a Founder-owned business decision.
+- Added separate service definition documents for business websites, landing pages, redesign/modernization, custom web applications, dashboards/portals, and maintenance/improvements.
+
 ### Phase 0.3
 - Added the business positioning document.
 - Defined initial target audience groups and their common web problems.
