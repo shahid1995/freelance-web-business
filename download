@@ -1,0 +1,42 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# Logs / temporary output
+*.log
+coverage/
+.nyc_output/
+.tmp/
+tmp/
+
+# Node / web builds
+node_modules/
+.next/
+out/
+dist/
+.vercel/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local tooling state
+.agent-browser/
+playwright-report/
+test-results/
+
+# OS-generated files
+*.swp
+*.swo
