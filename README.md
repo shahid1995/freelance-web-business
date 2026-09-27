@@ -45,13 +45,13 @@ Phase 1 is structurally complete:
 - Portfolio registry
 - Phase 1 completion review
 
-Portfolio content remains evidence-based: no client work, results, or public claims are created unless they are real and verified.
-
-Next:
-- Freelancer profile
+Phase 2 current work:
+- Canonical freelancer profile
 - Proposal templates
 - Qualification flow
 - Lead tracker
+
+Portfolio and sales content remains evidence-based: no client work, results, credentials, ratings, or public claims are created unless they are real and verified.
 
 Pricing remains a separate material business decision and will be documented when the Founder approves the pricing phase/order.
 

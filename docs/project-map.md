@@ -34,10 +34,12 @@ Phase 1 creates the portfolio operating system. It does not create or imply comp
 
 Current:
 
-- Freelancer profile
+- Freelancer profile — master profile foundation
 - Proposal templates
 - Qualification flow
 - Lead tracker
+
+The master freelancer profile is the source for future platform-specific profile variants.
 
 ## Phase 3 — Client Delivery System
 
