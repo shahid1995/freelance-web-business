@@ -48,7 +48,7 @@ Current:
 
 - Discovery — foundation established
 - Scope — foundation established
-- Milestones
+- Milestones — foundation established
 - QA
 - Handover
 - Project closure
