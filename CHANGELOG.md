@@ -12,7 +12,8 @@
 
 ### Phase 0.2
 - Promoted CONSTITUTION.md from initial draft to Version 1.0.
-- Clarified Founder, GitHub, Second Brain, and execution-agent authority boundaries.
+- Clarified Founder, GitHub, and execution-agent authority boundaries.
+- Established GitHub as the sole system of record for business documentation, decisions, and project context.
 - Added explicit decision-conflict handling.
 - Strengthened client repository and confidential-data separation.
 - Defined integrity rules for portfolio and sales representation.
