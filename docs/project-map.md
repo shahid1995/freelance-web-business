@@ -51,9 +51,14 @@ Current:
 - Milestones — foundation established
 - QA — foundation established
 - Handover — foundation established
-- Project closure
+- Project Closure — foundation established
+- Phase 3 completion review — next
+
+Phase 3 now has a reusable foundation from discovery through closure. Client-specific delivery records remain outside this public business repository.
 
 ## Phase 4 — Public Portfolio
+
+Planned:
 
 - Portfolio website
 - Domain/hosting
@@ -61,6 +66,8 @@ Current:
 - Analytics
 
 ## Phase 5 — Acquisition and Improvement
+
+Planned:
 
 - Targeted acquisition
 - Client conversion tracking
