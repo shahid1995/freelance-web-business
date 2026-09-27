@@ -46,10 +46,42 @@ A website change may be reviewed and merged without being deployed or published.
 
 Production deployment, domain changes, live integrations, and external publication require explicit Founder authorization.
 
-## Current foundation
+## Current scaffold
 
-The website information architecture and public-content contract are documented in:
+The application scaffold is a Next.js 16 App Router project using TypeScript and plain CSS.
+
+Implemented routes:
+
+- /
+- /services
+- /services/business-websites
+- /services/landing-pages
+- /services/redesign-modernization
+- /services/custom-web-applications
+- /services/dashboards-portals
+- /services/maintenance-improvements
+- /work
+- /about
+- /contact
+
+The portfolio route intentionally shows no published work until the repository publication gate is satisfied.
+
+## Local verification
+
+Requirements:
+
+- Node.js 20.9 or newer
+- npm
+
+From this directory:
+
+- npm install
+- npm run typecheck
+- npm run dev
+- npm run build
+
+Production deployment and publication are not part of this scaffold PR.
+
+The application architecture is governed by:
 
 docs/website/public-portfolio-foundation.md
-
-The next implementation step is the application scaffold and route structure.
