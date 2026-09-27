@@ -2,6 +2,8 @@
 
 ## Phase 0 — Business Foundation
 
+Completed:
+
 - 0.1 Dedicated GitHub repository and initial structure
 - 0.2 Constitution and governance
 - 0.3 Business positioning
@@ -12,10 +14,14 @@ Pricing policy is a material business decision and will be documented separately
 
 ## Phase 1 — Portfolio Foundation
 
-- Portfolio templates
-- Initial portfolio projects
-- Case-study system
+Current:
+
+- Portfolio system structure
+- Project record template
+- Case-study template
 - Screenshot standards
+- Portfolio registry
+- Initial portfolio slots
 
 ## Phase 2 — Sales System
 
