@@ -22,26 +22,31 @@ Never store client passwords, API keys, production secrets, private customer dat
 ## Authority
 
 - **Founder:** final business authority
-- **GitHub:** implementation and project authority
 - **Second Brain (Obsidian):** knowledge, context, research, and decision authority
+- **GitHub:** implementation and project authority
 - **Execution agents/tools:** implementation support only
 
 ## Current phase
 
 **Phase 0 — Business Foundation**
 
-Current milestone: **0.1 — Dedicated GitHub repository and initial operating structure**
+Completed:
+- 0.1 — Dedicated GitHub repository and initial structure
+- 0.2 — Constitution and governance
+
+Next:
+- 0.3 — Business positioning
+- 0.4 — Service catalog
+- 0.5 — Pricing model
 
 ## Repository map
 
-```text
-docs/          Strategy, positioning, services, pricing, sales, delivery, quality, finance, decisions
+docs/          Strategy, governance, positioning, services, pricing, sales, delivery, quality, finance, decisions
 portfolio/     Portfolio projects, screenshots, case studies, and portfolio index
 templates/     Reusable proposals, discovery, scope, milestones, QA, handover, communication
 operations/    Checklists, workflows, and trackers
 website/       Public portfolio website source (later phase)
 .github/       Issue templates and repository automation
-```
 
 ## Public repository
 
