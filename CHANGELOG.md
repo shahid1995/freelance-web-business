@@ -6,8 +6,9 @@
 - Advanced the roadmap to the Client Delivery System.
 - Established the reusable Client Discovery process, including entry conditions, discovery stages, questions, outputs, boundaries, change control, privacy rules, record structure, and handoff to scope.
 - Established the reusable Project Scope process, including scope authority, included and excluded work, deliverables, acceptance criteria, client responsibilities, assumptions, dependencies, constraints, open items, traceability, versioning, and change control.
-- Marked Discovery and Scope as the active Phase 3 delivery foundations.
-- Identified Milestones, QA, Handover, and Project Closure as the remaining delivery components.
+- Established the reusable Project Milestones process, including sequencing, readiness conditions, dependency management, completion criteria, blocker states, timeline discipline, change control, review, and handoff to QA and closure.
+- Marked Discovery, Scope, and Milestones as the active Phase 3 delivery foundations.
+- Identified QA, Handover, and Project Closure as the remaining delivery components.
 
 ### Phase 2 completion
 - Completed the Phase 2 Sales System structural review.
