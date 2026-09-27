@@ -50,7 +50,7 @@ Current:
 - Scope — foundation established
 - Milestones — foundation established
 - QA — foundation established
-- Handover
+- Handover — foundation established
 - Project closure
 
 ## Phase 4 — Public Portfolio
