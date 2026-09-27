@@ -35,7 +35,7 @@ Phase 1 creates the portfolio operating system. It does not create or imply comp
 Current:
 
 - Freelancer profile — master profile foundation
-- Proposal templates
+- Proposal templates — master proposal system
 - Qualification flow
 - Lead tracker
 
