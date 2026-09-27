@@ -2,6 +2,12 @@
 
 ## 2026-09-27
 
+### Phase 2
+- Started the Sales System.
+- Established a canonical master freelancer profile.
+- Defined evidence and claims controls for platform-specific profile variants.
+- Kept pricing, unverified credentials, client results, ratings, and fabricated portfolio proof out of the profile.
+
 ### Phase 1
 - Completed the Phase 1 portfolio foundation review.
 - Confirmed the portfolio system is structurally ready to move into the Sales System phase.
