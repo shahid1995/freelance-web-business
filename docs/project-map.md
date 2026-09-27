@@ -46,7 +46,7 @@ The master freelancer profile remains the source for future platform-specific pr
 
 Current:
 
-- Discovery
+- Discovery — foundation established
 - Scope
 - Milestones
 - QA
