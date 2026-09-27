@@ -2,7 +2,9 @@
 
 Phase 2 contains the reusable material used to present the business, qualify opportunities, prepare proposals, and track leads.
 
-## Current components
+**Phase status:** Structurally complete. See `docs/quality/2026-09-27-phase-2-sales-system-review.md`.
+
+## Components
 
 - freelancer-profile.md — canonical master profile and profile-source rules
 - proposal-templates.md — canonical proposal structure and service-specific prompts
@@ -34,12 +36,18 @@ The lead tracker records process state and next actions; it must not become a pu
 
 ## Workflow
 
-Positioning → Master Profile → Platform Variant → Proposal → Qualification → Lead Record
+Positioning → Master Profile → Platform Variant → Qualification → Proposal → Lead Record → Delivery Handoff
 
 The master freelancer profile is the source for reusable public positioning. Platform-specific wording may be shortened or reformatted without changing the underlying facts.
 
-The proposal system converts a qualified need into a bounded scope, deliverables, assumptions, acceptance conditions, and approved commercial terms.
-
 The qualification system determines whether an opportunity is ready for proposal, needs clarification, is not a fit, or should remain undecided.
 
+The proposal system converts a qualified need into a bounded scope, deliverables, assumptions, acceptance conditions, and approved commercial terms.
+
 The lead tracker preserves opportunity continuity from first contact through qualification, proposal, decision, and closure while keeping sensitive live lead data outside the public repository.
+
+## Phase boundary
+
+Phase 2 establishes the reusable sales system. It does not create live prospect records, external platform activity, outreach activity, approved pricing, or client-specific delivery records.
+
+Those actions remain subject to their own Founder approval and repository boundaries.

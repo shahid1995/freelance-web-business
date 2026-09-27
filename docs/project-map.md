@@ -32,16 +32,19 @@ Phase 1 creates the portfolio operating system. It does not create or imply comp
 
 ## Phase 2 — Sales System
 
-Current:
+Completed:
 
 - Freelancer profile — master profile foundation
 - Proposal templates — master proposal system
 - Qualification flow — lead qualification foundation
 - Lead tracker — opportunity tracking foundation
+- Phase 2 completion review
 
-The master freelancer profile is the source for future platform-specific profile variants.
+The master freelancer profile remains the source for future platform-specific profile variants. Pricing and external acquisition activity remain separate Founder-approved decisions.
 
 ## Phase 3 — Client Delivery System
+
+Current:
 
 - Discovery
 - Scope
