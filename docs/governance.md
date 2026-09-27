@@ -3,11 +3,10 @@
 ## Authority order
 
 1. **Founder** — final business decision authority.
-2. **Second Brain** — authoritative knowledge and accepted decision context.
-3. **GitHub** — authoritative implementation and project record.
-4. **Execution agents/tools** — implementation and verification support.
+2. **GitHub** — sole system of record for business documentation, decisions, implementation, and project history.
+3. **Execution agents/tools** — implementation and verification support.
 
-The practical rule is: **decisions are human-owned; implementation is repository-owned; context is knowledge-system-owned; execution is delegated.**
+The practical rule is: **decisions are Founder-owned; GitHub is the system of record; execution is delegated.**
 
 ## Change lifecycle
 
@@ -44,7 +43,7 @@ Examples: file organization, formatting, automation implementation, documentatio
 
 ## Conflict rule
 
-If the repository and knowledge context disagree on a material unresolved decision, do not silently choose a side. Surface the conflict and obtain Founder direction.
+If repository artifacts conflict on a material unresolved decision, do not silently choose a side. Surface the conflict and obtain Founder direction, then record the resolution in GitHub.
 
 ## External-action rule
 
