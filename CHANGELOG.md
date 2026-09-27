@@ -2,9 +2,18 @@
 
 ## 2026-09-27
 
+### Phase 0.3
+- Added the business positioning document.
+- Defined initial target audience groups and their common web problems.
+- Defined the core public service positioning without introducing pricing decisions.
+- Added a public messaging hierarchy and evidence-based language guidance.
+- Explicitly separated development deliverables from business outcomes that cannot be guaranteed.
+- Updated the phase roadmap to match the current Founder-defined sequence: 0.4 Service Catalog, 0.5 Repository and Documentation Conventions.
+
 ### Phase 0.2
 - Promoted CONSTITUTION.md from initial draft to Version 1.0.
-- Clarified Founder, GitHub, Second Brain, and execution-agent authority boundaries.
+- Clarified Founder, GitHub, and execution-agent authority boundaries.
+- Established GitHub as the sole system of record for business documentation, decisions, and project context.
 - Added explicit decision-conflict handling.
 - Strengthened client repository and confidential-data separation.
 - Defined integrity rules for portfolio and sales representation.
