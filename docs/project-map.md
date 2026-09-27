@@ -44,7 +44,7 @@ The master freelancer profile remains the source for future platform-specific pr
 
 ## Phase 3 — Client Delivery System
 
-Current:
+Completed:
 
 - Discovery — foundation established
 - Scope — foundation established
@@ -52,18 +52,20 @@ Current:
 - QA — foundation established
 - Handover — foundation established
 - Project Closure — foundation established
-- Phase 3 completion review — next
+- Phase 3 completion review
 
-Phase 3 now has a reusable foundation from discovery through closure. Client-specific delivery records remain outside this public business repository.
+Phase 3 provides a reusable foundation from accepted opportunity through project closure. Client-specific delivery records remain outside this public business repository.
 
 ## Phase 4 — Public Portfolio
 
-Planned:
+Current:
 
 - Portfolio website
 - Domain/hosting
 - Contact flow
 - Analytics
+
+Phase 4 establishes the public-facing portfolio system. It does not by itself authorize production deployment or publication.
 
 ## Phase 5 — Acquisition and Improvement
 

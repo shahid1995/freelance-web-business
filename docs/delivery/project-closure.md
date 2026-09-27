@@ -392,12 +392,10 @@ Before marking Closed:
 
 ## 18. Handoff to closure review
 
-Before Phase 3 is considered structurally complete:
+The Phase 3 completion review is recorded separately in:
 
-1. Verify the Project Closure foundation is consistent with Discovery, Scope, Milestones, QA, and Handover.
-2. Check lifecycle states and handoffs for contradictions.
-3. Confirm public-repository privacy and claims boundaries remain intact.
-4. Confirm no client-specific records are introduced.
-5. Record the Phase 3 completion review separately.
+`docs/quality/2026-09-27-phase-3-client-delivery-system-review.md`
 
-Project Closure is the final reusable delivery component in Phase 3. A separate completion review should assess whether the full delivery system is internally consistent before Phase 4 begins.
+The review confirms the Project Closure foundation is consistent with Discovery, Scope, Milestones, QA, and Handover, and that lifecycle handoffs, privacy boundaries, and client/public repository controls remain coherent.
+
+Project Closure is the final reusable delivery component in Phase 3. Future delivery work follows the completed Phase 3 system unless a later approved process change supersedes it.
