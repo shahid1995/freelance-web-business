@@ -1,6 +1,6 @@
-# Freelance Web Development Business Constitution
+# Freelance Web Development Business
 
-**Status:** Initial draft — Phase 0
+**Status:** Version 1.0 — Phase 0.2
 **Authority:** Founder
 **Last updated:** 2026-09-27
 
@@ -8,103 +8,162 @@
 
 Build a durable, professional web-development business that acquires clients, delivers reliable websites and web applications, creates reusable assets, and improves continuously through documented learning.
 
+This constitution defines the business-level authority, repository boundaries, decision rules, integrity requirements, and change controls that apply across the business system.
+
 ## 2. Founder Authority
 
 The Founder is the final authority for:
-
-- business direction
-- service positioning
+- business direction and priorities
+- service positioning and public claims
 - pricing policy
 - client acceptance criteria
-- major operational decisions
-- public-facing claims and brand representation
+- material commercial and operational decisions
+- portfolio representation
 - changes to this constitution
+- authorization of deployments, publication, and other irreversible external actions
+
+Implementation agents and tools do not supersede Founder decisions.
 
 ## 3. Source-of-Truth Boundaries
 
-### GitHub — Implementation Authority
-
-GitHub contains the implementation, version history, reusable assets, portfolio website source, templates, procedures, and project artifacts that are intentionally stored in the repository.
+### GitHub — Implementation and Project Authority
+GitHub is the implementation and project authority for this business repository. It contains the versioned business documents, approved templates, operating procedures, portfolio source material, and website source intentionally stored here. GitHub records what has actually been implemented in the repository.
 
 ### Second Brain — Knowledge and Context Authority
+The Obsidian **Second Brain** contains broader knowledge, research, reasoning context, and decision context that may inform the business. Accepted business decisions should be reflected in GitHub when implementation or operational documentation depends on them. A repository artifact must not silently reinterpret or override an accepted business decision.
 
-The Obsidian Second Brain contains broader knowledge, research, reasoning context, and decision context that may inform this business.
-
-A GitHub artifact must not silently override an accepted business decision stored as authoritative context.
+### Founder — Decision Authority
+Where sources conflict on an unresolved material business decision, implementation pauses and the Founder resolves the conflict.
 
 ### Execution Agents and Tools
-
-Agents and tools are execution support. They may implement approved work, inspect evidence, and report findings, but they may not redefine accepted product or business decisions.
+Agents and tools are execution support. They may inspect evidence, propose implementation details, implement approved work, run verification, and report findings. They may not redefine accepted business strategy, invent business decisions, silently change scope, publish or deploy without authorization, or introduce client or business secrets into this repository.
 
 ## 4. Client Separation
 
-Every real client project must be isolated in its own repository or explicitly approved project boundary.
+Every real client project must be isolated in its own repository or explicitly approved project boundary. The central business repository is not a client-project repository.
 
-The central business repository must not become a storage location for client secrets or confidential customer material.
+Do not store here:
+- client passwords
+- API keys or tokens
+- production secrets
+- private keys or certificates
+- confidential customer documents
+- private customer datasets
+- unrelated project source code
+- credentials copied from client systems
+
+Client-specific implementation belongs in the client's repository. Reusable, sanitized knowledge may be captured here only when it contains no confidential client information and is appropriate for reuse.
 
 ## 5. Scope Control
 
-No project should begin with materially undefined deliverables.
+No paid project should begin with materially undefined deliverables.
 
-Each paid project should establish, as appropriate:
-
+As appropriate, each project should establish:
 - deliverables
 - exclusions
 - milestones
 - acceptance criteria
 - revision boundaries
 - client-provided inputs
-- deployment/handover responsibilities
+- dependencies
+- deployment and handover responsibilities
+- assumptions and known constraints
 
-## 6. Integrity
+Material scope changes should be recorded before implementation proceeds.
+
+## 6. Integrity and Representation
 
 The business must not:
-
 - claim work was completed when it was not
-- present fabricated client work as real client work
+- present fictional or internal work as client work
 - invent performance, revenue, traffic, or conversion results
+- imply client approval that was not received
 - conceal material project limitations
 - expose confidential client information
 - use client credentials outside the authorized scope
 
-## 7. Quality
+Portfolio and sales material must distinguish clearly between real client work, founder-owned/internal work, and demonstrations or concepts.
+
+## 7. Quality and Delivery
 
 Work should be tested before delivery to the extent appropriate for the project.
 
-Testing should cover the main user flows and important responsive behavior, with additional checks for security, accessibility, performance, or integration risk when relevant.
+Verification should cover the main user flows and important responsive behavior, with additional checks for security, accessibility, performance, integrations, and browser compatibility when relevant to the project.
+
+A deliverable is not considered verified merely because code exists or a build succeeds.
 
 ## 8. Financial Discipline
 
-Pricing must be based on scope, effort, risk, value, platform fees, and sustainable delivery capacity rather than a race to the lowest price.
+Pricing and commercial decisions should account for scope, effort, risk, value, platform fees, delivery capacity, support obligations, and revision/change risk.
+
+The business should not accept unsustainable scope merely to maximize project volume.
+
+Material pricing policy belongs in docs/pricing/ and requires Founder approval.
 
 ## 9. Reusability
 
 When a project produces a genuinely reusable pattern, checklist, component, template, or lesson, capture it in the business system where appropriate.
 
+Reusable material must be sanitized and must not expose client-confidential information. Client-specific code remains in the client repository.
+
 ## 10. Continuous Improvement
 
-The operating loop is:
+The business operating loop is:
 
-**Capture → Connect → Understand → Decide → Act → Review**
+**Strategy → Services → Portfolio → Sales → Client Delivery → Review → Knowledge Capture → System Improvement**
 
-Completed projects should feed improvements back into the system.
+Completed work should generate evidence and lessons that can improve future decisions, templates, quality controls, and delivery practices.
 
-## 11. Change Management
+## 11. Decision Management
 
-Material permanent business decisions should be documented in `docs/decisions/`.
+Material permanent business decisions should be documented in docs/decisions/.
 
-Operational documents may evolve without an ADR when the change does not materially alter business strategy, public positioning, pricing policy, authority boundaries, or client risk.
+A material decision should normally record:
+1. Context
+2. Problem or question
+3. Options considered
+4. Decision
+5. Consequences
+6. Status
+7. Date and Founder approval where relevant
 
-## 12. Public Repository Safety
+Operational improvements may be made without a formal decision record when they do not materially alter strategy, positioning, pricing policy, authority boundaries, client risk, or public claims.
+
+When uncertainty materially affects a business decision, record the uncertainty rather than presenting an assumption as a fact.
+
+## 12. Change and Merge Control
+
+Repository changes should be scoped to one coherent objective, reviewable, traceable to a phase/issue/approved decision when material, and verified before merge.
+
+The default workflow is:
+
+**Inspect → Plan → Implement → Verify → Review → Merge**
+
+Merging a pull request does not authorize deployment or public publication. Unrelated project work must not be mixed into business-repository changes.
+
+## 13. Public Repository Safety
 
 Because this repository is intentionally public:
-
-- do not commit passwords, API keys, tokens, private keys, or session data
-- do not commit confidential client documents
-- do not commit personal data unless intentionally public and necessary
+- never commit passwords, API keys, tokens, private keys, or session data
+- never commit confidential client documents
+- never commit private customer data unless it is intentionally public and necessary
 - keep environment-specific secrets outside Git
-- review changes before publication
+- inspect generated files before committing
+- treat screenshots and exported datasets as potentially sensitive
+- remove credentials and identifying customer information from portfolio evidence
 
-## 13. Deployment Authority
+Public visibility is intentional. It does not by itself grant third parties permission to reuse proprietary business materials.
 
-Publishing or deploying a public-facing website, client project, or production system requires explicit authorization for that action. Repository changes alone do not authorize deployment.
+## 14. Deployment and Publication Authority
+
+Repository changes alone do not authorize external publication.
+
+Explicit Founder authorization is required before deploying the business website, deploying a client system, publishing a production release, changing live infrastructure, sending client-facing communications as an operational action, or performing another irreversible external action.
+
+Agents may prepare deployment instructions or verify a deployment after authorization, but may not infer authorization from a merged PR.
+
+## 15. Governance Review
+
+This constitution should be reviewed when the business materially changes its operating model, a new class of client/service introduces new risk, an authority boundary becomes ambiguous, repeated operational failures expose a missing rule, or the Founder explicitly requests a governance review.
+
+The constitution should remain concise enough to be understood and strong enough to prevent recurring governance errors.
