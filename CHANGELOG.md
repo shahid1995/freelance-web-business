@@ -5,8 +5,10 @@
 ### Phase 2
 - Started the Sales System.
 - Established a canonical master freelancer profile.
+- Established a reusable proposal template system with scope, deliverables, assumptions, acceptance, and service-specific prompts.
+- Defined proposal controls so commercial terms use only Founder-approved pricing.
 - Defined evidence and claims controls for platform-specific profile variants.
-- Kept pricing, unverified credentials, client results, ratings, and fabricated portfolio proof out of the profile.
+- Kept pricing, unverified credentials, client results, ratings, and fabricated portfolio proof out of the profile and proposal system.
 
 ### Phase 1
 - Completed the Phase 1 portfolio foundation review.
