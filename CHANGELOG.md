@@ -2,6 +2,12 @@
 
 ## 2026-09-27
 
+### Phase 0.5
+- Established repository and documentation conventions.
+- Defined directory ownership, filename rules, document structure, decision-record conventions, changelog usage, branch naming, commit style, pull request expectations, verification records, link conventions, public-repository safety, and archival rules.
+- Added a reusable pull request template.
+- Marked Phase 0 as complete and Phase 1 as the next planned phase.
+
 ### Phase 0.4
 - Established the initial six-service public catalog.
 - Defined purpose, target use cases, core deliverables, typical scope, exclusions, optional extensions, client inputs, and acceptance criteria for each service.

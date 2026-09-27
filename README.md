@@ -34,9 +34,10 @@ Completed:
 - 0.2 — Constitution and governance
 - 0.3 — Business positioning
 - 0.4 — Service catalog
+- 0.5 — Repository and documentation conventions
 
 Next:
-- 0.5 — Repository and documentation conventions
+- Phase 1 — Portfolio Foundation
 
 Pricing remains a separate material business decision and will be documented when the Founder approves the pricing phase/order.
 
@@ -47,7 +48,7 @@ portfolio/     Portfolio projects, screenshots, case studies, and portfolio inde
 templates/     Reusable proposals, discovery, scope, milestones, QA, handover, communication
 operations/    Checklists, workflows, and trackers
 website/       Public portfolio website source (later phase)
-.github/       Issue templates and repository automation
+.github/       Issue templates, pull request templates, and repository automation
 
 ## Public repository
 
@@ -56,3 +57,7 @@ This repository is intentionally **public**. Public visibility does not grant re
 ## Operating loop
 
 Strategy → Services → Portfolio → Sales → Client Delivery → Review → Document Learnings → System Improvement
+
+## Documentation conventions
+
+See the repository and documentation conventions document at docs/conventions/repository-and-documentation.md.
