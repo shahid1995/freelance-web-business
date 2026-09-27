@@ -253,7 +253,7 @@ Before implementing a material out-of-scope request:
 2. Identify the affected scope items.
 3. Identify delivery, dependency, or acceptance impact.
 4. Record any commercial or timeline impact using approved policy.
-5. Obtain the required agreement or approval.
+5. Obtain explicit client agreement through the approved project communication or agreement channel, plus any internal approval required by the commercial arrangement.
 6. Update the scope and related milestone/QA records.
 7. Preserve the previous scope version in the client project record.
 
@@ -261,13 +261,15 @@ Do not use scope updates to silently rewrite history.
 
 ## 9. Scope versioning
 
-Use explicit versions for approved scope records:
+Use explicit versions for scope records:
 
 - Draft — still being prepared
 - Review — awaiting client/internal review
-- Approved — agreed basis for delivery
+- Approved — accepted by the client and established as the delivery baseline
 - Superseded — replaced by a later approved scope version
 - Closed — final historical record after project completion
+
+An internally prepared scope is not Approved merely because the delivery owner considers it complete. Approved status requires explicit client acceptance of the detailed scope, recorded in the client project record or another approved project communication channel.
 
 Each approved revision should identify:
 
@@ -342,9 +344,12 @@ Approved date:
 
 #### 11. Approval
 
-Approval source:  
+Client approver name:  
+Client approver role / authority:  
+Approval evidence / reference:  
 Approval date:  
 Approved scope version:  
+Internal approval source, when required:
 
 ## 11. Scope checklist
 
@@ -361,7 +366,8 @@ Before marking scope Approved:
 - [ ] Constraints are visible.
 - [ ] Open items are clearly separated from committed scope.
 - [ ] Major scope items can be traced to an approved source.
-- [ ] No material commercial scope change has been introduced without the required agreement.
+- [ ] No material commercial scope change has been introduced without explicit client agreement and any required internal approval.
+- [ ] Explicit client acceptance evidence is recorded.
 - [ ] Confidential client material remains in the client project location.
 - [ ] The scope is ready to support milestone planning.
 
