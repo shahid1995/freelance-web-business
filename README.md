@@ -27,7 +27,7 @@ Never store client passwords, API keys, production secrets, private customer dat
 
 ## Current phase
 
-**Phase 3 — Client Delivery System**
+**Phase 4 — Public Portfolio**
 
 Phase 0 is complete:
 - 0.1 — Dedicated GitHub repository and initial structure
@@ -52,13 +52,22 @@ Phase 2 is structurally complete:
 - Lead tracker
 - Phase 2 completion review
 
-Phase 3 current work:
+Phase 3 is structurally complete:
 - Discovery
 - Scope
 - Milestones
 - QA
 - Handover
 - Project closure
+- Phase 3 completion review
+
+Phase 4 current work:
+- Portfolio website
+- Domain/hosting
+- Contact flow
+- Analytics
+
+Phase 4 establishes the public-facing portfolio system. It does not authorize production deployment or publication by itself.
 
 Portfolio and sales content remains evidence-based: no client work, results, credentials, ratings, or public claims are created unless they are real and verified.
 
