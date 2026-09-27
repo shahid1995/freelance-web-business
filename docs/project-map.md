@@ -63,7 +63,7 @@ Current:
 - Public portfolio website foundation — established
 - Website application scaffold — established
 - Website content and portfolio integration — established
-- Website QA hardening — established
+- Website QA hardening — route-level verification established; interactive browser QA pending
 - Domain/hosting — next
 - Contact flow
 - Analytics
