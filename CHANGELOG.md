@@ -2,12 +2,13 @@
 
 ## 2026-09-27
 
-### Added
-- Initial public freelance-business repository scaffold.
-- Business constitution and repository boundaries.
-- Strategy, positioning, service, pricing, sales, delivery, quality, finance, and decision documentation areas.
-- Portfolio, templates, operations, website, and GitHub workflow directories.
+### Phase 0.1
+- Confirmed the dedicated repository exists as a public GitHub repository.
+- Confirmed the default branch is `main`.
+- Reorganized the initial bootstrap into the intended long-term repository structure.
+- Preserved the existing constitution and initial business material.
+- Added repository-level secret-safety and client-separation boundaries.
 
-### Current Status
-- Phase 0.1 scaffold prepared.
-- GitHub repository creation is pending because the connected GitHub integration currently does not expose a repository-creation operation.
+### Notes
+- The repository was created externally before this implementation pass.
+- The earlier bootstrap ZIP is not used as an authoritative source; the existing GitHub content was inspected before restructuring.
