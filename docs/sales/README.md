@@ -36,13 +36,13 @@ The lead tracker records process state and next actions; it must not become a pu
 
 ## Workflow
 
-Positioning → Master Profile → Platform Variant → Proposal → Qualification → Lead Record → Delivery Handoff
+Positioning → Master Profile → Platform Variant → Qualification → Proposal → Lead Record → Delivery Handoff
 
 The master freelancer profile is the source for reusable public positioning. Platform-specific wording may be shortened or reformatted without changing the underlying facts.
 
-The proposal system converts a qualified need into a bounded scope, deliverables, assumptions, acceptance conditions, and approved commercial terms.
-
 The qualification system determines whether an opportunity is ready for proposal, needs clarification, is not a fit, or should remain undecided.
+
+The proposal system converts a qualified need into a bounded scope, deliverables, assumptions, acceptance conditions, and approved commercial terms.
 
 The lead tracker preserves opportunity continuity from first contact through qualification, proposal, decision, and closure while keeping sensitive live lead data outside the public repository.
 
