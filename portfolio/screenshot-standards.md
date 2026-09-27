@@ -21,16 +21,17 @@ Before a screenshot is approved for portfolio use:
 
 Use lowercase kebab-case filenames.
 
+When a project has multiple screenshots, store them under its project directory:
+
+`portfolio/screenshots/project-name/`
+
+The project directory supplies the project scope, so filenames inside that directory do not need a project-name prefix.
+
 Examples:
 
-- homepage-desktop.png
-- dashboard-mobile.png
-- contact-form-success.png
-
-When multiple images belong to one project, prefix them consistently:
-
-- project-name-homepage.png
-- project-name-dashboard.png
+- `homepage-desktop.png`
+- `dashboard-mobile.png`
+- `contact-form-success.png`
 
 ## Evidence quality
 
@@ -64,6 +65,8 @@ Do not commit:
 - Internal-only dashboards unless expressly approved
 - Confidential business information
 - Personal data that is unnecessary for the portfolio
+
+Sanitize all screenshot evidence before committing it.
 
 ## Approval
 
