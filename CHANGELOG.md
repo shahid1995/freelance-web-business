@@ -9,8 +9,9 @@
 - Established the reusable Project Milestones process, including sequencing, readiness conditions, dependency management, completion criteria, blocker states, timeline discipline, change control, review, and handoff to QA and closure.
 - Established the reusable Quality Assurance and Verification process, including test planning, functional and cross-environment checks, accessibility, performance, security/privacy, integrations, defect classification, evidence, QA gates, accepted limitations, and handoff to handover.
 - Established the reusable Project Handover process, including transfer prerequisites, deliverable and operational handover, access and credential boundaries, client acceptance, corrections versus new requests, access removal, handover states, and closure readiness.
-- Marked Discovery, Scope, Milestones, QA, and Handover as the active Phase 3 delivery foundations.
-- Identified Project Closure as the remaining Phase 3 delivery component.
+- Established the reusable Project Closure process, including final scope reconciliation, acceptance and handover reconciliation, open-item disposition, access/security closure, commercial and administrative status, evidence retention, portfolio/public-use boundaries, closure states, reopening rules, and future-work routing.
+- Marked all six reusable delivery components as having working foundations.
+- Identified a separate Phase 3 completion review as the next delivery-system checkpoint.
 
 ### Phase 2 completion
 - Completed the Phase 2 Sales System structural review.
