@@ -1,13 +1,10 @@
 import Link from "next/link";
-import "./globals.css";
-import { site } from "@/lib/content";
 import type { Metadata } from "next";
+import { site } from "@/lib/content";
 
 export const metadata: Metadata = {
-  title: {
-    default: site.name,
-    template: "%s | " + site.name,
-  },
+  title: site.name,
+  template: "%s | " + site.name,
   description: site.description,
 };
 
@@ -72,10 +69,11 @@ export default function RootLayout({
                 </Link>
               ))}
             </nav>
+
+            <p className="footer-legal">
+              © {new Date().getFullYear()} {site.name}.
+            </p>
           </div>
-          <p className="footer-legal">
-            © {new Date().getFullYear()} {site.name}.
-          </p>
         </footer>
       </body>
     </html>

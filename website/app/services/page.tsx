@@ -14,7 +14,7 @@ export default function ServicesPage() {
       <div className="container">
         <div className="section-heading">
           <p className="eyebrow">Services</p>
-          <h2 id="services-heading">Web work with clear scope and practical boundaries</h2>
+          <h1 id="services-heading">Web work with clear scope and practical boundaries</h1>
           <p>
             Each service is structured around a defined business need.
             Scope, deliverables, and boundaries are agreed before implementation.

@@ -14,16 +14,16 @@ export default function ContactPage() {
           <p className="eyebrow">Project discussion</p>
           <h1>Let's discuss your project</h1>
           <p>
-            I'm available for new website and web application projects. The project
-            discussion process collects only the information needed to understand your
-            needs and determine fit.
+            I'm available for new website and web application projects. The
+            project discussion process collects only the information needed to
+            understand your needs and determine fit.
           </p>
         </div>
 
         <div className="notice">
-          <strong>Current status:</strong> Project discussions are handled through the
-          next phase of work. You can explore the services first or review the site
-          structure.
+          <strong>Current status:</strong> Project discussions are handled
+          through the next phase of work. You can explore the services first or
+          review the site structure.
         </div>
 
         <div className="cta-row">

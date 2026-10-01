@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { portfolioStatus } from "@/lib/content";
 
 export const metadata = {
@@ -22,7 +21,7 @@ export default function WorkPage() {
           <ul className="prose">
             <li>A completed project record with its canonical Project ID</li>
             <li>Accurate ownership and role</li>
-            <li>_DEFINED scope</li>
+            <li>Defined scope</li>
             <li>Evidence supporting major claims</li>
             <li>Approved screenshots where applicable</li>
             <li>Permission confirmation where client material is involved</li>
