@@ -1,32 +1,38 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Contact",
-  description: "Start a conversation about a website or web application project.",
+  description: "Discussion entry point for website and web application projects.",
 };
 
 export default function ContactPage() {
   return (
     <section className="section">
       <div className="container">
-        <div className="panel service-summary">
+        <div className="prose">
           <p className="eyebrow">Project discussion</p>
-          <h1>Let’s start with the work you need.</h1>
+          <h1>Let's discuss your project</h1>
           <p>
-            The public contact flow is the next Phase 4 work item. It will
-            collect only the information needed to qualify a project and route
-            it into the approved sales process.
+            I'm available for new website and web application projects. The
+            project discussion process collects only the information needed to
+            understand your needs and determine fit.
           </p>
-          <div className="notice">
-            No contact form or external submission integration is enabled in
-            this scaffold. That keeps the current website free of unapproved
-            live integrations and production side effects.
-          </div>
-          <div className="cta-row">
-            <Link className="button button-secondary" href="/services">
-              Review services first
-            </Link>
-          </div>
+        </div>
+
+        <div className="notice">
+          <strong>Current status:</strong> Project discussions are handled
+          through the next phase of work. You can explore the services first or
+          review the site structure.
+        </div>
+
+        <div className="cta-row">
+          <Link className="button" href="/services">
+            Review services
+          </Link>
+          <Link className="button button-secondary" href="/about">
+            Learn about the approach
+          </Link>
         </div>
       </div>
     </section>
