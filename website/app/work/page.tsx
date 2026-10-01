@@ -1,6 +1,6 @@
 import { portfolioStatus } from "@/lib/content";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Work",
   description:
     "Portfolio work and case studies will appear here after ownership, evidence, confidentiality, and publication permission are reviewed.",
