@@ -15,20 +15,20 @@ export default function ServicesPage() {
         <div className="prose">
           <p className="eyebrow">Services</p>
           <h1>Web work with clear scope and practical boundaries</h1>
-          <p>{services.description}</p>
+          <p>{services[0].summary}</p>
         </div>
 
         <div className="services-grid">
-          {services.map((service) => (
+          {services.map((service, index) => (
             <article key={service.slug} className="service-card">
               <span className="service-number">
-                {String(service.id).padStart(2, "0")}
+                {String(index + 1).padStart(2, "0")}
               </span>
-              <h2>{service.name}</h2>
-              <p>{service.description}</p>
+              <h2>{service.title}</h2>
+              <p>{service.summary}</p>
               {service.cta && (
-                <Link className="service-cta" href={service.cta.href}>
-                  {service.cta.label} →
+                <Link className="service-cta" href="/contact">
+                  {service.cta} →
                 </Link>
               )}
             </article>
