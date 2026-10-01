@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { portfolioStatus } from "@/lib/content";
 
 export const metadata: Metadata = {
