@@ -1,9 +1,8 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
 import { site } from "@/lib/content";
 
-export const metadata: Metadata = {
+export const metadata = {
   title: {
     default: site.name,
     template: "%s | " + site.name,
@@ -43,6 +42,13 @@ export default function RootLayout({
                   {item.label}
                 </Link>
               ))}
+              <Link
+                className="button"
+                href="/contact"
+                title="Discuss a project"
+              >
+                Discuss a project
+              </Link>
             </nav>
           </div>
         </header>
@@ -53,9 +59,22 @@ export default function RootLayout({
 
         <footer className="site-footer">
           <div className="site-footer-inner">
-            <p>{site.shortDescription}</p>
-            <p>Public website foundation — publication controlled separately.</p>
+            <div>
+              <p className="footer-brand">{site.name}</p>
+              <p className="footer-tagline">{site.tagline}</p>
+            </div>
+
+            <nav className="footer-nav" aria-label="Footer navigation">
+              {navigation.map((item) => (
+                <Link key={item.href} href={item.href}>
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
           </div>
+          <p className="footer-legal">
+            © {new Date().getFullYear()} {site.name}. Public website foundation.
+          </p>
         </footer>
       </body>
     </html>

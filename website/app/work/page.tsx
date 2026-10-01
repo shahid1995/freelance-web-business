@@ -13,59 +13,23 @@ export default function WorkPage() {
         <div className="prose">
           <p className="eyebrow">Work</p>
           <h1>
-            Selected work will appear here as it becomes publication-ready.
+            Portfolio work appears only after publication review
           </h1>
-          <p>
-            The portfolio registry currently contains candidate concepts rather
-            than approved published projects. This page intentionally avoids
-            presenting unverified work as completed client work.
-          </p>
-
-          <section aria-labelledby="status-heading">
-            <h2 id="status-heading">Current portfolio status</h2>
-            <p>
-              The portfolio registry includes concept slots for:
-            </p>
-            <ul>
-              {portfolioStatus.currentSlots.map((slot) => (
-                <li key={slot}>{slot}</li>
-              ))}
-            </ul>
-            <p>{portfolioStatus.slotNote}</p>
-          </section>
-
-          <section aria-labelledby="publication-heading">
-            <h2 id="publication-heading">Publication requirements</h2>
-            <p>
-              Portfolio items are added only after the project record, scope,
-              evidence, confidentiality review, factual-accuracy review, and
-              required publication permission are satisfied.
-            </p>
-            <p>
-              Before an item becomes a public case study, the repository must
-              contain:
-            </p>
-            <ul>
-              {portfolioStatus.publicationRequirements.map((req) => (
-                <li key={req}>{req}</li>
-              ))}
-            </ul>
-            <p>{portfolioStatus.conceptNote}</p>
-          </section>
-
-          <section aria-labelledby="ownership-heading">
-            <h2 id="ownership-heading">Ownership categories</h2>
-            <p>
-              When portfolio items are published, they will be labeled using one
-              of these ownership categories:
-            </p>
-            <ul>
-              {portfolioStatus.ownershipCategories.map((cat) => (
-                <li key={cat}>{cat}</li>
-              ))}
-            </ul>
-          </section>
+          <p>{portfolioStatus.summary}</p>
         </div>
+
+        <div className="work-registry" aria-label="Portfolio status">
+          {portfolioStatus.currentSlots.map((slot, index) => (
+            <div key={slot} className="registry-slot">
+              <span className="slot-number">{String(index + 1).padStart(2, "0")}</span>
+              <div className="registry-slot-content">{slot}</div>
+            </div>
+          ))}
+        </div>
+
+        <p className="registry-note">
+          {portfolioStatus.slotNote}
+        </p>
       </div>
     </section>
   );

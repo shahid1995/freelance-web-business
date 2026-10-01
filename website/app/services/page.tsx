@@ -13,23 +13,29 @@ export default function ServicesPage() {
       <div className="container">
         <div className="section-heading">
           <p className="eyebrow">Services</p>
-          <h1>Web work with clear scope and practical boundaries.</h1>
+          <h1>Web work with clear scope and practical boundaries</h1>
           <p>
-            Each service is structured around a defined business need rather
-            than an open-ended feature list. Scope, deliverables, and boundaries
-            are agreed before implementation.
+            Each service is structured around a defined business need.
+            Scope, deliverables, and boundaries are agreed before implementation.
           </p>
         </div>
 
-        <div className="card-grid">
-          {services.map((service) => (
-            <article className="panel card" key={service.slug}>
-              <h2>{service.title}</h2>
-              <p>{service.summary}</p>
-              <Link className="card-link" href={`/services/${service.slug}`}>
+        <div className="service-list">
+          {services.map((service, index) => (
+            <div key={service.slug} className="service-entry">
+              <div className="service-identifier">
+                <span className="service-number">{String(index + 1).padStart(2, "0")}</span>
+                <h3 className="service-title">{service.title}</h3>
+              </div>
+              <p className="service-summary">{service.summary}</p>
+              <Link
+                className="service-link"
+                href={`/services/${service.slug}`}
+                aria-label={`View ${service.title}`}
+              >
                 View {service.title}
               </Link>
-            </article>
+            </div>
           ))}
         </div>
       </div>

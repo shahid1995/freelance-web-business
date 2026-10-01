@@ -11,26 +11,19 @@ export default function HomePage() {
   return (
     <>
       <section className="hero">
-        <div className="container hero-grid">
-          <div>
-            <p className="eyebrow">Web development</p>
-            <h1>{messaging.primary}</h1>
-            <p className="lede">{messaging.supporting}</p>
+        <div className="hero-content">
+          <p className="eyebrow">Web development</p>
+          <h1>{messaging.primary}</h1>
+          <p className="lead">{messaging.supporting}</p>
 
-            <div className="cta-row">
-              <Link className="button" href="/contact">
-                {messaging.ctaPrimary}
-              </Link>
-              <Link className="button button-secondary" href="/services">
-                {messaging.ctaSecondary}
-              </Link>
-            </div>
+          <div className="cta-row">
+            <Link className="button" href="/contact">
+              {messaging.ctaPrimary}
+            </Link>
+            <Link className="button button-secondary" href="/services">
+              {messaging.ctaSecondary}
+            </Link>
           </div>
-
-          <aside className="panel hero-note" aria-label="Working approach">
-            <p className="eyebrow">How the work is approached</p>
-            <p>{messaging.approach}</p>
-          </aside>
         </div>
       </section>
 
@@ -38,42 +31,84 @@ export default function HomePage() {
         <div className="container">
           <div className="section-heading">
             <p className="eyebrow">Services</p>
-            <h2 id="services-heading">
-              Focused help across the web lifecycle.
-            </h2>
+            <h2 id="services-heading">Focused help across the web lifecycle</h2>
             <p>
-              Each service is structured around a defined business need rather
-              than an open-ended feature list. Scope, deliverables, and
-              boundaries are agreed before implementation.
+              Each service is structured around a defined business need.
+              Scope, deliverables, and boundaries are agreed before implementation.
             </p>
           </div>
 
-          <div className="card-grid">
-            {services.map((service) => (
-              <article className="panel card" key={service.slug}>
-                <h3>{service.title}</h3>
-                <p>{service.summary}</p>
-                <Link className="card-link" href={`/services/${service.slug}`}>
+          <div className="service-list">
+            {services.map((service, index) => (
+              <div key={service.slug} className="service-entry">
+                <div className="service-identifier">
+                  <span className="service-number">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <h3 className="service-title">{service.title}</h3>
+                </div>
+                <p className="service-summary">{service.summary}</p>
+                <Link
+                  className="service-link"
+                  href={`/services/${service.slug}`}
+                  aria-label={`View ${service.title}`}
+                >
                   View {service.title}
                 </Link>
-              </article>
+              </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="section" aria-labelledby="approach-heading">
+        <div className="container">
+          <div className="section-heading">
+            <p className="eyebrow">How it works</p>
+            <h2 id="approach-heading">The working approach</h2>
+            <p>{messaging.approach}</p>
+          </div>
+
+          <div className="approach-steps">
+            {["Understand", "Define", "Build", "Verify", "Hand over"].map(
+              (step, index) => (
+                <div key={step} className="approach-step">
+                  <span className="step-number">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span className="step-label">{step}</span>
+                </div>
+              )
+            )}
           </div>
         </div>
       </section>
 
       <section className="section" aria-labelledby="work-heading">
         <div className="container">
-          <div className="panel service-summary">
-            <div className="section-heading">
-              <p className="eyebrow">Work</p>
-              <h2 id="work-heading">
-                Portfolio work appears only after publication review.
-              </h2>
-              <p>{portfolioStatus.summary}</p>
-            </div>
-            <Link className="button button-secondary" href="/work">
-              {messaging.ctaWork}
+          <div className="prose">
+            <p className="eyebrow">Work</p>
+            <h2 id="work-heading">Portfolio work appears only after publication review</h2>
+            <p>{portfolioStatus.summary}</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="section" aria-labelledby="final-cta-heading">
+        <div className="container">
+          <div className="section-heading">
+            <h2 id="final-cta-heading">Let's discuss your project</h2>
+            <p className="lead">
+              Clear scope, practical implementation, and maintainable results.
+            </p>
+          </div>
+
+          <div className="cta-row">
+            <Link className="button" href="/contact">
+              Discuss your website project
+            </Link>
+            <Link className="button button-secondary" href="/services">
+              Explore services
             </Link>
           </div>
         </div>
