@@ -1,8 +1,9 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { services } from "@/lib/services";
 import { messaging, portfolioStatus, site } from "@/lib/content";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: messaging.primary,
   description: site.description,
 };
@@ -88,7 +89,9 @@ export default function HomePage() {
         <div className="container">
           <div className="prose">
             <p className="eyebrow">Work</p>
-            <h2 id="work-heading">Portfolio work appears only after publication review</h2>
+            <h2 id="work-heading">
+              Portfolio work appears only after publication review
+            </h2>
             <p>{portfolioStatus.summary}</p>
           </div>
         </div>
@@ -105,10 +108,10 @@ export default function HomePage() {
 
           <div className="cta-row">
             <Link className="button" href="/contact">
-              Discuss your website project
+              {messaging.ctaPrimary}
             </Link>
             <Link className="button button-secondary" href="/services">
-              Explore services
+              {messaging.ctaSecondary}
             </Link>
           </div>
         </div>

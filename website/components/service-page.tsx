@@ -5,65 +5,61 @@ export function ServicePage({ service }: Readonly<{ service: Service }>) {
   return (
     <div className="service-page">
       <div className="container">
-        <div className="service-layout">
-          <div>
-            <p className="eyebrow">Service</p>
-            <h1>{service.title}</h1>
+        <section>
+          <p className="eyebrow">Service</p>
+          <h1>{service.title}</h1>
+          <p>{service.summary}</p>
+        </section>
 
-            <div className="service-meta">
-              <p>{service.summary}</p>
-              <div className="cta-row">
-                <Link className="button" href="/contact">
-                  {service.cta}
-                </Link>
-                <Link className="button button-secondary" href="/services">
-                  View all services
-                </Link>
-              </div>
-            </div>
+        <section aria-labelledby="purpose-heading">
+          <h2 id="purpose-heading">What this service is for</h2>
+          <p className="detail-content">{service.purpose}</p>
+        </section>
 
-            <div className="detail-section">
-              <h2>What this service is for</h2>
-              <p className="detail-content">{service.purpose}</p>
-            </div>
+        <section aria-labelledby="need-heading">
+          <h2 id="need-heading">Typical client need</h2>
+          <p className="detail-content">{service.clientNeed}</p>
+        </section>
 
-            <div className="detail-section">
-              <h2>Typical client need</h2>
-              <p className="detail-content">{service.clientNeed}</p>
-            </div>
+        <section aria-labelledby="ideal-heading">
+          <h2 id="ideal-heading">Good fit for</h2>
+          <ul className="detail-list">
+            {service.idealFor.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
 
-            <div className="detail-section">
-              <h2>Good fit for</h2>
-              <ul className="detail-list">
-                {service.idealFor.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </div>
+        <section aria-labelledby="scope-heading">
+          <h2 id="scope-heading">Typical scope</h2>
+          <p className="detail-content">{service.typicalScope}</p>
+        </section>
 
-            <div className="detail-section">
-              <h2>Typical scope</h2>
-              <p className="detail-content">{service.typicalScope}</p>
-            </div>
+        <section aria-labelledby="deliverables-heading">
+          <h2 id="deliverables-heading">Typical deliverables</h2>
+          <ul className="detail-list">
+            {service.deliverables.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
 
-            <div className="detail-section">
-              <h2>Typical deliverables</h2>
-              <ul className="detail-list">
-                {service.deliverables.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </div>
+        <section aria-labelledby="boundaries-heading">
+          <h2 id="boundaries-heading">Typical boundaries</h2>
+          <ul className="detail-list">
+            {service.boundaries.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
 
-            <div className="detail-section">
-              <h2>Typical boundaries</h2>
-              <ul className="detail-list">
-                {service.boundaries.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
+        <div className="cta-row">
+          <Link className="button" href="/contact">
+            {service.cta}
+          </Link>
+          <Link className="button button-secondary" href="/services">
+            View all services
+          </Link>
         </div>
       </div>
     </div>

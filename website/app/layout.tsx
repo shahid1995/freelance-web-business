@@ -1,8 +1,9 @@
 import Link from "next/link";
 import "./globals.css";
 import { site } from "@/lib/content";
+import type { Metadata } from "next";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: {
     default: site.name,
     template: "%s | " + site.name,
@@ -73,7 +74,7 @@ export default function RootLayout({
             </nav>
           </div>
           <p className="footer-legal">
-            © {new Date().getFullYear()} {site.name}. Public website foundation.
+            © {new Date().getFullYear()} {site.name}.
           </p>
         </footer>
       </body>
