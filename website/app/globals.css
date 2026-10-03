@@ -1,34 +1,138 @@
+/* ==========================================================================
+   Phase 4.4A — visual design foundation
+   Plain-CSS token layer. Every visual value below resolves to a token.
+   ========================================================================== */
+
 :root {
-  --bg: #f7f8fa;
+  color-scheme: light;
+
+  /* --- Surfaces ------------------------------------------------------- */
+  --bg: #f6f7f9;
+  --bg-translucent: rgba(246, 247, 249, 0.88);
   --surface: #ffffff;
-  --surface-muted: #eef1f4;
-  --text: #14181f;
-  --text-muted: #56616f;
-  --border: #dce1e7;
+  --surface-muted: #ebeff4;
+  --surface-inverse: #101720;
+
+  /* --- Text (three levels) -------------------------------------------- */
+  --text: #111721; /* level 1 — headings, primary copy */
+  --text-muted: #4c5764; /* level 2 — supporting copy */
+  --text-subtle: #5f6975; /* level 3 — labels, meta, footer notes */
+
+  /* Inverse section text */
+  --text-inverse: #f6f8fa;
+  --text-inverse-muted: #b3bdc9;
+
+  /* --- Borders -------------------------------------------------------- */
+  --line: #d5dde6;
+  --line-strong: #a3aeba;
+  --line-inverse: #374455;
+
+  /* --- Accent --------------------------------------------------------- */
   --accent: #0f62fe;
-  --accent-strong: #0a4fc2;
-  --accent-soft: #e8f0ff;
-  --max-width: 1160px;
-  --radius: 18px;
-  --shadow: 0 18px 45px rgba(20, 24, 31, 0.08);
+  --accent-strong: #0a49c9;
+  --accent-soft: #e9f0ff;
+
+  /* --- Spacing scale -------------------------------------------------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 2.5rem;
+  --space-8: 3rem;
+  --space-9: 4rem;
+
+  /* --- Section rhythm ------------------------------------------------- */
+  --rhythm-section: 5rem;
+  --rhythm-section-lead: 6rem;
+
+  /* --- Containers ----------------------------------------------------- */
+  --container: 72rem;
+  --container-narrow: 46rem;
+  --gutter: 1.5rem;
+
+  /* --- Radius (exactly three) ----------------------------------------- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  /* --- Elevation (exactly two) ---------------------------------------- */
+  --shadow-sm: 0 1px 2px rgba(17, 23, 33, 0.05);
+  --shadow-lg: 0 24px 48px -24px rgba(17, 23, 33, 0.28);
+
+  /* --- Typography ----------------------------------------------------- */
+  --font-fallback-sans:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --font-fallback-display: var(--font-fallback-sans);
+  --font-fallback-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-md: 1.0625rem;
+  --text-lg: 1.3125rem;
+  --text-h2: clamp(1.75rem, 1.45rem + 1.3vw, 2.5rem);
+  --text-h1: clamp(2.25rem, 1.8rem + 3vw, 4rem);
+  --text-lede: clamp(1.0625rem, 1rem + 0.35vw, 1.25rem);
+
+  --leading-tight: 1.08;
+  --leading-snug: 1.25;
+  --leading-normal: 1.65;
+
+  --tracking-tight: -0.03em;
+  --tracking-normal: -0.01em;
+  --tracking-label: 0.14em;
+
+  --measure-heading: 40rem;
+  --measure-display: 46rem;
+  --measure-body: 44rem;
+
+  /* --- Motion --------------------------------------------------------- */
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-* {
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 html {
+  min-height: 100%;
   scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
+/* Document-height layout: flex column so the footer sits at the end of a
+   short page instead of relying on a hard-coded header height. */
 body {
   margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
   background: var(--bg);
   color: var(--text);
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
-  line-height: 1.6;
+  font-family: var(--font-sans), var(--font-fallback-sans);
+  font-size: var(--text-base);
+  font-weight: 400;
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
 }
 
 a {
@@ -38,10 +142,6 @@ a {
 button,
 a {
   -webkit-tap-highlight-color: transparent;
-}
-
-img {
-  max-width: 100%;
 }
 
 ::selection {
@@ -54,171 +154,259 @@ img {
   outline-offset: 3px;
 }
 
+/* ==========================================================================
+   Skip link
+   ========================================================================== */
+
 .skip-link {
   position: fixed;
-  top: 0.75rem;
-  left: 0.75rem;
+  top: var(--space-3);
+  left: var(--space-3);
   z-index: 100;
   transform: translateY(-200%);
-  padding: 0.75rem 1rem;
-  border-radius: 10px;
-  background: var(--text);
-  color: var(--surface);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-inverse);
+  color: var(--text-inverse);
+  font-size: var(--text-sm);
+  font-weight: 600;
   text-decoration: none;
+  transition: transform var(--motion-base) var(--motion-ease);
 }
 
 .skip-link:focus {
   transform: translateY(0);
 }
 
-.site-header {
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  border-bottom: 1px solid rgba(220, 225, 231, 0.9);
-  background: rgba(247, 248, 250, 0.94);
-  backdrop-filter: blur(12px);
-}
+/* ==========================================================================
+   Layout containers
+   ========================================================================== */
 
 .site-header-inner,
 .site-footer-inner,
 .container {
-  width: min(100% - 2rem, var(--max-width));
-  margin: 0 auto;
+  width: min(100% - (var(--gutter) * 2), var(--container));
+  margin-inline: auto;
+}
+
+.page {
+  flex: 1 0 auto;
+  width: 100%;
+}
+
+.section {
+  padding-block: var(--rhythm-section);
+}
+
+.hero {
+  padding-block: var(--rhythm-section-lead) var(--rhythm-section);
+}
+
+/* ==========================================================================
+   Header
+   ========================================================================== */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-translucent);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-sm);
 }
 
 .site-header-inner {
   display: flex;
-  min-height: 72px;
+  min-height: 4.5rem;
   align-items: center;
   justify-content: space-between;
-  gap: 1.5rem;
+  gap: var(--space-5);
 }
 
 .brand {
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-display), var(--font-fallback-display);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: var(--tracking-normal);
   text-decoration: none;
+  transition: color var(--motion-fast) var(--motion-ease);
+}
+
+.brand:hover {
+  color: var(--accent-strong);
 }
 
 .site-nav {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.9rem;
-  font-size: 0.95rem;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
 }
 
 .site-nav a {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
+  font-weight: 500;
   text-decoration: none;
-  font-weight: 650;
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease);
 }
 
 .site-nav a:hover {
+  background: var(--surface-muted);
   color: var(--text);
 }
 
-.page {
-  min-height: calc(100vh - 160px);
-}
-
-.section {
-  padding: 4rem 0;
-}
-
-.hero {
-  padding: 6.5rem 0 5rem;
-}
-
-.hero-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
-  gap: 2rem;
-  align-items: end;
-}
-
-.eyebrow {
-  margin: 0 0 1rem;
-  color: var(--accent-strong);
-  font-size: 0.8rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
+/* ==========================================================================
+   Typography
+   ========================================================================== */
 
 h1,
 h2,
 h3 {
   margin: 0;
-  letter-spacing: -0.035em;
-  line-height: 1.1;
+  font-family: var(--font-display), var(--font-fallback-display);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+  overflow-wrap: break-word;
+  text-wrap: balance;
 }
 
 h1 {
-  max-width: 900px;
-  font-size: clamp(3rem, 7vw, 5.8rem);
+  max-width: var(--measure-display);
+  font-size: var(--text-h1);
 }
 
 h2 {
-  font-size: clamp(2rem, 4vw, 3.25rem);
+  max-width: var(--measure-heading);
+  font-size: var(--text-h2);
+  line-height: var(--leading-snug);
 }
 
 h3 {
-  font-size: 1.25rem;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: var(--tracking-normal);
+  line-height: var(--leading-snug);
+}
+
+.eyebrow {
+  margin: 0 0 var(--space-4);
+  color: var(--accent-strong);
+  font-family: var(--font-mono), var(--font-fallback-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
+  line-height: 1.4;
+  text-transform: uppercase;
 }
 
 .lede {
-  max-width: 720px;
-  margin: 1.5rem 0 0;
+  max-width: var(--measure-body);
+  margin: var(--space-5) 0 0;
   color: var(--text-muted);
-  font-size: clamp(1.05rem, 2vw, 1.25rem);
+  font-size: var(--text-lede);
+  line-height: 1.6;
 }
+
+/* ==========================================================================
+   Buttons
+   ========================================================================== */
 
 .cta-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.8rem;
-  margin-top: 2rem;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
 }
 
 .button {
   display: inline-flex;
-  min-height: 46px;
+  min-height: 2.75rem;
   align-items: center;
   justify-content: center;
-  padding: 0.75rem 1rem;
-  border-radius: 12px;
+  padding: 0 var(--space-5);
   border: 1px solid transparent;
+  border-radius: var(--radius-md);
   background: var(--accent);
-  color: #fff;
-  font-weight: 750;
+  color: #ffffff;
+  font-family: var(--font-sans), var(--font-fallback-sans);
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: 1.2;
   text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
 }
 
 .button:hover {
   background: var(--accent-strong);
 }
 
+.button:active {
+  transform: translateY(1px);
+}
+
 .button-secondary {
-  border-color: var(--border);
+  border-color: var(--line-strong);
   background: var(--surface);
   color: var(--text);
 }
 
 .button-secondary:hover {
+  border-color: var(--accent);
   background: var(--surface-muted);
 }
 
-.panel {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+/* ==========================================================================
+   Surfaces and cards
+   ========================================================================== */
+
+.panel,
+.detail-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
   background: var(--surface);
-  box-shadow: var(--shadow);
+}
+
+/* The single focal surface on the site carries the strong shadow. */
+.panel-focal {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-lg);
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.7fr);
+  gap: var(--space-6);
+  align-items: end;
+}
+
+.hero-grid > * {
+  min-width: 0;
 }
 
 .hero-note {
-  padding: 1.5rem;
+  padding: var(--space-5);
 }
 
 .hero-note p {
@@ -226,100 +414,154 @@ h3 {
   color: var(--text-muted);
 }
 
+.hero-note .eyebrow {
+  margin: 0 0 var(--space-3);
+  color: var(--accent-strong);
+}
+
 .section-heading {
-  max-width: 760px;
-  margin-bottom: 2rem;
+  max-width: var(--measure-heading);
+  margin-bottom: var(--space-6);
 }
 
 .section-heading p {
-  margin: 0.9rem 0 0;
+  margin: var(--space-3) 0 0;
   color: var(--text-muted);
 }
 
 .card-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
+  gap: var(--space-4);
+}
+
+.card-grid > * {
+  min-width: 0;
 }
 
 .card {
   display: flex;
   min-height: 100%;
   flex-direction: column;
-  padding: 1.5rem;
+  padding: var(--space-5);
+  transition: border-color var(--motion-base) var(--motion-ease);
+}
+
+.card:hover {
+  border-color: var(--line-strong);
+}
+
+.card:focus-within {
+  border-color: var(--accent);
 }
 
 .card p {
-  margin: 0.7rem 0 0;
+  margin: var(--space-3) 0 0;
   color: var(--text-muted);
 }
 
 .card-link {
   display: inline-flex;
   margin-top: auto;
-  padding-top: 1.2rem;
+  padding-top: var(--space-5);
   color: var(--accent-strong);
-  font-weight: 750;
-  text-decoration: none;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: color var(--motion-fast) var(--motion-ease);
 }
 
+.card:hover .card-link {
+  color: var(--accent);
+}
+
+/* ==========================================================================
+   Service detail surfaces
+   ========================================================================== */
+
 .service-page {
-  padding: 5rem 0;
+  padding-block: var(--rhythm-section);
 }
 
 .service-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
-  gap: 2rem;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: var(--space-6);
   align-items: start;
 }
 
+.service-layout > * {
+  min-width: 0;
+}
+
 .service-summary {
-  padding: 2rem;
+  padding: var(--space-6);
 }
 
 .service-summary p {
-  margin: 1rem 0 0;
+  margin: var(--space-4) 0 0;
   color: var(--text-muted);
-  font-size: 1.12rem;
+  font-size: var(--text-md);
+}
+
+.service-summary .eyebrow {
+  margin: 0;
+  color: var(--accent-strong);
 }
 
 .detail-grid {
   display: grid;
-  gap: 1rem;
+  gap: var(--space-4);
 }
 
 .detail-card {
-  padding: 1.4rem;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface);
+  padding: var(--space-5);
 }
 
-.detail-card ul {
-  margin: 0.9rem 0 0;
-  padding-left: 1.2rem;
+.detail-card h2 {
+  font-size: var(--text-lg);
 }
 
-.detail-card li + li {
-  margin-top: 0.45rem;
-}
-
-.notice {
-  padding: 1.5rem;
-  border-left: 4px solid var(--accent);
-  background: var(--accent-soft);
-  border-radius: 0 14px 14px 0;
+.detail-card p {
+  margin: var(--space-3) 0 0;
   color: var(--text-muted);
 }
 
-.stack {
-  display: grid;
-  gap: 1rem;
+.detail-card ul {
+  margin: var(--space-3) 0 0;
+  padding-left: var(--space-5);
+  color: var(--text-muted);
 }
 
+.detail-card li + li {
+  margin-top: var(--space-2);
+}
+
+.notice {
+  margin-top: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   Long-form copy
+   ========================================================================== */
+
 .prose {
-  max-width: 780px;
+  max-width: var(--container-narrow);
+}
+
+.prose > * + * {
+  margin-top: var(--space-4);
+}
+
+.prose section {
+  margin-top: var(--space-7);
 }
 
 .prose p {
@@ -327,31 +569,59 @@ h3 {
 }
 
 .prose ul {
-  padding-left: 1.25rem;
+  margin: var(--space-4) 0 0;
+  padding-left: var(--space-5);
+  color: var(--text-muted);
 }
 
+.prose li + li {
+  margin-top: var(--space-2);
+}
+
+/* ==========================================================================
+   Footer
+   ========================================================================== */
+
 .site-footer {
-  border-top: 1px solid var(--border);
+  flex: 0 0 auto;
+  border-top: 1px solid var(--line);
   background: var(--surface);
 }
 
 .site-footer-inner {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 2rem 0 3rem;
+  gap: var(--space-2) var(--space-6);
+  padding-block: var(--space-6);
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
 }
 
 .site-footer p {
   margin: 0;
+  max-width: 46ch;
+}
+
+.site-footer p + p {
+  color: var(--text-subtle);
+}
+
+/* ==========================================================================
+   Responsive foundation
+   ========================================================================== */
+
+@media (max-width: 1024px) {
+  .site-footer-inner {
+    padding-block: var(--space-5);
+  }
 }
 
 @media (max-width: 900px) {
   .hero-grid,
   .service-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
   }
 
   .card-grid {
@@ -359,34 +629,69 @@ h3 {
   }
 }
 
+@media (max-width: 768px) {
+  :root {
+    --gutter: 1.25rem;
+    --rhythm-section: 3.5rem;
+    --rhythm-section-lead: 3rem;
+  }
+
+  .detail-grid {
+    gap: var(--space-3);
+  }
+}
+
 @media (max-width: 680px) {
   .site-header-inner {
-    align-items: flex-start;
+    min-height: 0;
     flex-direction: column;
-    padding: 1rem 0;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding-block: var(--space-3);
   }
 
-  .site-nav {
-    gap: 0.7rem;
-  }
-
-  .hero {
-    padding-top: 4.5rem;
-  }
-
-  .section {
-    padding: 3rem 0;
+  .site-nav a {
+    padding: 0 var(--space-2);
   }
 
   .card-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .service-summary {
+    padding: var(--space-5);
   }
 
   .site-footer-inner {
-    align-items: flex-start;
     flex-direction: column;
   }
 }
+
+@media (max-width: 480px) {
+  .card,
+  .detail-card,
+  .hero-note {
+    padding: var(--space-4);
+  }
+
+  .cta-row {
+    gap: var(--space-2);
+  }
+}
+
+@media (max-width: 380px) {
+  :root {
+    --gutter: 1rem;
+  }
+
+  .site-nav a {
+    padding: 0 var(--space-1);
+  }
+}
+
+/* ==========================================================================
+   Reduced motion
+   ========================================================================== */
 
 @media (prefers-reduced-motion: reduce) {
   html {

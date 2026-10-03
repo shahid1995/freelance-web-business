@@ -27,7 +27,10 @@ export default function HomePage() {
             </div>
           </div>
 
-          <aside className="panel hero-note" aria-label="Working approach">
+          <aside
+            className="panel panel-focal hero-note"
+            aria-label="Working approach"
+          >
             <p className="eyebrow">How the work is approached</p>
             <p>{messaging.approach}</p>
           </aside>
