@@ -15,7 +15,18 @@ export interface PlatformConfig {
   databasePath: string;
   isProduction: boolean;
   sessionTtlMs: number;
+  /**
+   * How stale a session's `lastUsedAt` may get before it is rewritten.
+   *
+   * Without this every authenticated request would write to the sessions table.
+   */
+  sessionRefreshMs: number;
   signInLinkTtlMs: number;
+  /**
+   * Number of trusted proxies in front of this process. Zero (the default) means
+   * no proxy is trusted, so `X-Forwarded-For` is ignored for rate-limit identity.
+   */
+  trustedProxyHops: number;
   sessionCookieSameSite: "lax" | "strict";
   /**
    * Origins accepted for state-changing requests. Production should set
@@ -39,7 +50,9 @@ export const DEFAULT_CONFIG: PlatformConfig = {
   databasePath: ".local/customer-platform.sqlite",
   isProduction: false,
   sessionTtlMs: 7 * 24 * 60 * MINUTE,
+  sessionRefreshMs: MINUTE,
   signInLinkTtlMs: 15 * MINUTE,
+  trustedProxyHops: 0,
   sessionCookieSameSite: "lax",
   allowedOrigins: [],
   mailLogPath: null,
@@ -57,6 +70,13 @@ function readPositiveInt(raw: string | undefined, fallback: number): number {
   if (raw === undefined) return fallback;
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+}
+
+function readNonNegativeInt(raw: string | undefined, fallback: number): number {
+  if (raw === undefined) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isInteger(parsed) || parsed < 0) return fallback;
   return parsed;
 }
 
@@ -87,6 +107,10 @@ export function loadPlatformConfig(
     isProduction,
     sessionTtlMs:
       readPositiveInt(env.CUSTOMER_PLATFORM_SESSION_TTL_MINUTES, 7 * 24 * 60) * MINUTE,
+    sessionRefreshMs:
+      readPositiveInt(env.CUSTOMER_PLATFORM_SESSION_REFRESH_SECONDS, 60) * 1000,
+    // Defaults to 0: forwarding headers are not trusted unless a deployment says so.
+    trustedProxyHops: readNonNegativeInt(env.CUSTOMER_PLATFORM_TRUSTED_PROXY_HOPS, 0),
     signInLinkTtlMs:
       readPositiveInt(env.CUSTOMER_PLATFORM_SIGN_IN_LINK_TTL_MINUTES, 15) * MINUTE,
     sessionCookieSameSite:

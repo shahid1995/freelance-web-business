@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   );
 
   const platform = await getPlatform();
-  const context = await currentRequestContext("POST");
+  const context = await currentRequestContext("POST", platform.config.trustedProxyHops);
 
   try {
     await platform.auth.requestSignInLink({

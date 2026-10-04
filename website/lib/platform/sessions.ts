@@ -28,6 +28,12 @@ export interface SessionServiceOptions {
   store: PlatformStore;
   clock: Clock;
   ttlMs: number;
+  /**
+   * Minimum age of `lastUsedAt` before it is rewritten. Without this, every
+   * authenticated request would write to the sessions table, turning ordinary page
+   * views into a steady stream of pointless writes.
+   */
+  refreshMs: number;
   cookie: SessionCookieSettings;
 }
 
@@ -147,17 +153,23 @@ export class SessionService {
    * Resolves a cookie value to its stored session, or null when it is unknown,
    * revoked, or expired. Every protected request goes through this before any
    * authorization decision.
+   *
+   * `lastUsedAt` is refreshed only once it is at least `refreshMs` old, so a burst
+   * of requests produces one write rather than one write per request. This is
+   * bookkeeping only: it never extends `expiresAt`, so session expiry, revocation,
+   * and the returned identity are unaffected.
    */
   resolveSession(rawSessionId: string | null): Session | null {
     if (!rawSessionId) return null;
     const session = this.options.store.findSessionById(hashSecret(rawSessionId));
     if (!session) return null;
+    const now = this.options.clock.now();
     if (session.revokedAt !== null) return null;
-    if (session.expiresAt <= this.options.clock.now()) return null;
-    this.options.store.touchSession({
-      id: session.id,
-      now: this.options.clock.now(),
-    });
+    if (session.expiresAt <= now) return null;
+    if (now - session.lastUsedAt >= this.options.refreshMs) {
+      this.options.store.touchSession({ id: session.id, now });
+      return { ...session, lastUsedAt: now };
+    }
     return session;
   }
 

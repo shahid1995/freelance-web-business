@@ -6,8 +6,13 @@
  * from hashed identifiers, so an email address or client address is never used
  * verbatim as a key.
  *
- * Call this outside any surrounding transaction: a rolled-back transaction must
- * not erase the record of an attempt that already happened.
+ * The check and the increment are performed by the store in one atomic step (see
+ * `PlatformStore.consumeRateLimit`). Doing the read here and the write here would
+ * let two concurrent requests both observe the same pre-increment count and both
+ * be admitted, which would make the limit advisory rather than enforced.
+ *
+ * This module holds no policy of its own: the caller supplies the rule, the store
+ * applies it atomically, and this function turns a refusal into the error.
  */
 
 import type { Clock } from "./clock";
@@ -22,8 +27,8 @@ export interface RateLimitRule {
 
 /**
  * Counts one attempt against `bucket` and throws when the limit is reached.
- * The returned count is the attempt number that was just consumed, which the
- * tests use to pin the boundary.
+ * Returns the attempt number that was consumed, which the tests use to pin the
+ * boundary.
  */
 export function consumeRateLimit(input: {
   store: PlatformStore;
@@ -31,19 +36,14 @@ export function consumeRateLimit(input: {
   bucket: string;
   rule: RateLimitRule;
 }): number {
-  const { store, clock, bucket, rule } = input;
-  const now = clock.now();
-  const existing = store.readRateLimit(bucket);
-  const withinWindow =
-    existing !== null && now - existing.windowStart < rule.windowMs;
-  const windowStart = withinWindow ? existing.windowStart : now;
-  const count = withinWindow ? existing.count : 0;
+  const decision = input.store.consumeRateLimit(input.bucket, {
+    now: input.clock.now(),
+    windowMs: input.rule.windowMs,
+    limit: input.rule.limit,
+  });
 
-  if (count >= rule.limit) {
-    const retryAfterMs = Math.max(1, windowStart + rule.windowMs - now);
-    throw new RateLimitedError(Math.ceil(retryAfterMs / 1000));
+  if (!decision.allowed) {
+    throw new RateLimitedError(decision.retryAfterSeconds);
   }
-
-  store.writeRateLimit(bucket, { windowStart, count: count + 1 });
-  return count + 1;
+  return decision.count;
 }

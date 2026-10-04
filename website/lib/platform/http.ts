@@ -22,7 +22,7 @@ export interface RequestSecurityContext {
   origin: string | null;
   /** The origin this server answers on, computed by the route from the request. */
   selfOrigin: string | null;
-  /** Rate-limiting identity, normally the left-most forwarded-for address. */
+  /** Rate-limiting identity, derived under the configured proxy-trust policy. */
   clientKey: string;
   /** Raw Cookie header. */
   cookieHeader: string | null;
@@ -92,22 +92,55 @@ export function requireProtectedRequest(
 }
 
 /**
- * Best-effort client identity for rate limiting.
+ * Rate-limit identity used when the deployment has not declared a trusted proxy.
  *
- * Uses the left-most `x-forwarded-for` entry, which is the originating client
- * when the app sits behind a trusted proxy. Falls back to a single shared bucket
- * rather than to the raw socket address, so an unparseable value cannot be used
- * to mint unlimited rate-limit buckets.
+ * Every caller shares one bucket. That is deliberately conservative: it means a
+ * caller cannot mint a fresh limit by changing a header, at the cost of unrelated
+ * callers sharing a budget until a real client identity is configured.
  */
-export function clientKeyFromHeaders(headers: {
-  get(name: string): string | null;
-}): string {
-  const forwarded = headers.get("x-forwarded-for");
-  if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first) return first;
+export const SHARED_CLIENT_KEY = "shared";
+
+/**
+ * Client identity for rate limiting, under an explicit proxy-trust policy.
+ *
+ * `X-Forwarded-For` is caller-controlled unless something in front of this
+ * process rewrites it, so trusting it by default would let anyone defeat a limit
+ * by sending a different header — including the very attempts the limit exists to
+ * stop. Trusting it at all is therefore an explicit deployment decision
+ * (`trustedProxyHops`), and it defaults to not trusting it.
+ *
+ * When hops are declared, the address is read **counting from the right**. A
+ * trusted proxy appends the address it observed, so anything a caller prepends
+ * sits to the left of the entries that were actually observed and is never read.
+ * With `trustedProxyHops: 1` behind a single proxy, the header `spoofed, real` is
+ * read as `real`.
+ *
+ * With no configured hops, or a header shorter than the declared hop count, the
+ * shared key is returned so the result is always a value the caller could not have
+ * chosen.
+ */
+export function clientKeyFromHeaders(
+  headers: { get(name: string): string | null },
+  trustedProxyHops = 0,
+): string {
+  if (!Number.isInteger(trustedProxyHops) || trustedProxyHops < 1) {
+    return SHARED_CLIENT_KEY;
   }
-  return headers.get("x-real-ip")?.trim() || "unknown-client";
+  const forwarded = headers.get("x-forwarded-for");
+  if (!forwarded) {
+    return SHARED_CLIENT_KEY;
+  }
+  const hops = forwarded
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+  const index = hops.length - trustedProxyHops;
+  if (index < 0) {
+    // Fewer entries than declared hops: the chain does not match the deployment
+    // this policy was written for, so do not guess.
+    return SHARED_CLIENT_KEY;
+  }
+  return hops[index] as string;
 }
 
 /** Characters permitted in a same-site path. No scheme, host, or backslash. */

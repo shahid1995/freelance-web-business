@@ -21,7 +21,7 @@ import { sanitizeReturnTo } from "@/lib/platform/http";
 
 export async function GET(request: Request) {
   const platform = await getPlatform();
-  const context = await currentRequestContext("GET");
+  const context = await currentRequestContext("GET", platform.config.trustedProxyHops);
   const url = new URL(request.url);
   const token = url.searchParams.get("token") ?? "";
 

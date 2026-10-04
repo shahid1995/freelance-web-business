@@ -113,6 +113,30 @@ export async function signUpAsOwner(
 }
 
 /**
+ * Signs up an owner and starts one project, returning everything the project
+ * suites need. Shared so the setup for a plain owner-with-project scenario is
+ * written once rather than repeated in every suite.
+ */
+export async function signUpAsOwnerWithProject(
+  harness: TestPlatform,
+  emailAddress: string,
+  organizationName = "Synthetic Holdings Ltd",
+): Promise<{
+  harness: TestPlatform;
+  personId: string;
+  organizationId: string;
+  projectId: string;
+  sessionId: string;
+}> {
+  const owner = await signUpAsOwner(harness, emailAddress, organizationName);
+  const project = harness.platform.projects.createProject({
+    personId: owner.personId,
+    organizationId: owner.organizationId,
+  });
+  return { harness, projectId: project.project.id, ...owner };
+}
+
+/**
  * Adds a second person to an existing organization as an ordinary member.
  *
  * Member management UI is outside this slice, so the membership row is written

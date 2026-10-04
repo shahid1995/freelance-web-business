@@ -16,7 +16,7 @@ import { parseSessionCookie } from "@/lib/platform/sessions";
 
 export async function POST(request: Request) {
   const platform = await getPlatform();
-  const context = await currentRequestContext("POST");
+  const context = await currentRequestContext("POST", platform.config.trustedProxyHops);
 
   // Sign-out changes server state, so it carries the same origin check as any
   // other mutation. It does not require a session: revoking nothing is valid.

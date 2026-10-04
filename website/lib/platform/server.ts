@@ -46,9 +46,14 @@ export function signInPath(returnTo?: string | null): string {
  *
  * `method` is passed in because server components do not see the HTTP method;
  * pages are reads and pass "GET", route handlers pass the real method.
+ *
+ * `trustedProxyHops` comes from configuration, never from the request, so the
+ * rate-limit identity depends on how the deployment is set up rather than on
+ * something a caller controls.
  */
 export async function currentRequestContext(
   method: string,
+  trustedProxyHops = 0,
 ): Promise<RequestSecurityContext> {
   const requestHeaders = await headers();
   const host = requestHeaders.get("host");
@@ -60,7 +65,7 @@ export async function currentRequestContext(
     method,
     origin: requestHeaders.get("origin"),
     selfOrigin: host ? `${protocol}://${host}` : null,
-    clientKey: clientKeyFromHeaders(requestHeaders),
+    clientKey: clientKeyFromHeaders(requestHeaders, trustedProxyHops),
     cookieHeader: requestHeaders.get("cookie"),
   };
 }
@@ -111,7 +116,7 @@ export async function requireSessionForPage(
   returnTo: string,
 ): Promise<ProtectedServerRequest> {
   const platform = await getPlatform();
-  const context = await currentRequestContext("GET");
+  const context = await currentRequestContext("GET", platform.config.trustedProxyHops);
   const protectedRequest = resolveProtectedRequest(context, platform, returnTo);
   return { platform, personId: protectedRequest.personId };
 }
@@ -127,7 +132,7 @@ export async function requireSessionForAction(
   returnTo: string,
 ): Promise<ProtectedServerRequest> {
   const platform = await getPlatform();
-  const context = await currentRequestContext(method);
+  const context = await currentRequestContext(method, platform.config.trustedProxyHops);
   const protectedRequest = resolveProtectedRequest(context, platform, returnTo);
   return { platform, personId: protectedRequest.personId };
 }

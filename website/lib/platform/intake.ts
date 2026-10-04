@@ -20,7 +20,6 @@
 import {
   PROJECT_INTAKE_FIELDS,
   type ProjectId,
-  type ProjectIntakeField,
   type ProjectIntakePatch,
 } from "./domain";
 import type { Clock } from "./clock";
@@ -60,16 +59,25 @@ export function normalizeIntakeValue(rawValue: unknown): string | null {
 }
 
 /**
- * Validates and normalizes raw form input into a partial intake patch.
+ * Validates submitted key/value entries into a partial intake patch.
  *
- * Rejects unknown keys, non-string values, and over-long values. An explicitly
- * empty string clears a field; an absent key leaves the saved value alone.
+ * Keys are checked against the declared field list **before** any value is
+ * written, and the result is built with a null prototype. Together these mean a
+ * submitted key such as `__proto__`, `constructor`, or `toString` cannot reach a
+ * stored record and cannot alter any object's prototype — a caller cannot smuggle
+ * a key past validation by exploiting prototype semantics, because validation
+ * happens on the raw entry list rather than on an assembled object.
+ *
+ * An explicitly empty string clears a field; an absent entry leaves the saved
+ * value alone.
  */
-export function parseIntakePatch(input: Record<string, unknown>): ProjectIntakePatch {
-  const patch: Record<string, string | null> = {};
+export function parseIntakeEntries(
+  entries: Iterable<readonly [string, unknown]>,
+): ProjectIntakePatch {
   const allowed = new Set<string>(PROJECT_INTAKE_FIELDS);
+  const patch = Object.create(null) as Record<string, string | null>;
 
-  for (const [key, rawValue] of Object.entries(input)) {
+  for (const [key, rawValue] of entries) {
     if (!allowed.has(key)) {
       // Never write an unlisted column, whatever the caller claims it is.
       throw new ValidationError("That intake field is not part of Project Intake.");
@@ -78,6 +86,17 @@ export function parseIntakePatch(input: Record<string, unknown>): ProjectIntakeP
   }
 
   return patch as ProjectIntakePatch;
+}
+
+/**
+ * Validates and normalizes raw form input into a partial intake patch.
+ *
+ * Convenience wrapper over `parseIntakeEntries` for callers that already hold a
+ * plain record. New request boundaries should pass entries directly so an
+ * attacker-controlled key is never used as a property name.
+ */
+export function parseIntakePatch(input: Record<string, unknown>): ProjectIntakePatch {
+  return parseIntakeEntries(Object.entries(input));
 }
 
 export class IntakeService {
@@ -122,17 +141,19 @@ export class IntakeService {
 
     // Only keys present in the patch are written; every other saved answer is
     // left as it is. Values are re-normalized here so a caller that skipped the
-    // request boundary still cannot store an untrimmed or over-long answer.
-    const patch: ProjectIntakePatch = {};
+    // request boundary still cannot store an untrimmed or over-long answer, and
+    // the copy is made with a null prototype so an unexpected key cannot reach
+    // Object.prototype.
+    const patch = Object.create(null) as Record<string, string | null>;
     for (const [key, value] of Object.entries(input.patch)) {
-      patch[key as ProjectIntakeField] = normalizeIntakeValue(value);
+      patch[key] = normalizeIntakeValue(value);
     }
 
     const now = this.options.clock.now();
     const saved = this.options.store.transaction(() => {
       const updated = this.options.store.saveProjectIntake({
         id: intake.id,
-        patch,
+        patch: patch as ProjectIntakePatch,
         status: null,
         now,
       });

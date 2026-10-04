@@ -7,9 +7,13 @@
  * against the project on the server. Submitted fields are validated against the
  * declared intake fields, so an added or tampered key is rejected rather than
  * written, and a partial save leaves unsupplied answers alone.
+ *
+ * Submitted keys are handed to the validator as raw entries. They are never used
+ * as property names on an assembled object, so a key such as `__proto__` cannot
+ * reach a record or affect any object's prototype.
  */
 
-import { parseIntakePatch } from "@/lib/platform/intake";
+import { parseIntakeEntries } from "@/lib/platform/intake";
 import {
   redirectAfterError,
   redirectWith,
@@ -30,12 +34,12 @@ export async function POST(
     const projectId = platform.projects.resolveProjectIdByReference(personId, reference);
 
     const form = await request.formData();
-    const raw: Record<string, unknown> = {};
+    const entries: [string, string | null][] = [];
     for (const [key, value] of form.entries()) {
       if (key === "intent") continue;
-      raw[key] = typeof value === "string" ? value : null;
+      entries.push([key, typeof value === "string" ? value : null]);
     }
-    const patch = parseIntakePatch(raw);
+    const patch = parseIntakeEntries(entries);
 
     if (form.get("intent") === "submit") {
       platform.intake.submit(personId, projectId);

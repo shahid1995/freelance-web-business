@@ -13,7 +13,7 @@ import {
   ValidationError,
 } from "../lib/platform/errors";
 import { PROJECT_INTAKE_FIELDS } from "../lib/platform/domain";
-import { parseIntakePatch } from "../lib/platform/intake";
+import { parseIntakeEntries, parseIntakePatch } from "../lib/platform/intake";
 import {
   clientKeyFromHeaders,
   requireProtectedRequest,
@@ -27,6 +27,7 @@ import {
   addOrdinaryMember,
   createTestPlatform,
   signUpAsOwner,
+  signUpAsOwnerWithProject,
 } from "./support/harness";
 import type { TestPlatform } from "./support/harness";
 
@@ -49,16 +50,9 @@ function cookieName(harness: TestPlatform): string {
   return harness.platform.sessions.cookie.name;
 }
 
-async function setup(): Promise<{
-  harness: TestPlatform;
-  personId: string;
-  organizationId: string;
-  projectId: string;
-}> {
-  const harness = await createTestPlatform();
-  const { personId, organizationId } = await signUpAsOwner(harness, OWNER_EMAIL);
-  const project = harness.platform.projects.createProject({ personId, organizationId });
-  return { harness, personId, organizationId, projectId: project.project.id };
+/** An owner with one started project: the baseline for the intake suites. */
+async function setup() {
+  return signUpAsOwnerWithProject(await createTestPlatform(), OWNER_EMAIL);
 }
 
 describe("project intake draft", () => {
@@ -204,6 +198,55 @@ describe("project intake input validation", () => {
     assert.throws(() => parseIntakePatch({ internalNotes: "budget is low" }), ValidationError);
     assert.throws(() => parseIntakePatch({ founderDecision: "approve" }), ValidationError);
     assert.throws(() => parseIntakePatch({ id: "another-record" }), ValidationError);
+  });
+
+  it("rejects prototype-manipulating keys without touching a prototype", () => {
+    const entries: [string, unknown][] = [
+      ["__proto__", "polluted"],
+      ["constructor", "polluted"],
+      ["prototype", "polluted"],
+      ["toString", "polluted"],
+    ];
+
+    for (const entry of entries) {
+      assert.throws(() => parseIntakeEntries([entry]), ValidationError, `${entry[0]} must be refused`);
+    }
+
+    // The key never becomes a property name, so nothing observable changes.
+    assert.equal(({} as Record<string, unknown>)["polluted"], undefined);
+    assert.equal(Object.getPrototypeOf({}), Object.prototype);
+  });
+
+  it("builds a patch that cannot reach Object.prototype", () => {
+    const patch = parseIntakeEntries([["serviceNeed", "A booking portal"]]);
+
+    assert.equal(Object.getPrototypeOf(patch), null, "the patch must have a null prototype");
+    assert.equal(patch.serviceNeed, "A booking portal");
+    assert.equal((patch as Record<string, unknown>)["toString"], undefined);
+    assert.equal((patch as Record<string, unknown>)["__proto__"], undefined);
+  });
+
+  it("still saves valid fields submitted alongside hostile ones", async () => {
+    const { harness, personId, projectId } = await setup();
+
+    // A hostile key alongside a valid one refuses the whole request; the valid
+    // field is not partially applied.
+    assert.throws(
+      () =>
+        harness.platform.intake.saveDraft({
+          personId,
+          projectId,
+          patch: parseIntakeEntries([
+            ["serviceNeed", "A booking portal"],
+            ["__proto__", "polluted"],
+          ]),
+        }),
+      ValidationError,
+    );
+
+    const stored = harness.platform.store.findProjectIntakeByProject(projectId);
+    assert.ok(stored);
+    assert.equal(stored.answers.serviceNeed, null, "a refused request must not write anything");
   });
 
   it("accepts every declared field and rejects non-text values", () => {

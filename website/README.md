@@ -154,9 +154,31 @@ None are required for local development. All are optional:
 | `CUSTOMER_PLATFORM_DATABASE_PATH` | Database file location, or `:memory:` |
 | `CUSTOMER_PLATFORM_MAIL_LOG` | Development-only file the local sink appends delivered sign-in links to, so the flow can be followed locally. Forced off in production |
 | `CUSTOMER_PLATFORM_SESSION_TTL_MINUTES` | Session lifetime (default 10080) |
+| `CUSTOMER_PLATFORM_SESSION_REFRESH_SECONDS` | Minimum age of a session's last-used timestamp before it is rewritten (default 60). Keeps authenticated page views from becoming a write per request |
 | `CUSTOMER_PLATFORM_SIGN_IN_LINK_TTL_MINUTES` | Sign-in link lifetime (default 15) |
 | `CUSTOMER_PLATFORM_COOKIE_SAMESITE` | `lax` (default) or `strict` |
 | `CUSTOMER_PLATFORM_APP_ORIGIN` | Comma-separated origin allow-list for state-changing requests. When set it is the entire decision; otherwise the request's own origin is used |
+| `CUSTOMER_PLATFORM_TRUSTED_PROXY_HOPS` | Number of trusted proxies in front of the app (default **0**) |
+
+### Trusted proxies and rate-limit identity
+
+`X-Forwarded-For` is caller-controlled unless something in front of the application
+rewrites it, so honouring it by default would let anyone defeat a rate limit by
+changing a header — including the attempts the limit exists to stop. It is
+therefore ignored unless `CUSTOMER_PLATFORM_TRUSTED_PROXY_HOPS` declares how many
+proxies are in front.
+
+- **Default (`0`)** — forwarding headers are ignored and every caller shares one
+  rate-limit bucket. Nothing a caller sends can create a new bucket. The cost is
+  that unrelated callers share a budget.
+- **Set to the real hop count** — the client address is read counting **from the
+  right**, so entries a caller prepends are never used. Behind one proxy with
+  `CUSTOMER_PLATFORM_TRUSTED_PROXY_HOPS=1`, the header `spoofed, real-client`
+  resolves to `real-client`.
+
+Set it to the number of proxies actually in front of the process. Setting it too
+high re-admits header spoofing; setting it too low merges distinct clients into
+one bucket, which is the safe direction to err in.
 
 To follow the sign-in flow locally:
 

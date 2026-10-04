@@ -12,10 +12,17 @@ import { describe, it } from "node:test";
 import {
   OriginRejectedError,
   PLATFORM_ERROR_CODES,
+  RateLimitedError,
   UnauthenticatedError,
   isPlatformError,
 } from "../lib/platform/errors";
-import { assertSameOrigin, clientKeyFromHeaders, requireProtectedRequest, sanitizeReturnTo } from "../lib/platform/http";
+import {
+  SHARED_CLIENT_KEY,
+  assertSameOrigin,
+  clientKeyFromHeaders,
+  requireProtectedRequest,
+  sanitizeReturnTo,
+} from "../lib/platform/http";
 import { hashSecret, parseChallengeToken } from "../lib/platform/secrets";
 import {
   clearedSessionCookieOptions,
@@ -362,21 +369,221 @@ describe("post-sign-in destination", () => {
   });
 });
 
-describe("rate-limit client identity", () => {
-  it("uses the originating forwarded address", () => {
-    const headers = new Headers({ "x-forwarded-for": "198.51.100.7, 10.0.0.1" });
-    assert.equal(clientKeyFromHeaders(headers), "198.51.100.7");
+describe("session refresh throttling", () => {
+  it("does not write the session on every authenticated request", async () => {
+    // Count the writes the store actually receives, rather than trusting the
+    // service to have skipped them.
+    const harness = await createTestPlatform({ config: { sessionRefreshMs: 60_000 } });
+    let touches = 0;
+    const real = harness.platform.store.touchSession.bind(harness.platform.store);
+    harness.platform.store.touchSession = (input) => {
+      touches += 1;
+      real(input);
+    };
+
+    const { sessionId } = await signUpAsOwner(harness, OWNER_EMAIL);
+    assert.equal(touches, 0, "issuing a session must not also touch it");
+
+    // Ten requests spanning 10s, all inside the 60s refresh interval. The session
+    // was issued moments ago, so none of them needs a write.
+    for (let request = 0; request < 10; request += 1) {
+      assert.ok(harness.platform.sessions.resolveSession(sessionId));
+      harness.clock.advance(1_000);
+    }
+    assert.equal(touches, 0, "requests inside the refresh interval must not write");
+
+    // Once the stored timestamp is stale, exactly one request refreshes it and
+    // reports the refreshed value.
+    harness.clock.advance(60_000);
+    const refreshed = harness.platform.sessions.resolveSession(sessionId);
+    assert.equal(touches, 1);
+    assert.equal(refreshed?.lastUsedAt, harness.clock.now());
+
+    // That refresh restarts the interval, so the next requests write nothing.
+    for (let request = 0; request < 5; request += 1) {
+      harness.clock.advance(1_000);
+      harness.platform.sessions.resolveSession(sessionId);
+    }
+    assert.equal(touches, 1, "one write per interval, not one per request");
   });
 
-  it("falls back to a single shared bucket rather than a fresh one", () => {
-    assert.equal(clientKeyFromHeaders(new Headers()), "unknown-client");
+  it("still expires, revokes, and identifies the session while throttled", async () => {
+    const harness = await createTestPlatform({
+      config: { sessionRefreshMs: 60_000, sessionTtlMs: 120_000 },
+    });
+    const { personId, sessionId } = await signUpAsOwner(harness, OWNER_EMAIL);
+
+    const resolved = harness.platform.sessions.requireSession(sessionId);
+    assert.equal(resolved.personId, personId);
+
+    harness.clock.advance(120_000);
     assert.equal(
-      clientKeyFromHeaders(new Headers({ "x-forwarded-for": "  " })),
-      "unknown-client",
+      harness.platform.sessions.resolveSession(sessionId),
+      null,
+      "throttling the timestamp must not extend the session lifetime",
+    );
+
+    const live = await signUpAsOwner(harness, "second@synthetic.example", "Second Co");
+    harness.platform.sessions.revokeSession(live.sessionId);
+    assert.equal(harness.platform.sessions.resolveSession(live.sessionId), null);
+  });
+
+  it("defaults the refresh interval from configuration", () => {
+    assert.equal(loadPlatformConfig({}).sessionRefreshMs, 60_000);
+    assert.equal(
+      loadPlatformConfig({ CUSTOMER_PLATFORM_SESSION_REFRESH_SECONDS: "300" }).sessionRefreshMs,
+      300_000,
+    );
+  });
+});
+
+describe("rate-limit client identity", () => {
+  it("ignores forwarding headers unless a proxy is explicitly trusted", () => {
+    // The default is zero trusted hops: X-Forwarded-For is caller-controlled, so
+    // honouring it would let anyone defeat a limit by changing a header.
+    const headers = new Headers({
+      "x-forwarded-for": "198.51.100.7, 10.0.0.1",
+      "x-real-ip": "203.0.113.9",
+    });
+    assert.equal(clientKeyFromHeaders(headers), SHARED_CLIENT_KEY);
+    assert.equal(clientKeyFromHeaders(headers, 0), SHARED_CLIENT_KEY);
+  });
+
+  it("cannot be widened by changing the forwarded address", () => {
+    const keys = new Set([
+      clientKeyFromHeaders(new Headers({ "x-forwarded-for": "1.1.1.1" })),
+      clientKeyFromHeaders(new Headers({ "x-forwarded-for": "2.2.2.2" })),
+      clientKeyFromHeaders(new Headers({ "x-forwarded-for": "3.3.3.3, 4.4.4.4" })),
+      clientKeyFromHeaders(new Headers()),
+    ]);
+    assert.equal(keys.size, 1, "every untrusted caller must land in one bucket");
+    assert.equal([...keys][0], SHARED_CLIENT_KEY);
+  });
+
+  it("reads the observed address counting from the right when hops are declared", () => {
+    // A trusted proxy appends what it saw; anything a caller prepends sits to the
+    // left and is never read.
+    assert.equal(
+      clientKeyFromHeaders(
+        new Headers({ "x-forwarded-for": "spoofed, 198.51.100.7" }),
+        1,
+      ),
+      "198.51.100.7",
     );
     assert.equal(
-      clientKeyFromHeaders(new Headers({ "x-real-ip": "203.0.113.9" })),
-      "203.0.113.9",
+      clientKeyFromHeaders(
+        new Headers({ "x-forwarded-for": "spoofed, edge, 198.51.100.7" }),
+        2,
+      ),
+      "edge",
+    );
+  });
+
+  it("falls back to the shared bucket when the header does not match the deployment", () => {
+    assert.equal(clientKeyFromHeaders(new Headers(), 1), SHARED_CLIENT_KEY);
+    assert.equal(
+      clientKeyFromHeaders(new Headers({ "x-forwarded-for": "198.51.100.7" }), 3),
+      SHARED_CLIENT_KEY,
+      "fewer hops than declared means the chain is not the one the policy describes",
+    );
+    assert.equal(
+      clientKeyFromHeaders(new Headers({ "x-forwarded-for": "  " }), 1),
+      SHARED_CLIENT_KEY,
+    );
+  });
+
+  it("refuses a nonsensical hop count rather than trusting the header anyway", () => {
+    const headers = new Headers({ "x-forwarded-for": "198.51.100.7" });
+    assert.equal(clientKeyFromHeaders(headers, -1), SHARED_CLIENT_KEY);
+    assert.equal(clientKeyFromHeaders(headers, 1.5), SHARED_CLIENT_KEY);
+    assert.equal(clientKeyFromHeaders(headers, Number.NaN), SHARED_CLIENT_KEY);
+  });
+
+  it("does not let a spoofed header create extra sign-in buckets", async () => {
+    // End-to-end: a caller rotating X-Forwarded-For must still exhaust one limit.
+    const harness = await createTestPlatform({
+      config: {
+        signInLimits: { perAddress: { limit: 100, windowMs: 60_000 }, perClient: { limit: 2, windowMs: 60_000 } },
+      },
+    });
+
+    const request = (forwarded: string) =>
+      harness.platform.auth.requestSignInLink({
+        email: `${forwarded}@synthetic.example`,
+        clientKey: clientKeyFromHeaders(
+          new Headers({ "x-forwarded-for": forwarded }),
+          harness.platform.config.trustedProxyHops,
+        ),
+      });
+
+    await request("198.51.100.1");
+    await request("198.51.100.2");
+    // A third request with yet another forwarded address is refused, because all
+    // three shared one per-client bucket.
+    await assert.rejects(request("198.51.100.3"), RateLimitedError);
+  });
+
+  it("defaults to not trusting any proxy in configuration", () => {
+    assert.equal(loadPlatformConfig({}).trustedProxyHops, 0);
+    assert.equal(loadPlatformConfig({ CUSTOMER_PLATFORM_TRUSTED_PROXY_HOPS: "2" }).trustedProxyHops, 2);
+    assert.equal(
+      loadPlatformConfig({ CUSTOMER_PLATFORM_TRUSTED_PROXY_HOPS: "-5" }).trustedProxyHops,
+      0,
+      "a negative hop count is not a deployment, so fall back to trusting nothing",
+    );
+    assert.equal(
+      loadPlatformConfig({ CUSTOMER_PLATFORM_TRUSTED_PROXY_HOPS: "abc" }).trustedProxyHops,
+      0,
+    );
+  });
+});
+
+describe("rate-limit atomicity", () => {
+  it("admits exactly the configured number of attempts at the boundary", async () => {
+    const { platform } = await createTestPlatform();
+    const rule = { now: 1000, windowMs: 60_000, limit: 3 };
+
+    const results = [1, 2, 3, 4].map(() => platform.store.consumeRateLimit("bucket", rule));
+
+    assert.deepEqual(
+      results.map((r) => r.allowed),
+      [true, true, true, false],
+      "the fourth attempt must be refused, not merely counted",
+    );
+    assert.deepEqual(
+      results.map((r) => r.count),
+      [1, 2, 3, 3],
+      "a refused attempt must not increment the counter",
+    );
+    assert.ok(results[3]!.retryAfterSeconds > 0);
+  });
+
+  it("does not let a later attempt reuse the count the previous one committed to", async () => {
+    // The read, the decision, and the write must be one atomic step. If they were
+    // separate, two attempts could both read count 0 and both be admitted.
+    const { platform } = await createTestPlatform();
+    const rule = { now: 1000, windowMs: 60_000, limit: 1 };
+
+    assert.equal(platform.store.consumeRateLimit("b", rule).allowed, true);
+    assert.equal(platform.store.consumeRateLimit("b", rule).allowed, false);
+    assert.equal(platform.store.consumeRateLimit("b", rule).allowed, false);
+  });
+
+  it("starts a fresh window once the previous one has elapsed", async () => {
+    const { platform } = await createTestPlatform();
+
+    assert.equal(
+      platform.store.consumeRateLimit("b", { now: 1000, windowMs: 100, limit: 1 }).allowed,
+      true,
+    );
+    assert.equal(
+      platform.store.consumeRateLimit("b", { now: 1050, windowMs: 100, limit: 1 }).allowed,
+      false,
+    );
+    assert.equal(
+      platform.store.consumeRateLimit("b", { now: 1100, windowMs: 100, limit: 1 }).allowed,
+      true,
+      "the window must reset rather than staying blocked forever",
     );
   });
 });

@@ -32,7 +32,7 @@ import {
   type ProjectInternal,
   type Session,
 } from "./domain";
-import type { PlatformStore, RateLimitWindow } from "./ports";
+import type { PlatformStore, RateLimitDecision, RateLimitWindow } from "./ports";
 
 type Row = Record<string, unknown>;
 
@@ -277,7 +277,40 @@ export class SqlitePlatformStore implements PlatformStore {
 
   // --- rate limiting -------------------------------------------------------
 
-  readRateLimit(bucket: string): RateLimitWindow | null {
+  /**
+   * Reads, decides, and writes in one transaction.
+   *
+   * `BEGIN IMMEDIATE` takes the write lock before the first read, so a second
+   * process cannot read the same pre-increment count. Within one process
+   * `node:sqlite` is synchronous, so the statements cannot interleave either.
+   */
+  consumeRateLimit(
+    bucket: string,
+    input: { now: number; windowMs: number; limit: number },
+  ): RateLimitDecision {
+    return this.transaction(() => {
+      const existing = this.readRateLimitWindow(bucket);
+      const withinWindow =
+        existing !== null && input.now - existing.windowStart < input.windowMs;
+      const windowStart = withinWindow ? (existing as RateLimitWindow).windowStart : input.now;
+      const count = withinWindow ? (existing as RateLimitWindow).count : 0;
+
+      if (count >= input.limit) {
+        const retryAfterMs = Math.max(1, windowStart + input.windowMs - input.now);
+        return {
+          windowStart,
+          count,
+          allowed: false,
+          retryAfterSeconds: Math.ceil(retryAfterMs / 1000),
+        };
+      }
+
+      this.writeRateLimitWindow(bucket, { windowStart, count: count + 1 });
+      return { windowStart, count: count + 1, allowed: true, retryAfterSeconds: 0 };
+    });
+  }
+
+  private readRateLimitWindow(bucket: string): RateLimitWindow | null {
     const row = this.get(
       "SELECT window_start, count FROM rate_limits WHERE bucket = ?",
       bucket,
@@ -286,7 +319,7 @@ export class SqlitePlatformStore implements PlatformStore {
     return { windowStart: int(row, "window_start"), count: int(row, "count") };
   }
 
-  writeRateLimit(bucket: string, window: RateLimitWindow): void {
+  private writeRateLimitWindow(bucket: string, window: RateLimitWindow): void {
     this.run(
       `INSERT INTO rate_limits (bucket, window_start, count) VALUES (?, ?, ?)
        ON CONFLICT (bucket) DO UPDATE SET window_start = excluded.window_start, count = excluded.count`,

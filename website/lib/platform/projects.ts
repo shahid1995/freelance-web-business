@@ -150,21 +150,13 @@ export class ProjectService {
           const access = this.options.store.findProjectAccess(project.id, personId);
           return access !== null && access.revokedAt === null;
         });
-    return candidates.map((project) =>
-      toCustomerProjectSummary(
-        project,
-        this.options.store.findProjectIntakeByProject(project.id),
-      ),
-    );
+    return candidates.map((project) => this.toCustomerSummary(project));
   }
 
   /** Reads one project as a customer, after an authorization check. */
   getCustomerProject(personId: string, projectId: ProjectId): CustomerProjectDetail {
     const { project } = requireProjectAccess(this.options.store, personId, projectId);
-    return toCustomerProjectDetail(
-      project,
-      this.options.store.findProjectIntakeByProject(projectId),
-    );
+    return this.toCustomerDetail(project);
   }
 
   /**
@@ -285,14 +277,36 @@ export class ProjectService {
     return this.options.store.findProjectByIdempotencyKey(organizationId, actionKey);
   }
 
+  /**
+   * Customer projections, built from the project's own intake.
+   *
+   * Every customer-facing read goes through these, so a project can only reach a
+   * customer via the shaping in `views.ts` rather than by any caller's own field
+   * selection.
+   */
+  private toCustomerSummary(project: ProjectInternal): CustomerProjectSummary {
+    return toCustomerProjectSummary(
+      project,
+      this.options.store.findProjectIntakeByProject(project.id),
+    );
+  }
+
+  private toCustomerDetail(project: ProjectInternal): CustomerProjectDetail {
+    return toCustomerProjectDetail(
+      project,
+      this.options.store.findProjectIntakeByProject(project.id),
+    );
+  }
+
   private newReference(organizationId: string): string {
-    // The database also enforces uniqueness of (organization_id, reference).
+    // Collision detection uses the indexed lookup rather than loading the whole
+    // organization's project list. The database unique constraint on
+    // (organization_id, reference) remains the actual guarantee.
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const reference = generateProjectReference();
-      const clash = this.options.store
-        .listProjectsByOrganization(organizationId)
-        .some((project) => project.reference === reference);
-      if (!clash) return reference;
+      if (!this.options.store.findProjectByReference(organizationId, reference)) {
+        return reference;
+      }
     }
     throw new Error("Could not allocate a unique project reference.");
   }

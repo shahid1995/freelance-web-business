@@ -69,6 +69,7 @@ export async function createPlatform(
     store: resolvedStore,
     clock,
     ttlMs: config.sessionTtlMs,
+    refreshMs: config.sessionRefreshMs,
     cookie: sessionCookieSettings({
       isProduction: config.isProduction,
       ttlMs: config.sessionTtlMs,

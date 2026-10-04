@@ -26,6 +26,16 @@ export interface RateLimitWindow {
   count: number;
 }
 
+export interface RateLimitDecision extends RateLimitWindow {
+  /**
+   * False when the attempt was refused. `count` is then the count that was
+   * already recorded; no write happened.
+   */
+  allowed: boolean;
+  /** Seconds until the current window frees a slot. Only set when `allowed` is false. */
+  retryAfterSeconds: number;
+}
+
 /**
  * Data-access port. Every method is the minimum surface the services need; the
  * service layer owns all authorization, so no method takes an "acting user".
@@ -41,8 +51,21 @@ export interface PlatformStore {
   close(): void;
 
   // --- rate limiting -------------------------------------------------------
-  readRateLimit(bucket: string): RateLimitWindow | null;
-  writeRateLimit(bucket: string, window: RateLimitWindow): void;
+  /**
+   * Records one attempt against a bucket and reports the outcome.
+   *
+   * Implementations must perform the read, the limit decision, and the write as a
+   * single atomic step. A separate read-then-write lets two concurrent callers
+   * both observe the same pre-increment count and both be admitted, so the limit
+   * would be advisory rather than enforced.
+   *
+   * The policy (`limit`, `windowMs`) is supplied by the caller; the store only
+   * supplies atomicity.
+   */
+  consumeRateLimit(
+    bucket: string,
+    input: { now: number; windowMs: number; limit: number },
+  ): RateLimitDecision;
 
   // --- people --------------------------------------------------------------
   findPersonByEmailHash(emailHash: string): Person | null;
@@ -75,6 +98,7 @@ export interface PlatformStore {
   createSession(session: Session): void;
   /** `id` is the hashed cookie value, never the cookie value itself. */
   findSessionById(sessionId: string): Session | null;
+  /** Refreshes `last_used_at`. Callers throttle this so it is not a per-request write. */
   touchSession(input: { id: string; now: number }): void;
   revokeSession(input: { id: string; now: number }): boolean;
 
