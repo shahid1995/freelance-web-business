@@ -4,33 +4,38 @@
    ========================================================================== */
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
   /* --- Surfaces ------------------------------------------------------- */
-  --bg: #f6f7f9;
-  --bg-translucent: rgba(246, 247, 249, 0.88);
-  --surface: #ffffff;
-  --surface-muted: #ebeff4;
-  --surface-inverse: #101720;
+  --bg: #0d1117;
+  --bg-translucent: rgba(13, 17, 23, 0.88);
+  --surface: #151b23;
+  --surface-muted: #1c232d;
+  /* Inverted against the light theme so the closing call-to-action band and
+     the skip link stay visually distinct from the page behind them. */
+  --surface-inverse: #eef1f5;
 
   /* --- Text (three levels) -------------------------------------------- */
-  --text: #111721; /* level 1 — headings, primary copy */
-  --text-muted: #4c5764; /* level 2 — supporting copy */
-  --text-subtle: #5f6975; /* level 3 — labels, meta, footer notes */
+  --text: #e6edf3; /* level 1 — headings, primary copy */
+  --text-muted: #a8b3c0; /* level 2 — supporting copy */
+  --text-subtle: #9aa6b2; /* level 3 — labels, meta, footer notes */
 
   /* Inverse section text */
-  --text-inverse: #f6f8fa;
-  --text-inverse-muted: #b3bdc9;
+  --text-inverse: #10161d;
+  --text-inverse-muted: #4a5461;
 
   /* --- Borders -------------------------------------------------------- */
-  --line: #d5dde6;
-  --line-strong: #a3aeba;
-  --line-inverse: #374455;
+  --line: #262e39;
+  --line-strong: #3d4855;
+  --line-inverse: #c2ccd7;
 
   /* --- Accent --------------------------------------------------------- */
-  --accent: #0f62fe;
-  --accent-strong: #0a49c9;
-  --accent-soft: #e9f0ff;
+  /* --accent stays deep enough to keep its white button label above 4.5:1,
+     while --accent-strong becomes light enough to stay legible as the
+     eyebrow, index and badge colour on dark surfaces. */
+  --accent: #2f6fe0;
+  --accent-strong: #7cb0ff;
+  --accent-soft: #12233f;
 
   /* --- Spacing scale -------------------------------------------------- */
   --space-1: 0.25rem;
@@ -58,8 +63,8 @@
   --radius-lg: 16px;
 
   /* --- Elevation (exactly two) ---------------------------------------- */
-  --shadow-sm: 0 1px 2px rgba(17, 23, 33, 0.05);
-  --shadow-lg: 0 24px 48px -24px rgba(17, 23, 33, 0.28);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 24px 48px -24px rgba(0, 0, 0, 0.75);
 
   /* --- Typography ----------------------------------------------------- */
   --font-fallback-sans:
@@ -94,6 +99,62 @@
   --motion-fast: 120ms;
   --motion-base: 180ms;
   --motion-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* ==========================================================================
+   Light theme
+
+   Dark is the default root state, so Light is expressed as a scoped
+   override of the same token layer. No component rule below changes:
+   every value is expressed through the tokens declared above, so only
+   colour is re-mapped here. Layout, typography, spacing, radii and the
+   two-shadow elevation system are identical in both themes.
+   ========================================================================== */
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* --- Surfaces ------------------------------------------------------- */
+  --bg: #f6f7f9;
+  --bg-translucent: rgba(246, 247, 249, 0.88);
+  --surface: #ffffff;
+  --surface-muted: #ebeff4;
+  --surface-inverse: #101720;
+
+  /* --- Text (three levels) -------------------------------------------- */
+  --text: #111721; /* level 1 — headings, primary copy */
+  --text-muted: #4c5764; /* level 2 — supporting copy */
+  --text-subtle: #5f6975; /* level 3 — labels, meta, footer notes */
+
+  /* Inverse section text */
+  --text-inverse: #f6f8fa;
+  --text-inverse-muted: #b3bdc9;
+
+  /* --- Borders -------------------------------------------------------- */
+  --line: #d5dde6;
+  --line-strong: #a3aeba;
+  --line-inverse: #374455;
+
+  /* --- Accent --------------------------------------------------------- */
+  --accent: #0f62fe;
+  --accent-strong: #0a49c9;
+  --accent-soft: #e9f0ff;
+
+  /* --- Elevation (still exactly two shadows) --------------------------- */
+  --shadow-sm: 0 1px 2px rgba(17, 23, 33, 0.05);
+  --shadow-lg: 0 24px 48px -24px rgba(17, 23, 33, 0.28);
+}
+
+/* In the default (dark) theme the primary button fills with the light
+   accent on hover, so its label flips to the page colour instead of
+   staying white. Both values are existing tokens. */
+:root .button:hover {
+  color: var(--bg);
+}
+
+/* Light keeps the white label, which is legible on its deeper blue. */
+:root[data-theme="light"] .button:hover {
+  color: #ffffff;
 }
 
 /* ==========================================================================
@@ -223,6 +284,134 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-5);
+}
+
+/* Right-hand cluster of the header: navigation plus the theme control, so the
+   control sits on the same edge as the navigation rather than beside the brand. */
+.site-header-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* --- Theme menu --------------------------------------------------------- */
+
+.theme-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.theme-menu__trigger {
+  display: inline-flex;
+  min-height: 2.75rem; /* 44px hit area */
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-family: var(--font-sans), var(--font-fallback-sans);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.theme-menu__trigger:hover,
+.theme-menu__trigger[aria-expanded="true"] {
+  border-color: var(--line-strong);
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.theme-menu__caret {
+  flex: 0 0 auto;
+  display: block;
+  transition: transform var(--motion-fast) var(--motion-ease);
+}
+
+.theme-menu__trigger[aria-expanded="true"] .theme-menu__caret {
+  transform: rotate(180deg);
+}
+
+.theme-menu__list {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: 60;
+  display: flex;
+  /* Sized to the real content: 16px tick + 8px gap + 16px icon + 8px gap +
+     ~35px label = 83px, plus 24px row padding, 8px list padding and 2px of
+     border comes to 117px. 8rem keeps that fit with room to breathe instead
+     of leaving dead space to the right of the labels. */
+  min-width: 8rem;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.theme-menu__item {
+  display: flex;
+  min-height: 2.75rem; /* 44px hit area */
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-sans), var(--font-fallback-sans);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.theme-menu__item:hover {
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.theme-menu__item[data-selected="true"] {
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+/* Fixed-width tick column keeps the two labels aligned whether or not the
+   active one is ticked. */
+.theme-menu__tick {
+  display: inline-flex;
+  width: 1rem;
+  flex: 0 0 1rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-menu__tick-icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
+/* Theme glyph. currentColor keeps it in step with the row text, so it is
+   legible in both themes and matches the selected-state colour. */
+.theme-menu__icon {
+  display: block;
+  flex: 0 0 1rem;
+  align-self: center;
 }
 
 .brand {
@@ -1161,6 +1350,16 @@ h3 {
 
   .site-nav a {
     padding: 0 var(--space-2);
+  }
+
+  .theme-menu__trigger {
+    padding: 0 var(--space-2);
+  }
+
+  .site-header-actions {
+    width: 100%;
+    justify-content: space-between;
+    gap: var(--space-2);
   }
 
   .slot-grid,

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Inter, Inter_Tight, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { site } from "@/lib/content";
+import { ThemeMenu } from "@/components/theme-menu";
 
 export const metadata: Metadata = {
   title: {
@@ -52,8 +53,16 @@ export default function RootLayout({
     <html
       lang="en"
       data-scroll-behavior="smooth"
+      // The init script sets data-theme before hydration, so the attribute is
+      // already present on the client by the time React hydrates <html>.
+      suppressHydrationWarning
       className={`${inter.variable} ${interTight.variable} ${jetBrainsMono.variable}`}
     >
+      <head>
+        {/* Applies a stored theme before first paint. A real file rather than
+            an inline script, so the page ships no inline JavaScript. */}
+        <script src="/theme-init.js" />
+      </head>
       <body>
         <a className="skip-link" href="#main-content">
           Skip to content
@@ -65,13 +74,19 @@ export default function RootLayout({
               {site.name}
             </Link>
 
-            <nav className="site-nav" aria-label="Primary navigation">
-              {navigation.map((item) => (
-                <Link key={item.href} href={item.href}>
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
+            {/* Right side of the header: primary navigation, then the theme
+                control, keeping the existing hierarchy and alignment. */}
+            <div className="site-header-actions">
+              <nav className="site-nav" aria-label="Primary navigation">
+                {navigation.map((item) => (
+                  <Link key={item.href} href={item.href}>
+                    {item.label}
+                  </Link>
+                ))}
+              </nav>
+
+              <ThemeMenu />
+            </div>
           </div>
         </header>
 
