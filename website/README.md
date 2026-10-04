@@ -192,8 +192,14 @@ then read the last line of `.local/dev-mail.log` and open its `signInUrl`.
 
 Requirements:
 
-- Node.js 20.9 or newer
+- **Node.js 22.5 or newer**
 - npm
+
+The customer platform's data store uses the built-in `node:sqlite` module, which
+Node added in 22.5.0. On an older Node the application still builds — the module is
+imported lazily, so nothing loads it at build time — but the first request that
+touches the platform would fail. `engines.node` is set accordingly and CI runs on
+Node 22.
 
 From this directory:
 
