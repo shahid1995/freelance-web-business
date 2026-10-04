@@ -212,7 +212,7 @@ When the authenticated customer selects Start Your Project:
 
 1. Authorize the person against the organization context.
 2. Create the Project immediately.
-3. Assign the creator as an organization owner/admin or, where applicable, establish explicit project access for an ordinary member.
+3. Because ordinary members cannot create projects in the initial slice, the creator is an organization owner/admin. Ordinary members may receive explicit project access later, but they do not create projects in this slice.
 4. Create the initial Project Intake draft state.
 5. Record a project-creation audit event.
 6. Redirect into the Project Intake flow.
@@ -242,7 +242,7 @@ Minimum policy matrix:
 | View unassigned project | Yes | No |
 | Create project for organization | Yes | Only where a later explicit policy allows; initial slice should default to No |
 | Save assigned Project Intake | Yes | Yes |
-| Save unassigned Project Intake | No | No |
+| Save unassigned Project Intake | Yes (organization-wide access) | No |
 | View internal qualification state | Internal workspace only | No |
 
 The initial slice should keep internal Founder access separate from customer access. Founder-only workspace implementation can come later.
@@ -314,6 +314,8 @@ Before the first implementation slice can be considered complete, tests must cov
 - link is single-use;
 - consumed link cannot be reused;
 - repeated sign-in requests are rate-limited;
+- verification attempts are rate-limited;
+- sign-in responses do not reveal whether an email is registered;
 - authenticated session is established only after successful verification.
 
 ### Organization
@@ -327,7 +329,8 @@ Before the first implementation slice can be considered complete, tests must cov
 - project belongs to the correct organization;
 - Owner/Admin can see all organization projects;
 - ordinary member cannot access an unrelated project;
-- ordinary member can access an explicitly assigned project.
+- ordinary member can access an explicitly assigned project;
+- removing an ordinary member's project assignment revokes access to that project.
 
 ### Project Intake
 - intake draft saves successfully;
