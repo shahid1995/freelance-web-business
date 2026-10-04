@@ -33,7 +33,6 @@ export default function WorkPage() {
             <p className="eyebrow">Current portfolio status</p>
             <h2 id="slots-heading">Concept slots awaiting evidence.</h2>
             <p>The portfolio registry includes concept slots for:</p>
-            <p>{portfolioStatus.slotNote}</p>
           </div>
 
           <ul className="slot-grid">
@@ -48,6 +47,7 @@ export default function WorkPage() {
             ))}
           </ul>
 
+          <p className="ownership__note">{portfolioStatus.slotNote}</p>
           <p className="ownership__note">{portfolioStatus.summary}</p>
         </div>
       </section>
