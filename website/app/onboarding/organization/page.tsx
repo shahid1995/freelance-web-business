@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { resolveOrganizationContext } from "@/lib/platform/authorization";
+import { PortalNotice } from "@/components/portal-notice";
 import { noticeFor } from "@/lib/platform/notices";
 import { requireSessionForPage } from "@/lib/platform/server";
 
@@ -48,18 +49,7 @@ export default async function CreateOrganizationPage({
             </p>
           </div>
 
-          {notice ? (
-            <p
-              className={
-                notice.kind === "error"
-                  ? "form-notice form-notice--error"
-                  : "form-notice"
-              }
-              role={notice.kind === "error" ? "alert" : "status"}
-            >
-              {notice.message}
-            </p>
-          ) : null}
+          <PortalNotice notice={notice} />
 
           <form className="form-stack" method="post" action="/api/organization">
             <div className="field">

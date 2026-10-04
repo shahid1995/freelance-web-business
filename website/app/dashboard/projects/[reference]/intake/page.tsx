@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { PortalNotice } from "@/components/portal-notice";
 import { noticeFor } from "@/lib/platform/notices";
 import {
   PROJECT_INTAKE_FIELD_LABELS,
@@ -88,18 +89,7 @@ export default async function ProjectIntakePage({
           </p>
         ) : null}
 
-        {notice ? (
-          <p
-            className={
-              notice.kind === "error"
-                ? "form-notice form-notice--error"
-                : "form-notice"
-            }
-            role={notice.kind === "error" ? "alert" : "status"}
-          >
-            {notice.message}
-          </p>
-        ) : null}
+        <PortalNotice notice={notice} />
 
         <div className="portal__panel">
           <p className="lede">

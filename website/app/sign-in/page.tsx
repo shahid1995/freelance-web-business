@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { PortalNotice } from "@/components/portal-notice";
 import { noticeFor } from "@/lib/platform/notices";
 
 export const metadata: Metadata = {
@@ -36,18 +37,7 @@ export default async function SignInPage({
             </p>
           </div>
 
-          {notice ? (
-            <p
-              className={
-                notice.kind === "error"
-                  ? "form-notice form-notice--error"
-                  : "form-notice"
-              }
-              role={notice.kind === "error" ? "alert" : "status"}
-            >
-              {notice.message}
-            </p>
-          ) : null}
+          <PortalNotice notice={notice} />
 
           <form className="form-stack" method="post" action="/api/auth/request-link">
             {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
