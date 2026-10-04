@@ -201,7 +201,9 @@ export function ThemeMenu() {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          setOpen((value) => !value);
+        }}
         onKeyDown={onTriggerKeyDown}
       >
         <span className="theme-menu__trigger-label">Theme</span>
@@ -245,7 +247,9 @@ export function ThemeMenu() {
                 aria-checked={selected}
                 className="theme-menu__item"
                 data-selected={selected ? "true" : undefined}
-                onClick={() => select(option)}
+                onClick={() => {
+                  select(option);
+                }}
               >
                 <span className="theme-menu__tick" aria-hidden="true">
                   {selected ? (
