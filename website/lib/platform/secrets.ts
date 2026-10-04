@@ -15,10 +15,10 @@
  * also single-use and time-limited.
  */
 
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 
 const TOKEN_BYTES = 32;
-const REFERENCE_BYTES = 5;
+const REFERENCE_LENGTH = 5;
 /** Crockford-style alphabet: no I, L, O or U, so references read cleanly aloud. */
 const REFERENCE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
@@ -80,14 +80,19 @@ export function buildChallengeToken(challengeId: string, secret: string): string
 }
 
 /**
- * Short, stable, non-sensitive project reference shown to customers in place
- * of internal identifiers. Not a secret and not a capability.
+ * Short, stable, non-sensitive project reference shown to customers in place of
+ * internal identifiers. Not a secret and not a capability.
+ *
+ * Each character is drawn with `randomInt`, which samples uniformly, rather than
+ * taking a random byte modulo the alphabet size. Modulo on random bytes is a
+ * biased mapping and is flagged as one; it happens to be exact for this alphabet
+ * length, but relying on that is fragile — changing the alphabet would silently
+ * reintroduce the bias.
  */
 export function generateProjectReference(): string {
-  const bytes = randomBytes(REFERENCE_BYTES);
   let reference = "";
-  for (const byte of bytes) {
-    reference += REFERENCE_ALPHABET[byte % REFERENCE_ALPHABET.length];
+  for (let index = 0; index < REFERENCE_LENGTH; index += 1) {
+    reference += REFERENCE_ALPHABET[randomInt(0, REFERENCE_ALPHABET.length)];
   }
   return `PRJ-${reference}`;
 }
