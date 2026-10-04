@@ -240,7 +240,7 @@ Minimum policy matrix:
 | View all organization projects | Yes | No |
 | View assigned project | Yes | Yes |
 | View unassigned project | Yes | No |
-| Create project for organization | Yes | Only where a later explicit policy allows; initial slice should default to No |
+| Create project for organization | Yes | No (initial slice) |
 | Save assigned Project Intake | Yes | Yes |
 | Save unassigned Project Intake | Yes (organization-wide access) | No |
 | View internal qualification state | Internal workspace only | No |
