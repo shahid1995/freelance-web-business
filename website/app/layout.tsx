@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Inter, Inter_Tight, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { site } from "@/lib/content";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export const metadata: Metadata = {
   title: {
@@ -43,6 +44,12 @@ const navigation = [
   { href: "/contact", label: "Contact" },
 ];
 
+// Runs before the document paints so a stored Dark preference is applied to
+// <html> without a visible Light -> Dark flash. It only ever writes "dark":
+// leaving the attribute off keeps the plain `:root` tokens, so a visitor with
+// no preference sees exactly the default Light theme.
+const themeInitScript = `(function(){try{var t=window.localStorage.getItem("theme");if(t==="dark"){document.documentElement.setAttribute("data-theme","dark");}}catch(e){}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -52,8 +59,14 @@ export default function RootLayout({
     <html
       lang="en"
       data-scroll-behavior="smooth"
+      // The init script sets data-theme before hydration, so the attribute is
+      // already present on the client by the time React hydrates <html>.
+      suppressHydrationWarning
       className={`${inter.variable} ${interTight.variable} ${jetBrainsMono.variable}`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body>
         <a className="skip-link" href="#main-content">
           Skip to content
@@ -61,9 +74,13 @@ export default function RootLayout({
 
         <header className="site-header">
           <div className="site-header-inner">
-            <Link className="brand" href="/">
-              {site.name}
-            </Link>
+            <div className="site-header-brand">
+              <Link className="brand" href="/">
+                {site.name}
+              </Link>
+
+              <ThemeToggle />
+            </div>
 
             <nav className="site-nav" aria-label="Primary navigation">
               {navigation.map((item) => (

@@ -97,6 +97,61 @@
 }
 
 /* ==========================================================================
+   Dark theme
+
+   A scoped override of the same token layer. No component rule below
+   changes: every value is expressed through the tokens declared above, so
+   only colour is re-mapped here. Layout, typography, spacing, radii and
+   the two-shadow elevation system are identical in both themes.
+   ========================================================================== */
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* --- Surfaces ------------------------------------------------------- */
+  --bg: #0d1117;
+  --bg-translucent: rgba(13, 17, 23, 0.88);
+  --surface: #151b23;
+  --surface-muted: #1c232d;
+  /* Inverted against the light theme so the closing call-to-action band and
+     the skip link stay visually distinct from the page behind them. */
+  --surface-inverse: #eef1f5;
+
+  /* --- Text (three levels) -------------------------------------------- */
+  --text: #e6edf3; /* level 1 — headings, primary copy */
+  --text-muted: #a8b3c0; /* level 2 — supporting copy */
+  --text-subtle: #9aa6b2; /* level 3 — labels, meta, footer notes */
+
+  /* Inverse section text */
+  --text-inverse: #10161d;
+  --text-inverse-muted: #4a5461;
+
+  /* --- Borders -------------------------------------------------------- */
+  --line: #262e39;
+  --line-strong: #3d4855;
+  --line-inverse: #c2ccd7;
+
+  /* --- Accent --------------------------------------------------------- */
+  /* --accent stays deep enough to keep its white button label above 4.5:1,
+     while --accent-strong becomes light enough to stay legible as the
+     eyebrow, index and badge colour on dark surfaces. */
+  --accent: #2f6fe0;
+  --accent-strong: #7cb0ff;
+  --accent-soft: #12233f;
+
+  /* --- Elevation (still exactly two shadows) --------------------------- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 24px 48px -24px rgba(0, 0, 0, 0.75);
+}
+
+/* The only behavioural adjustment the dark theme needs: on hover the
+   primary button fills with the light accent, so its label flips to the
+   page colour instead of staying white. Both values are existing tokens. */
+:root[data-theme="dark"] .button:hover {
+  color: var(--bg);
+}
+
+/* ==========================================================================
    Base
    ========================================================================== */
 
@@ -223,6 +278,56 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-5);
+}
+
+/* Keeps the brand and the theme control together on the first header row at
+   every width, so the control never competes with the navigation for space. */
+.site-header-brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* --- Theme toggle ------------------------------------------------------ */
+
+.theme-toggle {
+  display: inline-flex;
+  min-width: 2.75rem;
+  min-height: 2.75rem; /* 44px hit area */
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-family: var(--font-sans), var(--font-fallback-sans);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.theme-toggle:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.theme-toggle__icon {
+  flex: 0 0 auto;
+  display: block;
+}
+
+.theme-toggle__label {
+  font-variant-numeric: tabular-nums;
 }
 
 .brand {
@@ -1160,6 +1265,10 @@ h3 {
   }
 
   .site-nav a {
+    padding: 0 var(--space-2);
+  }
+
+  .theme-toggle {
     padding: 0 var(--space-2);
   }
 
