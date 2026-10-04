@@ -56,19 +56,27 @@ Completed:
 
 Phase 3 provides a reusable foundation from accepted opportunity through project closure. Client-specific delivery records remain outside this public business repository.
 
-## Phase 4 — Public Portfolio
+## Phase 4 — Public Website and Customer Platform
 
 Current:
 
 - Public portfolio website foundation — established
 - Website application scaffold — established
 - Website content and portfolio integration — established
-- Website QA hardening — route-level verification established; interactive browser QA pending
-- Domain/hosting — next
-- Contact flow
-- Analytics
+- Website visual/design foundation — established
+- Customer platform direction — approved
+- Customer platform requirements — established
+- Customer identity, organization, project, and saved-onboarding foundation — next implementation slice
+- Sales and proposal workflow integration — planned
+- Commercial acceptance, agreement, payments — planned
+- Delivery workspace, milestones, QA, handover, closure integration — planned
+- Founder/internal operating workspace — planned
+- Domain/hosting — deferred
+- Analytics — deferred
 
-The Phase 4 foundation, application scaffold, content integration, and QA hardening define the public-facing route structure, implementation baseline, and rendered-site verification state. They do not authorize production deployment or publication.
+The customer platform requirements are defined in docs/website/customer-platform-requirements.md. Product direction is recorded in docs/decisions/2026-10-04-customer-platform-direction.md.
+
+Phase 4 does not authorize production deployment, external publication, live provider activation, or live customer-data processing.
 
 ## Phase 5 — Acquisition and Improvement
 
