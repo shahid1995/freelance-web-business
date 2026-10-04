@@ -1,22 +1,22 @@
 # Lead Tracker
 
-**Status:** Phase 2 working lead-tracking system  
+**Status:** Phase 2 working lead-tracking system; future application integration defined  
 **Owner:** Founder  
-**Last updated:** 2026-09-27
+**Last updated:** 2026-10-04
 
 ## 1. Purpose
 
 The lead tracker records serious business opportunities from first contact through qualification, proposal, decision, and closure.
 
-The tracker is a process record, not a client database. Store only the information needed to manage the opportunity and protect the sales workflow.
+The future customer application will provide the operational interface for live lead/opportunity records. This document remains the reusable business rule and lifecycle definition.
 
 ## 2. System of record
 
-For this business, the GitHub repository is the system of record for the tracker structure and rules.
+For this business, GitHub remains the system of record for the tracker structure, states, rules, and documentation.
 
-Individual lead records should use an approved operating location when implemented. Do not place live prospect data, personal contact details, credentials, or confidential client information into this public repository.
+When the customer application is implemented, live prospect/customer/project records should be stored in the secure application data store or another explicitly approved operating location. Do not place live prospect data, personal contact details, credentials, or confidential client information into this public repository.
 
-This document defines the fields, states, and workflow that any future lead-tracking implementation must follow.
+The application must preserve the business rules defined here without exposing internal qualification states as customer-facing copy.
 
 ## 3. Lead lifecycle
 
@@ -117,7 +117,7 @@ Lead lifecycle state:
 - Lost
 - Closed
 
-The lifecycle list above is the complete set of states defined in Section 3. Qualification state remains a separate field and should not be inferred from lifecycle state.
+The lifecycle list above is the complete set of states defined in Section 3. Qualification state remains a separate field and should not be inferred from lifecycle state. Both qualification and lifecycle states are internal operational states; customer-facing application labels must use the approved customer-facing timeline instead.
 
 ## 8. Next-action discipline
 
@@ -243,6 +243,8 @@ Only move to Proposal prepared after the qualification flow confirms that the op
 
 Only move to Accepted after the agreed commercial and scope requirements are satisfied.
 
+The future customer application may present a continuous customer/project record while preserving these internal lifecycle and qualification states.
+
 The lead tracker does not replace the eventual project scope, agreement, delivery record, or client repository.
 
 ## 14. Lead tracker review checklist
@@ -264,4 +266,4 @@ The lead tracker does not replace the eventual project scope, agreement, deliver
 
 Opportunity received → Lead record → Qualification → Proposal → Discussion → Accepted / Lost / Not a fit / No decision → Closed
 
-The tracker exists to preserve continuity and evidence across the sales process, not to replace judgment or Founder authority.
+The future customer application should operationalize this process without changing its business meaning or exposing internal qualification terminology to customers.

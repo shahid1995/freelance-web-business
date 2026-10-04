@@ -1,12 +1,23 @@
 # Changelog
 
+## 2026-10-04
+
+### Customer platform direction
+- Approved the long-term evolution of the public website into a unified customer-facing application and Founder/internal workspace.
+- Defined the organization-centric model: person → organization → projects.
+- Defined passwordless customer identity, guided project onboarding, project-specific customer access, in-application communication, central project documents, proposal acceptance, future agreement/e-signature, configurable payments, automatic activation, delivery onboarding, milestones, QA, handover, and closure.
+- Established customer-facing lifecycle status separately from internal qualification states.
+- Deferred AI/LLM, hosting/domain, analytics, and provider-specific live integrations from the current implementation slice.
+- Added the canonical customer-platform requirements document at docs/website/customer-platform-requirements.md.
+- Updated the website, sales, delivery, roadmap, and content-map documents so they no longer describe the product as a portfolio-only or contact-form-only system.
+
 ## 2026-09-27
 
 ### Phase 4.2 website scaffold
-- Established the Next.js 16 App Router application scaffold under `website/`.
+- Established the Next.js 16 App Router application scaffold under website/.
 - Added shared accessible navigation, footer, skip-link, responsive styling, service content model, service detail routes, about route, portfolio-safe work route, contact placeholder, and not-found route.
 - Kept the scaffold server-rendered and dependency-light with plain CSS.
-- Kept live contact integrations, analytics, domain/hosting, deployment, and publication outside the scaffold.
+- Kept live contact integrations, analytics, domain/hosting, deployment, and publication outside the scaffold PR.
 
 ### Phase 4 foundation
 - Established the Public Portfolio Website foundation, including information architecture, public route map, content source hierarchy, portfolio publication rules, claims controls, accessibility and performance requirements, privacy/security boundaries, environment/deployment boundaries, and website acceptance criteria.

@@ -1,30 +1,42 @@
-# Public Portfolio Website
+# Public Website and Customer Platform
 
-This directory contains the source for the business's public portfolio website.
+This directory contains the source for the business's public website and the future customer-facing application.
 
 ## Scope
 
-The website is the public presentation layer for:
+The website/application provides:
 
 - approved business positioning;
 - approved services;
 - approved portfolio work;
 - approved case studies;
-- the public contact entry point.
+- public project-discussion entry point;
+- authenticated customer onboarding;
+- customer project workspaces;
+- future customer-facing sales and delivery workflows.
 
-It is not a client-project repository, CRM, private operations system, or source of truth for portfolio permissions.
+It is not the client source-code repository and is not the source of truth for business rules, portfolio permissions, or material business decisions.
 
 ## Source-of-truth boundary
 
-Use the following repository material as the business authority for website content:
+Use the following repository material as the business authority for the product:
 
 - docs/positioning/
 - docs/services/
-- docs/sales/freelancer-profile.md
+- docs/sales/
+- docs/delivery/
 - portfolio/
 - docs/website/
+- docs/decisions/
+- CONSTITUTION.md
 
-Website implementation details belong here. Business decisions and portfolio evidence remain governed by the corresponding source documents.
+Application implementation details belong here. Business decisions, operating rules, and portfolio evidence remain governed by their corresponding source documents.
+
+## Live-data boundary
+
+The future application may store live customer/project data in a secure application data store.
+
+Do not commit live customer records, customer documents, credentials, payment secrets, private project data, or session information to this public repository.
 
 ## Public-safety requirements
 
@@ -36,21 +48,22 @@ Never commit:
 - session data;
 - client secrets;
 - private customer information;
-- confidential project material.
+- confidential project material;
+- sensitive payment information.
 
 Keep runtime secrets outside the repository.
 
-## Publication boundary
+## Publication and external-action boundary
 
-A website change may be reviewed and merged without being deployed or published.
+A website/application change may be reviewed and merged without being deployed or published.
 
-Production deployment, domain changes, live integrations, and external publication require explicit Founder authorization.
+Production deployment, domain changes, live integrations, external publication, live customer-data processing, and provider activation require explicit Founder authorization or the applicable separate decision.
 
 ## Current scaffold
 
-The application scaffold is a Next.js 16 App Router project using TypeScript and plain CSS.
+The current application is a Next.js 16 App Router project using TypeScript and plain CSS.
 
-Implemented routes:
+Implemented public routes:
 
 - /
 - /services
@@ -66,6 +79,18 @@ Implemented routes:
 
 The portfolio route intentionally shows no published work until the repository publication gate is satisfied.
 
+## Customer platform direction
+
+The future authenticated application follows:
+
+**Person → Organization → Projects**
+
+The first implementation slice is intentionally limited to:
+
+**passwordless customer identity → organization creation → customer dashboard → project creation → saved project onboarding progress**
+
+The current product contract is docs/website/customer-platform-requirements.md.
+
 ## Local verification
 
 Requirements:
@@ -80,8 +105,10 @@ From this directory:
 - npm run dev
 - npm run build
 
-Production deployment and publication are not part of this scaffold PR.
+Production deployment and live customer operation are not part of the current scaffold.
 
 The application architecture is governed by:
 
-docs/website/public-portfolio-foundation.md
+- docs/website/public-portfolio-foundation.md
+- docs/website/customer-platform-requirements.md
+- applicable Founder-approved decisions in docs/decisions/
