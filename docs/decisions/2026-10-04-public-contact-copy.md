@@ -1,4 +1,4 @@
-# ADR-001: Public Contact Copy Uses Customer-Facing Language Only
+# Public Contact Copy Uses Customer-Facing Language Only
 
 **Status:** Approved
 **Date:** 2026-10-04
