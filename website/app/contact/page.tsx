@@ -8,38 +8,15 @@ export const metadata = {
   description: "Start a conversation about a website or web application project.",
 };
 
-// Sourced from the approved qualification flow in docs/sales/qualification-flow.md
-const qualificationInputs = [
-  "What does the client need built, improved, or maintained?",
-  "Which current service category appears relevant?",
-  "What problem is the work intended to solve?",
-  "Is the request related to the business's approved web-development scope?",
-  "Main pages, screens, workflows, or functions required",
-  "Known integrations or external systems",
-  "Expected user types or audiences",
-  "Existing assets or systems that must be retained",
-  "Known exclusions or constraints",
-  "Whether the request is a defined project or still exploratory",
-];
-
-// The four approved qualification outcomes.
-const qualificationOutcomes = [
-  {
-    key: "Qualified",
-    body: "Enough information exists to prepare a proposal or move to the next defined sales step.",
-  },
-  {
-    key: "Clarification required",
-    body: "The opportunity may be relevant, but important information is missing.",
-  },
-  {
-    key: "Not a fit",
-    body: "The requested work materially falls outside the current service boundaries, risk tolerance, capacity, or approved business direction.",
-  },
-  {
-    key: "No decision",
-    body: "Information is insufficient to determine fit and no further action is currently justified.",
-  },
+// Customer-facing prompts for a project discussion. These are written for
+// visitors, not derived from the internal qualification questionnaire.
+const projectDiscussionInputs = [
+  "What you need built, improved, or maintained",
+  "The main pages, screens, features, or workflows involved",
+  "What already exists and what needs to remain",
+  "Who the website or application is for",
+  "Any important integrations, dependencies, or constraints",
+  "Your desired timing or launch target",
 ];
 
 export default function ContactPage() {
@@ -61,13 +38,13 @@ export default function ContactPage() {
             <p className="eyebrow">Starting point</p>
             <h2 id="tell-heading">What to tell us.</h2>
             <p>
-              The work is defined around the business need first. These are the
-              questions that scope gets agreed against.
+              The work is defined around the business need first, so these
+              details are the most useful place to start.
             </p>
           </div>
 
           <ol className="tell-list">
-            {qualificationInputs.map((item, index) => (
+            {projectDiscussionInputs.map((item, index) => (
               <li key={item}>
                 <span className="tell-list__num">{serviceNumber(index)}</span>
                 <span>{item}</span>
@@ -113,36 +90,36 @@ export default function ContactPage() {
             <p className="eyebrow">Process</p>
             <h2 id="next-heading">What happens next.</h2>
             <p>
-              Every conversation ends in one of four stated states. A
-              qualification outcome is a process state for the opportunity, not
-              a judgment about the client.
+              The goal is a clear picture of the work, agreed before anything is
+              defined.
             </p>
           </div>
 
-          <ul className="legend">
-            {qualificationOutcomes.map((outcome) => (
-              <li className="legend__item" key={outcome.key}>
-                <span className="legend__key">{outcome.key}</span>
-                <span className="legend__body">{outcome.body}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="status-notice">
+            <p className="status-notice__label">Next steps</p>
+            <p className="status-notice__body">
+              Once we understand the project, the next step is to clarify the
+              main scope, deliverables, dependencies, and any important
+              constraints before the work is defined.
+            </p>
+            <p className="status-notice__body">
+              Where the request fits the services offered, the next commercial
+              step can then be agreed.
+            </p>
+          </div>
         </div>
       </section>
 
       <section className="section" aria-labelledby="status-heading">
         <div className="container">
           <div className="status-notice">
-            <p className="status-notice__label">Current status</p>
-            <p className="status-notice__body">
-              The public contact flow is the next Phase 4 work item. It will
-              collect only the information needed to qualify a project and route
-              it into the approved sales process.
+            <p className="status-notice__label" id="status-heading">
+              Current status
             </p>
             <p className="status-notice__body">
-              No contact form or external submission integration is enabled in
-              this scaffold. That keeps the current website free of unapproved
-              live integrations and production side effects.
+              Contact options are being finalized. For now, reviewing the
+              services and preparing the project details above is the best place
+              to start.
             </p>
           </div>
 
