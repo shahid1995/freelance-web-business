@@ -43,7 +43,7 @@ export function ServiceList({
 
             {showSignals ? (
               <div className="service-row__signals">
-                <div className="signal">
+                <div className="service-row__signal-group">
                   <p className="signal__label">Good fit for</p>
                   <ul className="signal__list">
                     {service.idealFor.slice(0, signalCount).map((item) => (
@@ -54,7 +54,7 @@ export function ServiceList({
                   </ul>
                 </div>
 
-                <div className="signal">
+                <div className="service-row__signal-group">
                   <p className="signal__label">Typical deliverables</p>
                   <ul className="signal__list">
                     {service.deliverables.slice(0, signalCount).map((item) => (
