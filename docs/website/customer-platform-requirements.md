@@ -83,7 +83,7 @@ The dashboard should:
 - link to documents, messages, proposals, approvals, and project status where applicable;
 - avoid exposing internal workflow terminology.
 
-## 6. Project creation and intake
+## 6. Project creation and Project Intake
 
 When a customer selects Start Your Project:
 - create the project immediately;
@@ -94,7 +94,7 @@ When a customer selects Start Your Project:
 
 The product should not require manual conversion from inquiry to project simply to preserve continuity.
 
-The initial guided intake should collect, as relevant:
+Project Intake should collect, as relevant:
 - service/project need;
 - business problem;
 - desired outcome;
@@ -113,20 +113,20 @@ Progress must be saved so customers can leave and resume.
 
 The final customer questionnaire must be derived from approved qualification/discovery requirements and must not simply expose internal process documentation.
 
-## 7. Customer-facing lifecycle
+## 7. Customer-facing lifecycle and stage terminology
 
-Provide a detailed customer-facing timeline. A future baseline may include:
+Provide a detailed customer-facing timeline. The pre-activation information-gathering stage is called **Project Intake**. After the project is activated, the delivery-preparation stage is called **Delivery Onboarding**. A future baseline may include:
 
 1. Account created
 2. Project started
-3. Information submitted
-4. Review
+3. Project Intake — Information submitted
+4. Project Intake — Review
 5. Requirements confirmed
 6. Proposal prepared
 7. Proposal accepted
 8. Agreement completed
 9. Payment satisfied
-10. Project setup
+10. Delivery Onboarding — Project setup
 11. Milestones
 12. Client review
 13. QA
@@ -185,7 +185,7 @@ An organization supports:
 - invited members.
 
 The baseline authorization model is project-specific access:
-- organization owner/admin can administer the organization and its accessible projects;
+- organization owner/admin has visibility into and administrative authority over all projects within the organization by default;
 - ordinary members only see projects to which they have been explicitly assigned;
 - membership in one project must not automatically grant access to unrelated projects.
 
@@ -266,9 +266,9 @@ The application should activate the project automatically when all required conf
 
 The exact activation conditions may vary by approved commercial configuration.
 
-## 16. Client onboarding and discovery
+## 16. Delivery Onboarding and discovery
 
-Project activation starts guided delivery onboarding.
+Project activation starts **Delivery Onboarding**.
 
 The onboarding should collect information required by the existing discovery foundation:
 - project objective;
