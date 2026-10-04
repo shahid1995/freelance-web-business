@@ -3,8 +3,14 @@ name: Website CI
 on:
   pull_request:
     branches: ["main"]
+    paths:
+      - "website/**"
+      - ".github/workflows/ci.yml"
   push:
     branches: ["main"]
+    paths:
+      - "website/**"
+      - ".github/workflows/ci.yml"
 
 permissions:
   contents: read
