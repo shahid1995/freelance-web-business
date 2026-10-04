@@ -6,15 +6,15 @@
 
 ## 1. Purpose
 
-The lead tracker defines the business process for serious opportunities from first contact through qualification, proposal, decision, and closure.
+The lead tracker records serious business opportunities from first contact through qualification, proposal, decision, and closure.
 
 The future customer application will provide the operational interface for live lead/opportunity records. This document remains the reusable business rule and lifecycle definition.
 
 ## 2. System of record
 
-GitHub remains the system of record for the tracker structure, states, rules, and documentation.
+For this business, GitHub remains the system of record for the tracker structure, states, rules, and documentation.
 
-When the customer application is implemented, live prospect/customer/project records should be stored in the secure application data store or another explicitly approved operating location, not in this public repository.
+When the customer application is implemented, live prospect/customer/project records should be stored in the secure application data store or another explicitly approved operating location. Do not place live prospect data, personal contact details, credentials, or confidential client information into this public repository.
 
 The application must preserve the business rules defined here without exposing internal qualification states as customer-facing copy.
 
@@ -95,6 +95,8 @@ Do not create false attribution. Record the actual source when known.
 
 Keep qualification state separate from lead lifecycle state.
 
+For example:
+
 Qualification state:
 - Qualified
 - Clarification required
@@ -123,7 +125,20 @@ Every active lead should have:
 
 - one clear next action;
 - an owner;
-- either a target date or an explicit factual reason why no next-action date exists.
+- either a target date or an explicit reason why no next-action date exists.
+
+If a target date is available, record it in Next-action date and leave the reason field empty.
+
+If a target date is not appropriate or cannot yet be determined, leave Next-action date empty and record the factual reason in Reason no next-action date exists.
+
+Examples:
+
+- Request missing sitemap
+- Confirm required integration
+- Send proposal for review
+- Follow up after agreed date
+- Close after no response
+- Record client decision
 
 Avoid vague next actions such as follow up when the actual action can be named.
 
@@ -141,19 +156,31 @@ Never commit:
 - confidential budgets or procurement documents;
 - private company data not approved for public use.
 
-The public repository may contain the tracker structure, field definitions, workflow rules, and sanitized examples without real prospect data.
+The public repository may contain:
+
+- the tracker structure;
+- field definitions;
+- workflow rules;
+- sanitized examples that contain no real prospect information.
 
 ## 10. Follow-up rules
 
 Follow-up should be based on the agreed next action and timing.
 
-Record factual events such as proposal sent, clarification requested, reply received, meeting completed, decision date, and closure.
+Record factual events:
+
+- proposal sent;
+- clarification requested;
+- reply received;
+- meeting completed;
+- decision date;
+- opportunity closed.
 
 Do not manufacture urgency or misrepresent prior communication.
 
 ## 11. Pipeline review
 
-A future Founder workspace should surface:
+A periodic review should identify:
 
 - active opportunities without a next action;
 - qualified opportunities waiting for a proposal;
@@ -165,35 +192,77 @@ A future Founder workspace should surface:
 
 Pipeline review should improve the process rather than encourage unsupported volume targets.
 
-## 12. Handoff rules
+## 12. Lead record template
+
+Use this structure for an individual lead in the approved operating location:
+
+### Lead record
+
+Opportunity ID: LEAD-YYYY-NNN  
+Date received: YYYY-MM-DD  
+Organization / prospect name:  
+Source:  
+Contact method:  
+Service category:  
+Problem / need:  
+Requested deliverables:  
+Qualification state:  
+Lead lifecycle state:  
+Desired timing:  
+Decision process:  
+Commercial requirement:  
+Known dependencies:  
+Risks / open questions:  
+Next action:  
+Next-action date, when applicable:  
+Reason no next-action date exists, when applicable:  
+Owner:  
+Last updated:  
+Outcome / closure reason:
+
+### Activity log
+
+| Date | Event | Summary | Next action |
+|---|---|---|---|
+| YYYY-MM-DD | Received | Initial opportunity recorded | Review relevance |
+| YYYY-MM-DD | Qualification | Factual summary | Next action |
+
+Keep the activity log factual, minimal, and free of unnecessary personal information.
+
+## 13. Handoff rules
 
 ### To qualification
-A new project inquiry enters the qualification flow when the basic request is known.
+
+A new opportunity enters the qualification flow when the basic request is known.
 
 ### To proposal
-Move to Proposal prepared only after qualification confirms that the opportunity is sufficiently clear and commercially processable.
+
+Only move to Proposal prepared after the qualification flow confirms that the opportunity is sufficiently clear and commercially processable.
 
 ### To delivery
-Move to Accepted only after the agreed commercial and scope requirements are satisfied.
 
-The future application may present a continuous customer/project record while preserving these internal lifecycle and qualification states.
+Only move to Accepted after the agreed commercial and scope requirements are satisfied.
 
-## 13. Lead tracker review checklist
+The future customer application may present a continuous customer/project record while preserving these internal lifecycle and qualification states.
+
+The lead tracker does not replace the eventual project scope, agreement, delivery record, or client repository.
+
+## 14. Lead tracker review checklist
 
 - [ ] Opportunity has a stable ID.
 - [ ] Source is recorded accurately.
 - [ ] Service category is identified or marked unclear.
 - [ ] Problem and requested deliverables are captured.
 - [ ] Qualification state is current.
-- [ ] Lifecycle state is current.
+- [ ] Lifecycle state is current and uses one of the states defined in Section 3.
 - [ ] Next action is explicit.
-- [ ] Active leads have appropriate next-action discipline.
+- [ ] Active leads have either an appropriate next-action date or a factual reason no date exists.
 - [ ] Material risks and dependencies are recorded.
 - [ ] No unsupported client or business claims are present.
 - [ ] No public-repository-sensitive data is stored.
 - [ ] Closed/lost outcomes retain a factual closure reason.
 
-## 14. Lifecycle
+## 15. Lifecycle
 
 Opportunity received → Lead record → Qualification → Proposal → Discussion → Accepted / Lost / Not a fit / No decision → Closed
 
