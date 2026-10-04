@@ -1,20 +1,20 @@
-# Public Portfolio Website Foundation
+# Public Website and Customer Platform Foundation
 
 **Status:** Phase 4 working foundation  
 **Owner:** Founder  
-**Last updated:** 2026-09-27
+**Last updated:** 2026-10-04
 
 ## 1. Purpose
 
-The public portfolio website is the external-facing presentation layer for the business.
+The public website is the external-facing presentation layer for the business and the entry point to the future customer-facing application.
 
-It should make the business understandable, show verified work and capabilities, and provide a clear next step for prospective clients without inventing credentials, outcomes, client relationships, or proof.
+It should make the business understandable, show verified work and capabilities, provide a clear next step for prospective clients, and eventually support the authenticated customer journey from project inquiry through delivery and closure.
 
-The website is a presentation layer. GitHub remains the source of truth for the business rules, approved messaging, portfolio evidence, and reusable content that the website consumes.
+GitHub remains the source of truth for business rules, approved messaging, portfolio evidence, reusable content, and material product decisions. The future application may store live customer/project records in a secure application data boundary.
 
 ## 2. Primary objectives
 
-The website should:
+The public website should:
 
 - explain what the business does in plain language;
 - present the approved service catalog;
@@ -25,11 +25,21 @@ The website should:
 - load efficiently and remain maintainable;
 - preserve a clear separation between public content and private project information.
 
-The website should not become the client-project repository, internal operations system, or sales CRM.
+The future authenticated application should:
+
+- provide customer identity and organization workspaces;
+- connect customers to multiple projects;
+- provide guided project onboarding;
+- support the approved sales and delivery lifecycle;
+- keep customer communication inside the application;
+- protect live customer/project data with role-based access;
+- maintain a clear audit trail for material actions.
+
+The application must not become the client source-code repository or replace GitHub as the source of business rules and application history.
 
 ## 3. Public information architecture
 
-The initial information architecture is:
+The initial public information architecture is:
 
 ### Home
 
@@ -80,12 +90,34 @@ The page should derive claims from the approved freelancer profile and positioni
 
 Purpose:
 - provide a clear entry point for a prospective client;
-- collect only the information necessary to begin qualification;
-- route the submission into the approved sales process.
+- route a customer into the future authenticated onboarding flow;
+- collect only the information necessary for the relevant sales stage.
 
-The final contact mechanism is a separate Phase 4 work item.
+The current route remains non-live until the approved customer-platform implementation is built and explicitly authorized.
 
-## 4. Content source hierarchy
+## 4. Customer platform direction
+
+The future authenticated application follows:
+
+**Person → Organization → Projects**
+
+Approved initial experience:
+
+**Passwordless email → Organization creation → Customer dashboard → Start Your Project → Saved onboarding**
+
+Each organization may have multiple projects.
+
+Customer communication is primarily inside the application. Email is initially a notification/authentication channel.
+
+The future customer timeline may expose:
+
+**Account created → Project started → Information submitted → Review → Requirements confirmed → Proposal prepared → Proposal accepted → Agreement completed → Payment satisfied → Project setup → Milestones → Client review → QA → Handover → Completed**
+
+Internal qualification states remain internal and must not appear as customer-facing labels.
+
+The full requirements are defined in docs/website/customer-platform-requirements.md.
+
+## 5. Content source hierarchy
 
 Public website content should be derived from approved repository sources.
 
@@ -101,9 +133,9 @@ Use this order:
 
 Implementation copy must not silently override an approved business rule or public claim.
 
-Where a website-specific wording change would materially alter positioning, service boundaries, pricing language, portfolio representation, or a claim, record and approve the change before publication.
+Where a website-specific wording change materially alters positioning, service boundaries, pricing language, portfolio representation, or a claim, record and approve the change before publication.
 
-## 5. Portfolio publication rules
+## 6. Portfolio publication rules
 
 The website must follow the portfolio evidence controls.
 
@@ -123,7 +155,7 @@ Concept or demonstration work must remain clearly labeled.
 
 Closure of a client project does not automatically grant public portfolio rights.
 
-## 6. Claims and messaging controls
+## 7. Claims and messaging controls
 
 Prefer concrete descriptive language such as:
 
@@ -145,11 +177,11 @@ Avoid claims such as:
 - award-winning;
 - proven results without specific evidence.
 
-Do not imply a client relationship, credential, testimonial, metric, or result unless the repository contains the supporting evidence and permission where required.
+Do not imply a client relationship, credential, testimonial, metric, or result unless the repository contains supporting evidence and permission where required.
 
-## 7. Design and UX principles
+## 8. Design and UX principles
 
-The public site should prioritize:
+The public site and future customer application should prioritize:
 
 - clear hierarchy;
 - readable typography;
@@ -160,13 +192,12 @@ The public site should prioritize:
 - accessible focus and interaction states;
 - concise content with useful detail;
 - visible evidence rather than decorative claims;
-- predictable behavior across common viewport sizes.
+- predictable behavior across common viewport sizes;
+- clear customer actions when an interaction or approval is required.
 
-Design should communicate competence through clarity and evidence rather than excessive visual effects.
+## 9. Accessibility requirements
 
-## 8. Accessibility requirements
-
-The site should be built to support:
+The product should support:
 
 - semantic HTML;
 - keyboard navigation;
@@ -179,9 +210,11 @@ The site should be built to support:
 - reduced-motion preferences where motion is used;
 - responsive text and layout behavior.
 
+Authenticated customer workflows must also provide accessible status, validation, errors, file controls, review/approval controls, and navigation.
+
 Automated checks and manual verification should both be used where practical.
 
-## 9. Performance requirements
+## 10. Performance requirements
 
 The implementation should favor:
 
@@ -190,13 +223,14 @@ The implementation should favor:
 - responsive image delivery;
 - efficient fonts and assets;
 - avoidance of avoidable blocking work;
-- simple page structures;
 - stable layout behavior;
 - measured performance rather than unsupported performance claims.
 
 No performance guarantee should be published unless the measurement and target are explicitly supported.
 
-## 10. SEO and sharing foundation
+Future application functionality must not add unnecessary client-side complexity when a simpler server-side or progressive interaction is sufficient.
+
+## 11. SEO and sharing foundation
 
 Where relevant, each public route should have:
 
@@ -206,13 +240,13 @@ Where relevant, each public route should have:
 - correct heading structure;
 - descriptive links;
 - appropriate social sharing metadata;
-- indexability controls appropriate to the publication state.
+- indexability controls appropriate to publication state.
 
-Draft, restricted, or internal content must not be accidentally exposed as published portfolio material.
+Authenticated application surfaces should not be treated as public indexed content.
 
-## 11. Privacy and security boundary
+## 12. Privacy and security boundary
 
-Never place the following in the public website source or output:
+Never place the following in public website source or output:
 
 - passwords;
 - API keys;
@@ -221,15 +255,16 @@ Never place the following in the public website source or output:
 - client credentials;
 - private customer data;
 - confidential project documents;
-- internal-only dashboards or records.
+- internal-only records;
+- sensitive payment information.
 
 Forms and third-party integrations must use approved secure configuration and environment handling.
 
-The public website should not expose client-specific project records that belong in the client's repository.
+The customer application must keep live organization/project records behind authentication and authorization.
 
-## 12. Environment and deployment boundary
+## 13. Environment and deployment boundary
 
-The website source may be prepared and verified in GitHub without authorizing production publication.
+Website/application source may be prepared and verified in GitHub without authorizing production publication.
 
 Keep:
 
@@ -241,58 +276,66 @@ Keep:
 
 A merged PR does not itself authorize deployment or publication.
 
-## 13. Initial route set
+## 14. Initial public route set
 
-The initial site should be able to support:
+The initial public site supports:
 
 | Route | Purpose | Publication status |
 |---|---|---|
-| / | Core value proposition and primary CTA | Planned |
-| /services | Service overview | Planned |
-| /services/business-websites | Business website service | Planned |
-| /services/landing-pages | Landing page service | Planned |
-| /services/redesign-modernization | Redesign service | Planned |
-| /services/custom-web-applications | Custom application service | Planned |
-| /services/dashboards-portals | Dashboard/portal service | Planned |
-| /services/maintenance-improvements | Maintenance service | Planned |
-| /work | Portfolio registry presentation | Planned |
-| /about | Business and working approach | Planned |
-| /contact | Project discussion entry point | Planned |
+| / | Core value proposition and primary CTA | Established |
+| /services | Service overview | Established |
+| /services/business-websites | Business website service | Established |
+| /services/landing-pages | Landing page service | Established |
+| /services/redesign-modernization | Redesign service | Established |
+| /services/custom-web-applications | Custom application service | Established |
+| /services/dashboards-portals | Dashboard/portal service | Established |
+| /services/maintenance-improvements | Maintenance service | Established |
+| /work | Portfolio registry presentation | Established |
+| /about | Business and working approach | Established |
+| /contact | Project discussion entry point | Established, currently non-live |
 
-A route can remain unlinked or unpublished until its content and evidence are approved.
+Authenticated customer application surfaces are governed by customer-platform requirements and are not limited to the public route list above.
 
-## 14. Portfolio data boundary
+## 15. Data and source boundary
 
 The website may consume sanitized portfolio data derived from:
 
-- portfolio/portfolio-index.md
+- portfolio/portfolio-index.md;
 - individual project records;
 - approved case studies;
 - approved screenshot/evidence references.
 
-The website must not become a second source of truth for project status, ownership, evidence, or publication permissions.
+The future application may store live customer/project data in a secure application data store.
 
-Where a conflict exists, the approved repository record takes precedence and the website content should be corrected.
+The application must not become a second source of truth for business rules, portfolio publication permissions, or material Founder decisions.
 
-## 15. Foundation readiness verification
+Where a conflict exists, the approved repository record takes precedence for business policy and public claims.
 
-The following readiness criteria are satisfied by this Phase 4 foundation:
+## 16. Foundation readiness
 
-- [x] Information architecture is defined.
-- [x] Initial public routes are identified.
-- [x] Source hierarchy is defined.
-- [x] Portfolio publication boundaries are explicit.
-- [x] Claims controls are explicit.
-- [x] Accessibility requirements are defined.
-- [x] Performance requirements are defined.
-- [x] Privacy/security boundaries are defined.
-- [x] Deployment/publication authority is preserved.
-- [x] Website source is clearly separated from client project repositories.
-- [x] Contact flow is identified as a separate work item.
-- [x] Domain/hosting and analytics remain separate Phase 4 work items.
+The Phase 4 foundation now includes:
 
-## 16. Next implementation step
+- [x] Public information architecture.
+- [x] Initial public routes.
+- [x] Source hierarchy.
+- [x] Portfolio publication boundaries.
+- [x] Claims controls.
+- [x] Accessibility requirements.
+- [x] Performance requirements.
+- [x] Privacy/security boundaries.
+- [x] Deployment/publication authority.
+- [x] Public website source separated from client source repositories.
+- [x] Customer platform direction approved.
+- [x] Customer platform requirements documented.
+- [x] Hosting/domain work explicitly deferred.
+- [x] Analytics explicitly deferred.
 
-The next Phase 4 implementation step is to create the website source scaffold inside website/, using this foundation as the contract.
+## 17. Next implementation step
 
-The scaffold should establish the approved route structure, shared layout/navigation, reusable content boundaries, accessibility baseline, and local verification workflow before domain, hosting, contact submission, analytics, or production publication work is introduced.
+The next implementation slice is the first secure customer-platform vertical path:
+
+**Passwordless customer identity → Organization creation → Customer dashboard → Project creation → Saved project onboarding progress**
+
+This slice should be implemented only after its data boundary, authentication, authorization, privacy, and verification requirements are explicitly designed.
+
+No production deployment, live payment processing, live e-signature, AI/LLM integration, or public customer-data operation is included in this step.
