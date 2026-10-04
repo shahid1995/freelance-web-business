@@ -9,7 +9,10 @@ function relatedServices(index: number): Array<{ service: Service; index: number
   if (index - 1 >= 0) neighbours.push(index - 1);
   if (index + 1 < services.length) neighbours.push(index + 1);
 
-  return neighbours.map((i) => ({ service: services[i], index: i }));
+  return neighbours.flatMap((i) => {
+    const service = services.at(i);
+    return service ? [{ service, index: i }] : [];
+  });
 }
 
 export function ServicePage({ service }: Readonly<{ service: Service }>) {
