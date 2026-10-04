@@ -16,7 +16,7 @@ This document maps public website content to its authoritative source. It is a t
 | Supporting description | "Business websites, landing pages, and focused web applications with clear scope and practical implementation." | docs/positioning/messaging-framework.md — supporting message |
 | Services summary | Six approved services with concise summaries | docs/services/README.md and individual service documents |
 | Working approach | Start from the actual business need, define the work clearly, implement the agreed solution, verify the important behavior, and hand over a maintainable result. | docs/sales/freelancer-profile.md — master profile summary |
-| Portfolio status note | Public portfolio work appears only after publication review. | docs/website/public-portfolio-foundation.md — portfolio controls |
+| Portfolio status note | Public portfolio work appears only after publication review. | docs/website/public-portfolio-foundation.md — section 5; portfolio/portfolio-index.md |
 | Primary CTA | "Discuss your website project" | docs/positioning/messaging-framework.md — call-to-action direction |
 
 **Claims/evidence boundary:** The home page does not claim completed portfolio work, client results, credentials, or business outcomes the business cannot guarantee.
@@ -26,7 +26,7 @@ This document maps public website content to its authoritative source. It is a t
 | Surface | Content | Authoritative source |
 |---|---|---|
 | Service overview intro | Each service is structured around a defined business need rather than an open-ended feature list. Scope, deliverables, and boundaries are agreed before implementation. | docs/services/README.md — catalog-wide scope rules |
-| Service cards | Title, summary, and link for each approved service | docs/services/ individual service documents |
+| Service cards | Title, summary, and link for each approved service | docs/services/individual service documents |
 
 **Claims/evidence boundary:** The services overview does not invent additional services, pricing, or guarantees.
 
@@ -34,13 +34,13 @@ This document maps public website content to its authoritative source. It is a t
 
 | Surface | Content | Authoritative source |
 |---|---|---|
-| Title and summary | Approved service title and one-line summary | docs/services/ individual service documents |
-| What this service is for | Approved purpose statement | docs/services/ individual service documents |
-| Typical client need | Approved client/use-case framing | docs/services/ individual service documents; docs/positioning/audience-and-problems.md |
-| Good fit for | Approved audience/use-case list | docs/services/ individual service documents |
-| Typical scope | Approved scope description | docs/services/ individual service documents |
-| Typical deliverables | Approved deliverables list | docs/services/ individual service documents |
-| Typical boundaries | Approved exclusions list | docs/services/ individual service documents |
+| Title and summary | Approved service title and one-line summary | docs/services/individual service documents |
+| What this service is for | Approved purpose statement | docs/services/individual service documents |
+| Typical client need | Approved client/use-case framing | docs/services/individual service documents; docs/positioning/audience-and-problems.md |
+| Good fit for | Approved audience/use-case list | docs/services/individual service documents |
+| Typical scope | Approved scope description | docs/services/individual service documents |
+| Typical deliverables | Approved deliverables list | docs/services/individual service documents |
+| Typical boundaries | Approved exclusions list | docs/services/individual service documents |
 | Service CTA | Descriptive call to action such as "Discuss your website project" | docs/positioning/messaging-framework.md |
 
 **Claims/evidence boundary:** Service pages describe the approved service and boundaries. They do not claim guaranteed outcomes, client results, or pricing.
@@ -49,10 +49,10 @@ This document maps public website content to its authoritative source. It is a t
 
 | Surface | Content | Authoritative source |
 |---|---|---|
-| Page introduction | Selected work will appear here as it becomes publication-ready. | docs/website/public-portfolio-foundation.md — portfolio section |
+| Page introduction | Selected work will appear here as it becomes publication-ready. | docs/website/public-portfolio-foundation.md — section 3, Work / Portfolio |
 | Current portfolio status | The portfolio registry currently contains candidate concepts. | portfolio/portfolio-index.md |
 | Slot disclaimer | These are portfolio slots, not claims of completed client work. | portfolio/portfolio-index.md |
-| Publication requirements | Completed project record, ownership and role, defined scope, evidence, approved screenshots, permission confirmation, reviewed case study. | docs/website/public-portfolio-foundation.md; portfolio/portfolio-index.md |
+| Publication requirements | Completed project record, ownership and role, defined scope, evidence, approved screenshots, permission confirmation, reviewed case study. | docs/website/public-portfolio-foundation.md — section 5; portfolio/portfolio-index.md |
 | Ownership categories | Client, Founder-owned, Demonstration, Concept. | portfolio/portfolio-index.md |
 
 **Claims/evidence boundary:** The Work page does not present fabricated projects, clients, outcomes, metrics, links, or roles.
@@ -73,7 +73,7 @@ This document maps public website content to its authoritative source. It is a t
 
 | Surface | Content | Authoritative source |
 |---|---|---|
-| Page purpose | Start a conversation about a website or web application project. | docs/website/public-portfolio-foundation.md — Contact / Project Discussion |
+| Page purpose | Start a conversation about a website or web application project. | docs/website/public-portfolio-foundation.md — section 3, Contact / Project Discussion |
 | Current state | The route is currently non-live and remains a public project-discussion entry point until the first authenticated customer-platform slice is implemented and authorized. | docs/website/customer-platform-requirements.md |
 | Future behavior | Sign-in → organization → dashboard → Start Your Project → saved project onboarding | docs/website/customer-platform-requirements.md |
 
@@ -96,6 +96,24 @@ These are product requirements, not yet public route commitments.
 | Founder workspace | Internal live operational views | docs/website/customer-platform-requirements.md |
 
 These authenticated surfaces require a secure application data boundary and are not implemented by the current public-site scaffold.
+
+## Reusable content package
+
+A typed content package exists at `website/lib/content.ts` for shared public messaging that multiple routes consume, including:
+
+- `site.name`
+- `site.tagline`
+- `site.shortDescription`
+- `site.description`
+- `messaging.primary`
+- `messaging.supporting`
+- `messaging.approach`
+- `messaging.ctaPrimary`
+- `messaging.ctaSecondary`
+- `messaging.ctaWork`
+- `portfolioStatus.*`
+
+This package is derived from the authoritative sources above and is intended for consistency across routes, not as an override of them.
 
 ## Content source hierarchy
 
