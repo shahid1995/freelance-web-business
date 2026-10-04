@@ -117,7 +117,7 @@ Lead lifecycle state:
 - Lost
 - Closed
 
-The qualification list remains the internal operational state. Customer-facing application labels must use the approved customer-facing timeline instead.
+The lifecycle list above is the complete set of states defined in Section 3. Qualification state remains a separate field and should not be inferred from lifecycle state. Both qualification and lifecycle states are internal operational states; customer-facing application labels must use the approved customer-facing timeline instead.
 
 ## 8. Next-action discipline
 
