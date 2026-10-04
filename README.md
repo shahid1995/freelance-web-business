@@ -13,9 +13,11 @@ A long-term business system for building, operating, and improving a professiona
 
 ## Repository boundary
 
-This repository contains business-level strategy, positioning, service definitions, portfolio material, reusable templates, operating procedures, and the future public portfolio website.
+This repository contains business-level strategy, positioning, service definitions, portfolio material, reusable templates, operating procedures, application source, and source documents governing the future customer-facing application.
 
-Individual client projects remain in separate repositories.
+Individual client projects remain in separate repositories or explicitly approved project boundaries.
+
+Live customer, prospect, payment, document, and project records must not be stored in this public repository.
 
 Never store client passwords, API keys, production secrets, private customer data, or unrelated project code here.
 
@@ -27,7 +29,7 @@ Never store client passwords, API keys, production secrets, private customer dat
 
 ## Current phase
 
-**Phase 4 — Public Portfolio**
+**Phase 4 — Public Website and Customer Platform**
 
 Phase 0 is complete:
 - 0.1 — Dedicated GitHub repository and initial structure
@@ -61,13 +63,19 @@ Phase 3 is structurally complete:
 - Project closure
 - Phase 3 completion review
 
-Phase 4 current work:
-- Portfolio website
-- Domain/hosting
-- Contact flow
-- Analytics
+Phase 4 current direction:
+- Public portfolio website — established
+- Public website visual/design foundation — established
+- Customer platform direction and requirements — approved
+- Customer identity, organization, project, and saved-onboarding foundation — next implementation slice
+- Sales/commercial workflow integration — planned
+- Delivery workspace and lifecycle integration — planned
+- Domain/hosting — deferred
+- Analytics — deferred
 
-Phase 4 establishes the public-facing portfolio system. It does not authorize production deployment or publication by itself.
+Phase 4 now covers the evolution from public presentation website to the customer-facing application described in docs/website/customer-platform-requirements.md.
+
+Phase 4 work does not authorize production deployment, live customer-data processing, external publication, or live provider activation by itself.
 
 Portfolio and sales content remains evidence-based: no client work, results, credentials, ratings, or public claims are created unless they are real and verified.
 
@@ -75,11 +83,11 @@ Pricing remains a separate material business decision and will be documented whe
 
 ## Repository map
 
-docs/          Strategy, governance, positioning, services, pricing, sales, delivery, quality, finance, decisions, conventions
+docs/          Strategy, governance, positioning, services, pricing, sales, delivery, quality, finance, decisions, conventions, website/product requirements
 portfolio/     Portfolio projects, screenshots, case studies, project templates, and portfolio index
 templates/     Reusable proposals, discovery, scope, milestones, QA, handover, communication
 operations/    Checklists, workflows, and trackers
-website/       Public portfolio website source (later phase)
+website/       Public website and future customer-facing application source
 .github/       Issue templates, pull request templates, and repository automation
 
 ## Public repository
