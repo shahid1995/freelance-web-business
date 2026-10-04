@@ -98,7 +98,8 @@ export function ThemeMenu() {
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const itemRefs = useRef(new Map<Theme, HTMLButtonElement>());
+  // Keyed by theme, so a focus target resolves by name rather than position.
+  const itemRefs = useRef<Map<Theme, HTMLButtonElement>>(new Map());
   const menuId = useId();
 
   const close = useCallback((returnFocus: boolean) => {
