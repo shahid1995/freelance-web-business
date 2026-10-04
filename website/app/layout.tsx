@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Inter, Inter_Tight, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { site } from "@/lib/content";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { ThemeMenu } from "@/components/theme-menu";
 
 export const metadata: Metadata = {
   title: {
@@ -70,21 +70,23 @@ export default function RootLayout({
 
         <header className="site-header">
           <div className="site-header-inner">
-            <div className="site-header-brand">
-              <Link className="brand" href="/">
-                {site.name}
-              </Link>
+            <Link className="brand" href="/">
+              {site.name}
+            </Link>
 
-              <ThemeToggle />
+            {/* Right side of the header: primary navigation, then the theme
+                control, keeping the existing hierarchy and alignment. */}
+            <div className="site-header-actions">
+              <nav className="site-nav" aria-label="Primary navigation">
+                {navigation.map((item) => (
+                  <Link key={item.href} href={item.href}>
+                    {item.label}
+                  </Link>
+                ))}
+              </nav>
+
+              <ThemeMenu />
             </div>
-
-            <nav className="site-nav" aria-label="Primary navigation">
-              {navigation.map((item) => (
-                <Link key={item.href} href={item.href}>
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
           </div>
         </header>
 
