@@ -17,12 +17,22 @@ Individual client project implementation remains in the client's separate reposi
 
 Accepted opportunity → Delivery handoff → Discovery → Scope → Milestones → Implementation and QA → Handover → Project closure
 
+The future customer application will provide the operational interface for live customer/project delivery records while preserving these reusable business rules.
+
 Discovery, scope, milestones, QA, handover, and closure must not silently expand the accepted commercial agreement. Material changes require the agreed change-control process.
 
-Client-specific records belong in the client's separate project repository or another explicitly approved operating location, not in this public business repository.
+Client-specific source code remains in the client's separate repository. Live client/project records must use a secure client/project operating location or the future customer application as approved; they do not belong in this public repository.
 
 ## Phase 3 status
 
-Phase 3 has a complete reusable foundation across all six delivery components. The completion review is recorded in `docs/quality/2026-09-27-phase-3-client-delivery-system-review.md`.
+Phase 3 has a complete reusable foundation across all six delivery components. The completion review is recorded in docs/quality/2026-09-27-phase-3-client-delivery-system-review.md.
 
-The delivery system is structurally ready to move to Phase 4. Client-specific delivery records, external client actions, deployment, and publication remain governed by their own approvals and repository boundaries.
+The delivery system remains the governing reusable process for the future application. The customer platform will implement it incrementally rather than replacing it.
+
+## Future customer-platform handoff
+
+The future application should connect:
+
+**Accepted Opportunity → Delivery Onboarding → Discovery → Scope → Milestones → QA → Handover → Closure**
+
+Customer-facing status and communication should be translated into plain language, while internal state, evidence, approvals, and governance remain controlled by the Founder and the application.
