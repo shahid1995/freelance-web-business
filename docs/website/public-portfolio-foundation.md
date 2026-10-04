@@ -280,21 +280,24 @@ A merged PR does not itself authorize deployment or publication.
 
 The initial public site supports:
 
-| Route | Purpose | Publication status |
+| Route | Purpose | Implementation status |
 |---|---|---|
-| / | Core value proposition and primary CTA | Established |
-| /services | Service overview | Established |
-| /services/business-websites | Business website service | Established |
-| /services/landing-pages | Landing page service | Established |
-| /services/redesign-modernization | Redesign service | Established |
-| /services/custom-web-applications | Custom application service | Established |
-| /services/dashboards-portals | Dashboard/portal service | Established |
-| /services/maintenance-improvements | Maintenance service | Established |
-| /work | Portfolio registry presentation | Established |
-| /about | Business and working approach | Established |
-| /contact | Project discussion entry point | Established, currently non-live |
+| / | Core value proposition and primary CTA | Implemented, unpublished |
+| /services | Service overview | Implemented, unpublished |
+| /services/business-websites | Business website service | Implemented, unpublished |
+| /services/landing-pages | Landing page service | Implemented, unpublished |
+| /services/redesign-modernization | Redesign service | Implemented, unpublished |
+| /services/custom-web-applications | Custom application service | Implemented, unpublished |
+| /services/dashboards-portals | Dashboard/portal service | Implemented, unpublished |
+| /services/maintenance-improvements | Maintenance service | Implemented, unpublished |
+| /work | Portfolio registry presentation | Implemented, unpublished |
+| /about | Business and working approach | Implemented, unpublished |
+| /contact | Project discussion entry point | Implemented, non-live, unpublished |
 
 Authenticated customer application surfaces are governed by customer-platform requirements and are not limited to the public route list above.
+
+A route can remain unlinked or unpublished until its content and evidence are approved.
+
 
 ## 15. Data and source boundary
 
