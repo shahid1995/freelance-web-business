@@ -27,11 +27,6 @@ const STORAGE_KEY = "theme";
 /** Menu order is fixed: Light first, Dark second. */
 const OPTIONS: readonly Theme[] = ["light", "dark"];
 
-const LABELS: Record<Theme, string> = {
-  light: "Light",
-  dark: "Dark",
-};
-
 /**
  * Inline SVG glyphs drawn with `currentColor`, so they inherit the row's text
  * colour and stay legible in both themes without a second set of assets. Both
@@ -103,7 +98,7 @@ export function ThemeMenu() {
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const itemRefs = useRef(new Map<Theme, HTMLButtonElement>());
   const menuId = useId();
 
   const close = useCallback((returnFocus: boolean) => {
@@ -142,8 +137,7 @@ export function ThemeMenu() {
   // Opening the menu moves focus to the item for the active theme.
   useEffect(() => {
     if (!open) return;
-    const index = Math.max(0, OPTIONS.indexOf(theme));
-    itemRefs.current[index]?.focus();
+    itemRefs.current.get(theme)?.focus();
   }, [open, theme]);
 
   const onTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
@@ -154,15 +148,19 @@ export function ThemeMenu() {
   };
 
   const onMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    const active = itemRefs.current.findIndex(
-      (item) => item === document.activeElement,
+    const active = OPTIONS.findIndex(
+      (option) => itemRefs.current.get(option) === document.activeElement,
     );
 
+    // Arrow/Home/End walk OPTIONS by position, then resolve the button
+    // through the theme-keyed map, so no index is used to reach a value.
     const focusAt = (next: number) => {
       event.preventDefault();
-      const items = itemRefs.current;
-      const bounded = (next + items.length) % items.length;
-      items[bounded]?.focus();
+      const bounded = (next + OPTIONS.length) % OPTIONS.length;
+      const target = OPTIONS.at(bounded);
+      if (target) {
+        itemRefs.current.get(target)?.focus();
+      }
     };
 
     switch (event.key) {
@@ -176,7 +174,7 @@ export function ThemeMenu() {
         focusAt(0);
         break;
       case "End":
-        focusAt(itemRefs.current.length - 1);
+        focusAt(OPTIONS.length - 1);
         break;
       case "Tab":
         // Let focus leave naturally, but do not leave the menu open behind it.
@@ -234,13 +232,17 @@ export function ThemeMenu() {
           aria-label="Theme"
           onKeyDown={onMenuKeyDown}
         >
-          {OPTIONS.map((option, index) => {
+          {OPTIONS.map((option) => {
             const selected = option === theme;
             return (
               <button
                 key={option}
                 ref={(node) => {
-                  itemRefs.current[index] = node;
+                  if (node) {
+                    itemRefs.current.set(option, node);
+                  } else {
+                    itemRefs.current.delete(option);
+                  }
                 }}
                 type="button"
                 role="menuitemradio"
@@ -283,7 +285,7 @@ export function ThemeMenu() {
                   {option === "light" ? SUN_ICON : MOON_ICON}
                 </svg>
 
-                {LABELS[option]}
+                {option === "light" ? "Light" : "Dark"}
               </button>
             );
           })}
