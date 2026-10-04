@@ -50,7 +50,9 @@ function applyTheme(next: Theme) {
     // The theme still applies for this visit; it just will not persist.
   }
 
-  listeners.forEach((listener) => listener());
+  listeners.forEach((listener) => {
+    listener();
+  });
 }
 
 export function ThemeToggle() {

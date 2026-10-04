@@ -44,12 +44,6 @@ const navigation = [
   { href: "/contact", label: "Contact" },
 ];
 
-// Runs before the document paints so a stored Dark preference is applied to
-// <html> without a visible Light -> Dark flash. It only ever writes "dark":
-// leaving the attribute off keeps the plain `:root` tokens, so a visitor with
-// no preference sees exactly the default Light theme.
-const themeInitScript = `(function(){try{var t=window.localStorage.getItem("theme");if(t==="dark"){document.documentElement.setAttribute("data-theme","dark");}}catch(e){}})();`;
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -65,7 +59,9 @@ export default function RootLayout({
       className={`${inter.variable} ${interTight.variable} ${jetBrainsMono.variable}`}
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        {/* Applies a stored theme before first paint. A real file rather than
+            an inline script, so the page ships no inline JavaScript. */}
+        <script src="/theme-init.js" />
       </head>
       <body>
         <a className="skip-link" href="#main-content">
