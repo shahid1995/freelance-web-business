@@ -1403,6 +1403,210 @@ h3 {
 }
 
 /* ==========================================================================
+   Customer platform — authenticated application surfaces
+   Scoped to the customer routes (/sign-in, /onboarding, /dashboard). Uses the
+   same token layer as the public site; no public page depends on these rules.
+   ========================================================================== */
+
+.portal {
+  padding-block: var(--rhythm-section);
+}
+
+.portal__panel {
+  padding: var(--space-6);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.portal__panel--narrow {
+  max-width: var(--container-narrow);
+  margin-inline: auto;
+}
+
+.portal__stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.portal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.portal__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.portal__meta {
+  color: var(--text-subtle);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+/* --- Forms ------------------------------------------------------------- */
+
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.field__label {
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.field__hint {
+  color: var(--text-subtle);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans), var(--font-fallback-sans);
+  font-size: var(--text-base);
+  line-height: 1.5;
+}
+
+.textarea {
+  min-height: 6.5rem;
+  resize: vertical;
+}
+
+.input:focus-visible,
+.textarea:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.form-notice {
+  padding: var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: var(--text-base);
+  line-height: 1.6;
+}
+
+.form-notice--error {
+  border-left-color: #d9645f;
+}
+
+/* --- Project list ------------------------------------------------------ */
+
+.project-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+}
+
+.project-row__reference {
+  color: var(--text-subtle);
+  font-family: var(--font-mono), var(--font-fallback-mono);
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
+}
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 12rem;
+}
+
+.progress__track {
+  height: 0.375rem;
+  border-radius: var(--radius-sm);
+  background: var(--line);
+  overflow: hidden;
+}
+
+.progress__fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.progress__label {
+  color: var(--text-subtle);
+  font-size: var(--text-sm);
+}
+
+.badge {
+  align-self: flex-start;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-family: var(--font-mono), var(--font-fallback-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+/* --- Intake ------------------------------------------------------------ */
+
+.intake-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--line);
+}
+
+.intake-section:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* ==========================================================================
    Reduced motion
    ========================================================================== */
 

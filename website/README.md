@@ -81,7 +81,7 @@ The portfolio route intentionally shows no published work until the repository p
 
 ## Customer platform direction
 
-The future authenticated application follows:
+The authenticated application follows:
 
 **Person → Organization → Projects**
 
@@ -90,6 +90,81 @@ The first implementation slice is intentionally limited to:
 **passwordless customer identity → organization creation → customer dashboard → project creation → saved project onboarding progress**
 
 The current product contract is docs/website/customer-platform-requirements.md.
+
+## Customer platform architecture
+
+The customer platform is implemented under `lib/platform/` and is deliberately kept
+separate from the public content model in `lib/content.ts` and `lib/services.ts`.
+
+| Area | Location | Notes |
+|---|---|---|
+| Domain records | `lib/platform/domain.ts` | Provider-neutral logical model from the foundation ADR |
+| Data store port | `lib/platform/ports.ts` | Services depend on this interface only |
+| SQLite adapter | `lib/platform/sqlite-store.ts` | `node:sqlite`; no database dependency added |
+| Email port | `lib/platform/ports.ts` | `EmailDelivery` |
+| Local mail sink | `lib/platform/local-email.ts` | No provider activated |
+| Authentication | `lib/platform/auth.ts` | Single-use hashed challenge, rate limits, enumeration-safe |
+| Sessions | `lib/platform/sessions.ts` | Opaque value, hashed at rest, environment-aware cookie |
+| Authorization | `lib/platform/authorization.ts` | The policy matrix, evaluated server-side |
+| Organizations | `lib/platform/organizations.ts` | Idempotent creation, first user becomes owner |
+| Projects | `lib/platform/projects.ts` | Administrator-only creation, automatic intake draft |
+| Project Intake | `lib/platform/intake.ts` | Partial saves, closed field list, access checked per operation |
+| Customer projections | `lib/platform/views.ts` | Builds customer objects field by field |
+| Request guard | `lib/platform/http.ts` | Origin check plus session requirement |
+| Next.js adapter | `lib/platform/server.ts` | Reads headers, redirects; no authorization logic |
+| Wiring | `lib/platform/container.ts` | Lazy build of one instance per process |
+
+Customer routes:
+
+- /sign-in
+- /onboarding/organization
+- /dashboard
+- /dashboard/projects/{reference}/intake
+
+Endpoints (all state-changing requests are same-origin POSTs):
+
+- POST /api/auth/request-link
+- GET  /api/auth/verify
+- POST /api/auth/sign-out
+- POST /api/organization
+- POST /api/projects
+- POST /api/projects/{reference}/intake
+
+### Data store
+
+`node:sqlite`, the Node built-in, behind the `PlatformStore` port. It adds no
+dependency and keeps local development working without an external service. A
+managed database is a separate, later decision; swapping it means writing a new
+adapter and changing no authorization or domain rule.
+
+The local database defaults to `.local/customer-platform.sqlite`, which is ignored
+by version control. Customer records must never be committed.
+
+### Email delivery
+
+`EmailDelivery` is the boundary. The only implementation in this slice is
+`LocalEmailSink`, which keeps messages in memory; no live provider is activated.
+
+### Environment variables
+
+None are required for local development. All are optional:
+
+| Variable | Purpose |
+|---|---|
+| `CUSTOMER_PLATFORM_DATABASE_PATH` | Database file location, or `:memory:` |
+| `CUSTOMER_PLATFORM_MAIL_LOG` | Development-only file the local sink appends delivered sign-in links to, so the flow can be followed locally. Forced off in production |
+| `CUSTOMER_PLATFORM_SESSION_TTL_MINUTES` | Session lifetime (default 10080) |
+| `CUSTOMER_PLATFORM_SIGN_IN_LINK_TTL_MINUTES` | Sign-in link lifetime (default 15) |
+| `CUSTOMER_PLATFORM_COOKIE_SAMESITE` | `lax` (default) or `strict` |
+| `CUSTOMER_PLATFORM_APP_ORIGIN` | Comma-separated origin allow-list for state-changing requests. When set it is the entire decision; otherwise the request's own origin is used |
+
+To follow the sign-in flow locally:
+
+```
+CUSTOMER_PLATFORM_MAIL_LOG=.local/dev-mail.log npm run dev
+```
+
+then read the last line of `.local/dev-mail.log` and open its `signInUrl`.
 
 ## Local verification
 
@@ -102,8 +177,12 @@ From this directory:
 
 - npm install
 - npm run typecheck
+- npm test
 - npm run dev
 - npm run build
+
+`npm test` compiles `lib/platform` and `tests` with `tsconfig.test.json` into
+`.test-build` and runs the built-in Node test runner. No test dependency is added.
 
 Production deployment and live customer operation are not part of the current scaffold.
 

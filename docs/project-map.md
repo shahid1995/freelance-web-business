@@ -66,7 +66,7 @@ Current:
 - Website visual/design foundation — established
 - Customer platform direction — approved
 - Customer platform requirements — established
-- Customer identity, organization, project, and saved-onboarding foundation — next implementation slice
+- Customer identity, organization, project, and saved-onboarding foundation — implemented as a first vertical slice (passwordless sign-in → organization creation → customer dashboard → project creation → saved Project Intake draft), not yet merged, deployed, or activated against live customers
 - Sales and proposal workflow integration — planned
 - Commercial acceptance, agreement, payments — planned
 - Delivery workspace, milestones, QA, handover, closure integration — planned
@@ -74,7 +74,9 @@ Current:
 - Domain/hosting — deferred
 - Analytics — deferred
 
-The customer platform requirements are defined in docs/website/customer-platform-requirements.md. Product direction is recorded in docs/decisions/2026-10-04-customer-platform-direction.md.
+The customer platform requirements are defined in docs/website/customer-platform-requirements.md. Product direction is recorded in docs/decisions/2026-10-04-customer-platform-direction.md. The implementation architecture is described in website/README.md.
+
+The first slice uses a local SQLite data store and a local email sink behind provider-neutral ports. Selecting a managed database and activating a live email provider remain separate decisions.
 
 Phase 4 does not authorize production deployment, external publication, live provider activation, or live customer-data processing.
 
