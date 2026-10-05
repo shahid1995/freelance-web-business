@@ -58,6 +58,20 @@ export const CUSTOMER_STAGE_LABELS: Record<CustomerProjectStage, string> = {
   completed: "Completed",
 };
 
+/**
+ * The single date format the portal surfaces use.
+ *
+ * Was declared separately in each page, which meant the same five-line literal
+ * appeared four times and a formatting change meant four edits. Presentation
+ * concerns belong here with the other shaping helpers rather than being copied
+ * into route files.
+ */
+export const PORTAL_DATE_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "UTC",
+});
+
 export interface CustomerProjectSummary {
   /** Stable, non-sensitive reference. Not the internal record id. */
   reference: string;

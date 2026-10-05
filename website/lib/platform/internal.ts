@@ -29,6 +29,7 @@ import {
   type FounderDecision,
   type Person,
   type ProjectId,
+  type ProjectInternal,
 } from "./domain";
 import type { Clock } from "./clock";
 import { requireFounderCapability } from "./authorization";
@@ -158,23 +159,19 @@ export class FounderWorkspaceService {
    */
   queue(personId: string): FounderQueueRow[] {
     this.requireFounder(personId);
-    const rows = this.options.store.listSubmittedIntakeProjects(QUEUE_LIMIT);
-
-    // Organization names are resolved per project rather than in the queue query:
-    // the store port returns projects, not joined organization rows, and a
-    // project always belongs to exactly one organization.
-    return rows.map(({ project, submittedAt }) => {
-      const organization = this.requireOrganization(project.organizationId);
-      return buildFounderQueueRow({
-        project,
-        organizationName: organization.name,
-        // Derived from the intake progress and the Founder's explicit review
-        // marker, exactly as the review page and the customer projection do. The
-        // queue only ever holds submitted intakes, so that is the status passed.
-        customerStage: customerStageFor({ status: "submitted" }, project.reviewStartedAt),
-        submittedAt,
-      });
-    });
+    return this.options.store
+      .listSubmittedIntakeProjects(QUEUE_LIMIT)
+      .map(({ project, organizationName, submittedAt }) =>
+        buildFounderQueueRow({
+          project,
+          organizationName,
+          // Derived from the intake progress and the Founder's explicit review
+          // marker, exactly as the review page and the customer projection do. The
+          // queue only ever holds submitted intakes, so that is the status passed.
+          customerStage: customerStageFor({ status: "submitted" }, project.reviewStartedAt),
+          submittedAt,
+        }),
+      );
   }
 
   /**
@@ -275,21 +272,16 @@ export class FounderWorkspaceService {
         patch: { reviewStartedAt: now },
         now,
       });
-      this.options.store.appendAuditEvent({
-        id: this.options.newId(),
-        organizationId: project.organizationId,
-        personId: input.personId,
-        projectId: project.id,
+      this.recordEvent({
         type: "project_intake.review_started",
-        occurredAt: now,
-        metadata: null,
-      });
-      this.options.store.appendAuditEvent({
-        id: this.options.newId(),
-        organizationId: project.organizationId,
         personId: input.personId,
-        projectId: project.id,
+        project,
+        occurredAt: now,
+      });
+      this.recordEvent({
         type: "project.customer_stage_changed",
+        personId: input.personId,
+        project,
         occurredAt: now,
         metadata: { from: "intake_information_submitted", to: "intake_review" },
       });
@@ -326,12 +318,10 @@ export class FounderWorkspaceService {
         patch: { qualificationState: state },
         now,
       });
-      this.options.store.appendAuditEvent({
-        id: this.options.newId(),
-        organizationId: project.organizationId,
-        personId: input.personId,
-        projectId: project.id,
+      this.recordEvent({
         type: "project.qualification_changed",
+        personId: input.personId,
+        project,
         occurredAt: now,
         metadata: { from: project.qualificationState, to: state },
       });
@@ -368,14 +358,11 @@ export class FounderWorkspaceService {
         patch: { internalNotes: notes },
         now,
       });
-      this.options.store.appendAuditEvent({
-        id: this.options.newId(),
-        organizationId: project.organizationId,
-        personId: input.personId,
-        projectId: project.id,
+      this.recordEvent({
         type: eventType,
+        personId: input.personId,
+        project,
         occurredAt: now,
-        metadata: null,
       });
     });
 
@@ -407,12 +394,10 @@ export class FounderWorkspaceService {
         patch: { founderDecision: decision },
         now,
       });
-      this.options.store.appendAuditEvent({
-        id: this.options.newId(),
-        organizationId: project.organizationId,
-        personId: input.personId,
-        projectId: project.id,
+      this.recordEvent({
         type: "project.founder_decision_recorded",
+        personId: input.personId,
+        project,
         occurredAt: now,
         metadata: { decision },
       });
@@ -438,18 +423,41 @@ export class FounderWorkspaceService {
         patch: { internalNextAction: nextAction },
         now,
       });
-      this.options.store.appendAuditEvent({
-        id: this.options.newId(),
-        organizationId: project.organizationId,
-        personId: input.personId,
-        projectId: project.id,
+      this.recordEvent({
         type: "project.internal_next_action_recorded",
+        personId: input.personId,
+        project,
         occurredAt: now,
-        metadata: null,
       });
     });
 
     return this.review(input.personId, project.id);
+  }
+
+  /**
+   * Appends one internal audit event.
+   *
+   * Every internal action records the same shape — who acted, on which project in
+   * which organization, when — and only the event type and metadata differ. Naming
+   * it once keeps those two facts impossible to get wrong in one action but not
+   * another, and avoids repeating the same object literal in every branch.
+   */
+  private recordEvent(input: {
+    type: AuditEventType;
+    personId: string;
+    project: ProjectInternal;
+    occurredAt: number;
+    metadata?: Record<string, unknown>;
+  }): void {
+    this.options.store.appendAuditEvent({
+      id: this.options.newId(),
+      organizationId: input.project.organizationId,
+      personId: input.personId,
+      projectId: input.project.id,
+      type: input.type,
+      occurredAt: input.occurredAt,
+      metadata: input.metadata ?? null,
+    });
   }
 
   private requireProject(projectId: ProjectId) {

@@ -9,6 +9,7 @@ import {
 } from "@/lib/platform/domain";
 import { internalNoticeFor } from "@/lib/platform/internal-notices";
 import { isMissing, requireSessionForPage } from "@/lib/platform/server";
+import { PORTAL_DATE_FORMAT } from "@/lib/platform/views";
 
 export const dynamic = "force-dynamic";
 
@@ -16,12 +17,6 @@ export const metadata: Metadata = {
   title: "Project review",
   robots: { index: false, follow: false },
 };
-
-const DATE_FORMAT = new Intl.DateTimeFormat("en-GB", {
-  dateStyle: "medium",
-  timeStyle: "short",
-  timeZone: "UTC",
-});
 
 /**
  * Founder project review.
@@ -77,7 +72,7 @@ export default async function InternalReviewPage({
             <h1>{review.project.title}</h1>
             <p className="portal__meta">
               {review.organization.name} · created{" "}
-              {DATE_FORMAT.format(new Date(review.project.createdAt))}
+              {PORTAL_DATE_FORMAT.format(new Date(review.project.createdAt))}
             </p>
           </div>
         </div>
@@ -116,7 +111,7 @@ export default async function InternalReviewPage({
             <p className="portal__meta">
               {review.intake.status} · schema v{review.intake.schemaVersion} ·{" "}
               {review.intake.submittedAt
-                ? `submitted ${DATE_FORMAT.format(new Date(review.intake.submittedAt))}`
+                ? `submitted ${PORTAL_DATE_FORMAT.format(new Date(review.intake.submittedAt))}`
                 : "not submitted"}
             </p>
           ) : (
@@ -136,7 +131,7 @@ export default async function InternalReviewPage({
           <h2>Review</h2>
           <p className="portal__meta">
             {reviewStartedAt !== null
-              ? `Review started ${DATE_FORMAT.format(new Date(reviewStartedAt))}`
+              ? `Review started ${PORTAL_DATE_FORMAT.format(new Date(reviewStartedAt))}`
               : "Review has not been started."}
           </p>
           {submitted && !reviewStarted ? (
@@ -249,7 +244,7 @@ export default async function InternalReviewPage({
                   <div className="portal__stack">
                     <span>{entry.type}</span>
                     <span className="portal__meta">
-                      {DATE_FORMAT.format(new Date(entry.occurredAt))}
+                      {PORTAL_DATE_FORMAT.format(new Date(entry.occurredAt))}
                     </span>
                   </div>
                 </li>

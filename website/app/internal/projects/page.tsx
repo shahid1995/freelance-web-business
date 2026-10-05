@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { isMissing, requireSessionForPage } from "@/lib/platform/server";
+import { PORTAL_DATE_FORMAT } from "@/lib/platform/views";
 
 export const dynamic = "force-dynamic";
 
@@ -10,12 +11,6 @@ export const metadata: Metadata = {
   title: "Project queue",
   robots: { index: false, follow: false },
 };
-
-const DATE_FORMAT = new Intl.DateTimeFormat("en-GB", {
-  dateStyle: "medium",
-  timeStyle: "short",
-  timeZone: "UTC",
-});
 
 /**
  * Founder project queue.
@@ -84,7 +79,7 @@ export default async function InternalProjectQueuePage() {
                   </div>
                   <div className="portal__stack">
                     <span className="portal__meta">
-                      {DATE_FORMAT.format(new Date(row.submittedAt))}
+                      {PORTAL_DATE_FORMAT.format(new Date(row.submittedAt))}
                     </span>
                     <span className="portal__meta">{row.customerStageLabel}</span>
                     <span className="portal__meta">

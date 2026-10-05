@@ -31,15 +31,20 @@ export interface RateLimitWindow {
 }
 
 /**
- * A project paired with the fact that its Project Intake was submitted.
+ * A project paired with the fact that its Project Intake was submitted, and with
+ * the name of the organization that owns it.
  *
  * Carries only the submission timestamp rather than the whole intake: the queue
  * needs to know that an intake exists and when it arrived, and returning the
  * answers would put customer-submitted content into a listing surface for no
  * reason.
+ *
+ * The organization name travels with the row so the queue does not have to look
+ * it up once per project.
  */
 export interface SubmittedIntakeProject {
   project: ProjectInternal;
+  organizationName: string;
   submittedAt: number;
 }
 
