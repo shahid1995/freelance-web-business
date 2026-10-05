@@ -2,6 +2,23 @@
 
 ## 2026-10-05
 
+### Founder Workspace and Project Intake review (implementation)
+- Implemented the approved Founder/internal workspace slice defined in docs/decisions/2026-10-05-customer-platform-founder-workspace.md.
+- Added a dedicated server-side internal capability (`founder`) attached to a Person, independent of organization membership and customer roles, never inferred from an organization owner/admin role, never grantable through customer UI or customer endpoints, and never returned in a customer response. Initial assignment is a controlled server-side bootstrap from `CUSTOMER_PLATFORM_FOUNDER_EMAIL_HASHES`, which is empty by default.
+- Documented and regression-tested the capability lifecycle as **initial assignment rather than a live allow-list**, matching the accepted decision: once a person holds the capability the stored grant is authoritative, and removing an address hash from configuration does not revoke it. Revocation is an explicit server-side operation. The slice has no administration surface, so nothing can revoke today; a revocation made while the hash stays configured would be re-established by the bootstrap, recorded as a known limitation needing its own decision before any administration surface exists.
+- Added a separate internal route tree (/internal/projects/{reference}/review) and API surface (/api/internal/projects/{reference}/review), with no links from customer-facing UI and no shared handler with the customer endpoints. Internal authorization is checked on the server on every operation and state-changing requests keep the existing session and origin protections.
+- Added a strictly read-only Founder review view showing the organization, customer identity, project, submitted Project Intake, customer-facing stage, and audit history, built field by field in a separate internal projection that drops audit metadata.
+- Added an explicit Start Review action, the only thing that moves the customer-facing stage from Project Intake — Information submitted to Project Intake — Review. Loading the review page performs no write and creates no audit event.
+- Added internal-only qualification state, internal notes, Founder decision, and internal next action, each Founder-only, server-authorized, persisted to the same project, and audited. None of them moves the customer-facing stage.
+- Closed the Founder decision vocabulary to proceed, clarification_required, not_a_fit, and hold. Unknown and empty values are rejected on the server and never coerced; the decision is stored separately from qualification state and is never derived from it.
+- Added audit events project_intake.review_started, project.customer_stage_changed, project.qualification_changed, project.internal_note_added, project.internal_note_updated, project.founder_decision_recorded, and project.internal_next_action_recorded.
+- Made project references globally unique with a database-enforced unique index, so a customer-visible reference identifies exactly one project across the whole platform rather than one per organization. Reference allocation now checks globally instead of per organization, the customer organization-scoped lookup and project-access rules are unchanged, and a database that already contains cross-organization duplicates fails to open with an explanatory message rather than rewriting any existing reference.
+- Preserved the approved organization/project access model and the existing customer projections unchanged; customer responses still carry no internal field.
+- Added 36 focused tests covering internal authorization, review behaviour, state separation, Founder decision validation, and access preservation.
+- Did not deploy, activate any provider, or process live customer data. Proposal generation, proposal acceptance, agreements/e-signature, payments, delivery onboarding, AI/LLM, analytics, file storage, and customer chat remain out of scope.
+
+## 2026-10-05
+
 ### Customer platform foundation merged and Founder-approved
 - Merged the first customer-platform vertical slice (PR #35, merge commit 904057f) into main.
 - Recorded Founder approval of the Customer Platform Foundation decision (docs/decisions/2026-10-04-customer-platform-foundation.md): Status Accepted, approved 2026-10-05.

@@ -105,11 +105,13 @@ separate from the public content model in `lib/content.ts` and `lib/services.ts`
 | Local mail sink | `lib/platform/local-email.ts` | No provider activated |
 | Authentication | `lib/platform/auth.ts` | Single-use hashed challenge, rate limits, enumeration-safe |
 | Sessions | `lib/platform/sessions.ts` | Opaque value, hashed at rest, environment-aware cookie |
-| Authorization | `lib/platform/authorization.ts` | The policy matrix, evaluated server-side |
+| Authorization | `lib/platform/authorization.ts` | The customer policy matrix plus the separate internal capability check, both evaluated server-side |
 | Organizations | `lib/platform/organizations.ts` | Idempotent creation, first user becomes owner |
 | Projects | `lib/platform/projects.ts` | Administrator-only creation, automatic intake draft |
 | Project Intake | `lib/platform/intake.ts` | Partial saves, closed field list, access checked per operation |
 | Customer projections | `lib/platform/views.ts` | Builds customer objects field by field |
+| Founder workspace | `lib/platform/internal.ts` | Founder-only: read-only review plus the explicit Start Review action |
+| Internal projections | `lib/platform/internal-views.ts` | Internal view built field by field; drops audit metadata |
 | Request guard | `lib/platform/http.ts` | Origin check plus session requirement |
 | Next.js adapter | `lib/platform/server.ts` | Reads headers, redirects; no authorization logic |
 | Wiring | `lib/platform/container.ts` | Lazy build of one instance per process |
@@ -129,6 +131,39 @@ Endpoints (all state-changing requests are same-origin POSTs):
 - POST /api/organization
 - POST /api/projects
 - POST /api/projects/{reference}/intake
+
+### Founder workspace
+
+A separate internal surface, governed by
+`docs/decisions/2026-10-05-customer-platform-founder-workspace.md`:
+
+- /internal/projects/{reference}/review
+- POST /api/internal/projects/{reference}/review
+
+It is not linked from any customer page and shares no handler with the customer
+endpoints. Access requires a session holding the `founder` internal capability,
+which is checked on the server on every operation and is never inferred from an
+organization owner/admin role.
+
+`CUSTOMER_PLATFORM_FOUNDER_EMAIL_HASHES` is **initial assignment, not a live
+allow-list**. A person whose hash is listed is granted the capability the first
+time the workspace sees them; after that the stored grant is authoritative, and
+removing the hash does not revoke it. Revocation is an explicit server-side
+operation against the stored grant. This is the semantics the approved ADR fixes
+("assigned only through controlled server-side bootstrap/configuration"); treating
+the variable as a live allow-list would make the persisted capability
+meaningless. The variable is empty by default, so no one holds internal access
+until a deployment deliberately sets it.
+
+Opening the review page is strictly read-only. The customer-facing stage moves
+on to *Project Intake — Review* only through the explicit **Start Review** POST,
+which is authorized and audited. Internal qualification state, internal notes,
+the Founder decision, and the internal next action are internal-only and have no
+field in any customer projection.
+
+The Founder decision vocabulary is closed to `proceed`, `clarification_required`,
+`not_a_fit`, and `hold`; anything else is rejected on the server. It is stored
+separately from qualification state and is never derived from it.
 
 ### Data store
 
@@ -159,6 +194,7 @@ None are required for local development. All are optional:
 | `CUSTOMER_PLATFORM_COOKIE_SAMESITE` | `lax` (default) or `strict` |
 | `CUSTOMER_PLATFORM_APP_ORIGIN` | Comma-separated origin allow-list for state-changing requests. When set it is the entire decision; otherwise the request's own origin is used |
 | `CUSTOMER_PLATFORM_TRUSTED_PROXY_HOPS` | Number of trusted proxies in front of the app (default **0**) |
+| `CUSTOMER_PLATFORM_FOUNDER_EMAIL_HASHES` | Comma-separated SHA-256 hashes of the email addresses that hold the `founder` internal capability. **Empty by default**, so no one has internal access until it is set deliberately. The hash is the same value already used to look a person up by address, so no raw address has to be written into configuration |
 
 ### Trusted proxies and rate-limit identity
 

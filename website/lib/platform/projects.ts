@@ -87,13 +87,16 @@ export class ProjectService {
       const project: ProjectInternal = {
         id: this.options.newId(),
         organizationId: input.organizationId,
-        reference: this.newReference(input.organizationId),
+        reference: this.newReference(),
         title: normalizeTitle(input.title),
         createdByPersonId: input.personId,
         createdAt: now,
         updatedAt: now,
-        // Internal state starts unset and is owned by the later Founder
-        // workspace. It is never returned to a customer.
+        // Set only by the explicit Founder Start Review action. Null means the
+        // customer-facing stage stays where intake progress puts it.
+        reviewStartedAt: null,
+        // Internal state starts unset and is owned by the Founder workspace. It
+        // is never returned to a customer.
         qualificationState: "unreviewed",
         internalNotes: null,
         founderDecision: null,
@@ -298,13 +301,15 @@ export class ProjectService {
     );
   }
 
-  private newReference(organizationId: string): string {
-    // Collision detection uses the indexed lookup rather than loading the whole
-    // organization's project list. The database unique constraint on
-    // (organization_id, reference) remains the actual guarantee.
+  private newReference(): string {
+    // Collision detection uses the indexed global lookup rather than loading a
+    // project list. Uniqueness is platform-wide, so the check cannot be scoped to
+    // one organization: a reference already used elsewhere must also be avoided.
+    // The database unique index on `reference` remains the actual guarantee, so a
+    // lost race surfaces as a constraint violation rather than a duplicate.
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const reference = generateProjectReference();
-      if (!this.options.store.findProjectByReference(organizationId, reference)) {
+      if (!this.options.store.findProjectByReferenceGlobal(reference)) {
         return reference;
       }
     }

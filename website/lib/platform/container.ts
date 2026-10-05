@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 import { systemClock, type Clock } from "./clock";
 import { loadPlatformConfig, type PlatformConfig, type EnvironmentLike } from "./config";
 import { AuthService } from "./auth";
+import { FounderWorkspaceService } from "./internal";
 import { IntakeService } from "./intake";
 import { LocalEmailSink } from "./local-email";
 import { OrganizationService } from "./organizations";
@@ -33,6 +34,8 @@ export interface Platform {
   organizations: OrganizationService;
   projects: ProjectService;
   intake: IntakeService;
+  /** Founder-only. Never mounted into the customer workspace. */
+  internal: FounderWorkspaceService;
   close(): void;
 }
 
@@ -103,6 +106,12 @@ export async function createPlatform(
     }),
     projects: new ProjectService({ store: resolvedStore, clock, newId }),
     intake: new IntakeService({ store: resolvedStore, clock, newId }),
+    internal: new FounderWorkspaceService({
+      store: resolvedStore,
+      clock,
+      newId,
+      founderEmailHashes: config.founderEmailHashes,
+    }),
     close() {
       if (ownsStore) {
         resolvedStore.close();

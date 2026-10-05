@@ -40,6 +40,26 @@ export interface PlatformConfig {
    * to a file on a deployed environment.
    */
   mailLogPath: string | null;
+  /**
+   * SHA-256 hashes of the email addresses that hold the `founder` internal
+   * capability, supplied by server-side configuration.
+   *
+   * This is the controlled bootstrap the Founder Workspace ADR requires for the
+   * *initial* assignment. It is deliberately a list of hashes rather than
+   * addresses: the hashes are already the lookup key for a person, so no raw
+   * address has to be written into configuration to identify the Founder.
+   *
+   * This is **not** a live allow-list. Once a person holds the capability the
+   * stored grant is authoritative, and removing a hash here does not revoke it;
+   * revocation is an explicit server-side operation. Reading it as a live
+   * allow-list would contradict the approved decision, which approves this as the
+   * mechanism “by which the initial `founder` capability is assigned”.
+   *
+   * Empty by default, which means no one gains internal access until a deployment
+   * deliberately configures it. Selecting and authorizing any production
+   * arrangement is a separate Founder decision.
+   */
+  founderEmailHashes: string[];
   signInLimits: { perAddress: RateLimitRule; perClient: RateLimitRule };
   verifyLimits: { perClient: RateLimitRule; perLink: RateLimitRule };
 }
@@ -56,6 +76,7 @@ export const DEFAULT_CONFIG: PlatformConfig = {
   sessionCookieSameSite: "lax",
   allowedOrigins: [],
   mailLogPath: null,
+  founderEmailHashes: [],
   signInLimits: {
     perAddress: { limit: 5, windowMs: 15 * MINUTE },
     perClient: { limit: 20, windowMs: 15 * MINUTE },
@@ -80,7 +101,8 @@ function readNonNegativeInt(raw: string | undefined, fallback: number): number {
   return parsed;
 }
 
-function readOrigins(raw: string | undefined): string[] {
+/** Reads a comma-separated list, dropping blank entries. */
+function readCommaSeparatedList(raw: string | undefined): string[] {
   if (!raw) return [];
   return raw
     .split(",")
@@ -115,9 +137,10 @@ export function loadPlatformConfig(
       readPositiveInt(env.CUSTOMER_PLATFORM_SIGN_IN_LINK_TTL_MINUTES, 15) * MINUTE,
     sessionCookieSameSite:
       env.CUSTOMER_PLATFORM_COOKIE_SAMESITE === "strict" ? "strict" : "lax",
-    allowedOrigins: readOrigins(env.CUSTOMER_PLATFORM_APP_ORIGIN),
+    allowedOrigins: readCommaSeparatedList(env.CUSTOMER_PLATFORM_APP_ORIGIN),
     // Never write delivered sign-in links to a file on a deployed environment,
     // whatever the configuration says.
     mailLogPath: isProduction ? null : (env.CUSTOMER_PLATFORM_MAIL_LOG ?? null),
+    founderEmailHashes: readCommaSeparatedList(env.CUSTOMER_PLATFORM_FOUNDER_EMAIL_HASHES),
   };
 }

@@ -10,6 +10,10 @@
 import type {
   AuditEvent,
   AuthenticationChallenge,
+  FounderDecision,
+  InternalCapabilityGrant,
+  InternalCapabilityName,
+  InternalQualificationState,
   Membership,
   Organization,
   Person,
@@ -136,6 +140,16 @@ export interface PlatformStore {
     organizationId: string,
     reference: string,
   ): ProjectInternal | null;
+  /**
+   * Lookup by reference across organizations.
+   *
+   * Project references are globally unique, so this resolves exactly one project
+   * or none. Two callers need it: the internal workspace, which is authorized by
+   * the internal capability rather than by organization membership and so has no
+   * organization to scope the search with, and reference allocation, which has
+   * to check the whole platform because uniqueness is platform-wide.
+   */
+  findProjectByReferenceGlobal(reference: string): ProjectInternal | null;
   listProjectsByOrganization(organizationId: string): ProjectInternal[];
 
   // --- project access ------------------------------------------------------
@@ -154,8 +168,48 @@ export interface PlatformStore {
     now: number;
   }): ProjectIntake;
 
+  // --- internal capabilities ------------------------------------------------
+  /**
+   * Grants an internal capability. Re-granting an existing row clears a previous
+   * revocation, so the grant is restored rather than duplicated.
+   */
+  grantInternalCapability(grant: InternalCapabilityGrant): InternalCapabilityGrant;
+  revokeInternalCapability(input: {
+    personId: string;
+    capability: InternalCapabilityName;
+    now: number;
+  }): boolean;
+  findInternalCapability(
+    personId: string,
+    capability: InternalCapabilityName,
+  ): InternalCapabilityGrant | null;
+  listActiveInternalCapabilities(personId: string): InternalCapabilityGrant[];
+
+  // --- internal project state -----------------------------------------------
+  /**
+   * Writes internal-only project state. Every field is optional, so one action
+   * never clears the others; `now` also refreshes `updated_at`.
+   *
+   * Nothing here is reachable from a customer request: the customer services do
+   * not call it, and the customer projections have no field for the values it
+   * writes.
+   */
+  saveProjectInternal(input: {
+    id: string;
+    patch: {
+      qualificationState?: InternalQualificationState;
+      internalNotes?: string | null;
+      founderDecision?: FounderDecision | null;
+      internalNextAction?: string | null;
+      reviewStartedAt?: number | null;
+    };
+    now: number;
+  }): ProjectInternal;
+
   // --- audit ---------------------------------------------------------------
   appendAuditEvent(event: AuditEvent): void;
+  /** Newest-first audit history for one project, for the internal workspace. */
+  listAuditEventsForProject(projectId: string, limit: number): AuditEvent[];
 }
 
 /**
