@@ -93,7 +93,7 @@ Purpose:
 - route a customer into the future authenticated onboarding flow;
 - collect only the information necessary for the relevant sales stage.
 
-The current route remains non-live until the approved customer-platform implementation is built and explicitly authorized.
+The current route remains non-live until the approved customer-platform implementation is activated and explicitly authorized for live use.
 
 ## 4. Customer platform direction
 
@@ -333,12 +333,14 @@ The Phase 4 foundation now includes:
 - [x] Hosting/domain work explicitly deferred.
 - [x] Analytics explicitly deferred.
 
-## 17. Next implementation step
+## 17. Customer-platform implementation status
 
-The next implementation slice is the first secure customer-platform vertical path:
+The first secure customer-platform vertical path is implemented and merged:
 
 **Passwordless customer identity → Organization creation → Customer dashboard → Project creation → Saved project onboarding progress**
 
-This slice should be implemented only after its data boundary, authentication, authorization, privacy, and verification requirements are explicitly designed.
+Its data boundary, authentication, authorization, privacy, and verification requirements were designed in advance and recorded in docs/decisions/2026-10-04-customer-platform-foundation.md.
+
+The slice is not deployed or activated for live customers. The next design gate is the Founder/internal workspace and Project Intake review, proposed in docs/decisions/2026-10-05-customer-platform-founder-workspace.md (Status Proposed; Founder approval pending).
 
 No production deployment, live payment processing, live e-signature, AI/LLM integration, or public customer-data operation is included in this step.

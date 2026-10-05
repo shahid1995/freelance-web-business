@@ -66,15 +66,15 @@ Current:
 - Website visual/design foundation — established
 - Customer platform direction — approved
 - Customer platform requirements — established
-- Customer identity, organization, project, and saved-onboarding foundation — implemented as a first vertical slice (passwordless sign-in → organization creation → customer dashboard → project creation → saved Project Intake draft), not yet merged, deployed, or activated against live customers
+- Customer identity, organization, project, and saved-onboarding foundation — implemented and merged as a first vertical slice (passwordless sign-in → organization creation → customer dashboard → project creation → saved Project Intake draft); not deployed or activated against live customers
 - Sales and proposal workflow integration — planned
 - Commercial acceptance, agreement, payments — planned
 - Delivery workspace, milestones, QA, handover, closure integration — planned
-- Founder/internal operating workspace — planned
+- Founder/internal operating workspace and Project Intake review — design proposed, pending Founder approval
 - Domain/hosting — deferred
 - Analytics — deferred
 
-The customer platform requirements are defined in docs/website/customer-platform-requirements.md. Product direction is recorded in docs/decisions/2026-10-04-customer-platform-direction.md. The implementation architecture is described in website/README.md.
+The customer platform requirements are defined in docs/website/customer-platform-requirements.md. Product direction is recorded in docs/decisions/2026-10-04-customer-platform-direction.md. The implementation architecture is described in website/README.md. The first vertical slice is implemented and merged, but nothing is deployed or activated for live customers. The next design gate, the Founder/internal workspace and Project Intake review, is proposed in docs/decisions/2026-10-05-customer-platform-founder-workspace.md and is pending Founder approval.
 
 The first slice uses a local SQLite data store and a local email sink behind provider-neutral ports. Selecting a managed database and activating a live email provider remain separate decisions.
 
