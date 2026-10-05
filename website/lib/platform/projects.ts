@@ -92,8 +92,11 @@ export class ProjectService {
         createdByPersonId: input.personId,
         createdAt: now,
         updatedAt: now,
-        // Internal state starts unset and is owned by the later Founder
-        // workspace. It is never returned to a customer.
+        // Set only by the explicit Founder Start Review action. Null means the
+        // customer-facing stage stays where intake progress puts it.
+        reviewStartedAt: null,
+        // Internal state starts unset and is owned by the Founder workspace. It
+        // is never returned to a customer.
         qualificationState: "unreviewed",
         internalNotes: null,
         founderDecision: null,

@@ -8,6 +8,7 @@
  */
 
 import type {
+  InternalCapabilityName,
   Membership,
   Organization,
   Person,
@@ -113,6 +114,38 @@ export function requireOrganizationProject(
     throw new NotFoundError("That project does not exist.");
   }
   return project;
+}
+
+/**
+ * Internal capability.
+ *
+ * Deliberately **not** part of the customer policy matrix above. It is checked
+ * first, on its own, so internal access can never be reached by widening a
+ * customer rule, and so being an organization owner or admin can never imply it.
+ *
+ * The check reads the current grant row on every call rather than reusing an
+ * earlier decision, so a revoked capability stops working on the next request.
+ * Returns the person so the caller does not have to load them again.
+ */
+export function requireInternalCapability(
+  store: PlatformStore,
+  personId: string,
+  capability: InternalCapabilityName,
+): Person {
+  const person = store.findPersonById(personId);
+  if (!person) {
+    throw new UnauthenticatedError();
+  }
+  const grant = store.findInternalCapability(personId, capability);
+  if (!grant || grant.revokedAt !== null) {
+    throw new ForbiddenError("This area is restricted.");
+  }
+  return person;
+}
+
+/** The Founder-only capability required by the approved Founder Workspace ADR. */
+export function requireFounderCapability(store: PlatformStore, personId: string): Person {
+  return requireInternalCapability(store, personId, "founder");
 }
 
 /**

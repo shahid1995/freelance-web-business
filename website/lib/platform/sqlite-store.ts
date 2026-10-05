@@ -22,6 +22,10 @@ import {
   emptyProjectIntakeAnswers,
   type AuditEvent,
   type AuthenticationChallenge,
+  type FounderDecision,
+  type InternalCapabilityGrant,
+  type InternalCapabilityName,
+  type InternalQualificationState,
   type Membership,
   type Organization,
   type Person,
@@ -142,6 +146,10 @@ CREATE TABLE IF NOT EXISTS projects (
   created_by_person_id TEXT NOT NULL REFERENCES people(id),
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
+  -- Set only by the explicit Founder Start Review action. While it is null the
+  -- customer-facing stage stays at "Information submitted", which is why merely
+  -- opening the internal review page cannot change what a customer sees.
+  review_started_at INTEGER,
   -- Internal business state. Never selected into a customer response; see
   -- views.ts, which builds customer objects field by field.
   qualification_state TEXT NOT NULL DEFAULT 'unreviewed',
@@ -177,6 +185,17 @@ CREATE TABLE IF NOT EXISTS project_intake (
   updated_at INTEGER NOT NULL,
   last_saved_at INTEGER NOT NULL,
   submitted_at INTEGER
+);
+
+-- Internal capabilities are deliberately a separate concept from organization
+-- membership: a Founder is not an owner, admin, or member of a customer
+-- organization, and membership can never imply internal access.
+CREATE TABLE IF NOT EXISTS internal_capabilities (
+  person_id TEXT NOT NULL REFERENCES people(id),
+  capability TEXT NOT NULL,
+  granted_at INTEGER NOT NULL,
+  revoked_at INTEGER,
+  PRIMARY KEY (person_id, capability)
 );
 
 CREATE TABLE IF NOT EXISTS audit_events (
@@ -219,6 +238,24 @@ export class SqlitePlatformStore implements PlatformStore {
       this.db.exec("PRAGMA journal_mode = WAL;");
     }
     this.db.exec(SCHEMA);
+    // `CREATE TABLE IF NOT EXISTS` leaves an already-existing table alone, so a
+    // database file created before a column was introduced would not gain it.
+    // Adding columns here keeps an existing local file working without a
+    // separate migration tool; the check makes it idempotent.
+    this.addColumnIfMissing("projects", "review_started_at", "INTEGER");
+  }
+
+  /**
+   * Adds a column only when it is absent.
+   *
+   * Runs on every open, so it must be a no-op once the column exists.
+   */
+  private addColumnIfMissing(table: string, column: string, type: string): void {
+    const existing = this.all(`PRAGMA table_info(${table})`);
+    const present = existing.some((row) => row.name === column);
+    if (!present) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+    }
   }
 
   // --- infrastructure ------------------------------------------------------
@@ -569,11 +606,63 @@ export class SqlitePlatformStore implements PlatformStore {
       createdByPersonId: text(row, "created_by_person_id"),
       createdAt: int(row, "created_at"),
       updatedAt: int(row, "updated_at"),
+      reviewStartedAt: nullableInt(row, "review_started_at"),
       qualificationState: text(row, "qualification_state") as ProjectInternal["qualificationState"],
       internalNotes: nullableText(row, "internal_notes"),
-      founderDecision: nullableText(row, "founder_decision"),
+      founderDecision: nullableText(row, "founder_decision") as FounderDecision | null,
       internalNextAction: nullableText(row, "internal_next_action"),
     };
+  }
+
+  /**
+   * Writes internal-only project state.
+   *
+   * Only keys present in the patch appear in the SET clause, so recording an
+   * internal note cannot clear the qualification state or the Founder decision.
+   * Column names come from a fixed map defined here and every value is bound as
+   * a parameter, so no caller-supplied text becomes SQL.
+   */
+  saveProjectInternal(input: {
+    id: string;
+    patch: {
+      qualificationState?: InternalQualificationState;
+      internalNotes?: string | null;
+      founderDecision?: FounderDecision | null;
+      internalNextAction?: string | null;
+      reviewStartedAt?: number | null;
+    };
+    now: number;
+  }): ProjectInternal {
+    const COLUMNS = {
+      qualificationState: "qualification_state",
+      internalNotes: "internal_notes",
+      founderDecision: "founder_decision",
+      internalNextAction: "internal_next_action",
+      reviewStartedAt: "review_started_at",
+    } as const;
+    type PatchKey = keyof typeof COLUMNS;
+
+    const assignments: string[] = [];
+    const params: (string | number | null)[] = [];
+    for (const key of Object.keys(COLUMNS) as PatchKey[]) {
+      if (!Object.prototype.hasOwnProperty.call(input.patch, key)) continue;
+      assignments.push(`${COLUMNS[key]} = ?`);
+      params.push(input.patch[key] ?? null);
+    }
+    assignments.push("updated_at = ?");
+    params.push(input.now);
+
+    this.run(
+      `UPDATE projects SET ${assignments.join(", ")} WHERE id = ?`,
+      ...params,
+      input.id,
+    );
+
+    const stored = this.findProject(input.id);
+    if (!stored) {
+      throw new Error("Project was not readable immediately after being updated.");
+    }
+    return stored;
   }
 
   createProject(input: {
@@ -625,6 +714,11 @@ export class SqlitePlatformStore implements PlatformStore {
     return row ? this.toProject(row) : null;
   }
 
+  findProjectByReferenceInternal(reference: string): ProjectInternal | null {
+    const row = this.get("SELECT * FROM projects WHERE reference = ?", reference);
+    return row ? this.toProject(row) : null;
+  }
+
   findProjectByIdempotencyKey(
     organizationId: string,
     idempotencyKey: string,
@@ -642,6 +736,68 @@ export class SqlitePlatformStore implements PlatformStore {
       "SELECT * FROM projects WHERE organization_id = ? ORDER BY created_at ASC, id ASC",
       organizationId,
     ).map((row) => this.toProject(row));
+  }
+
+  // --- internal capabilities ------------------------------------------------
+
+  private toInternalCapability(row: Row): InternalCapabilityGrant {
+    return {
+      personId: text(row, "person_id"),
+      capability: text(row, "capability") as InternalCapabilityName,
+      grantedAt: int(row, "granted_at"),
+      revokedAt: nullableInt(row, "revoked_at"),
+    };
+  }
+
+  grantInternalCapability(grant: InternalCapabilityGrant): InternalCapabilityGrant {
+    // Re-granting clears a previous revocation, exactly as a project grant does.
+    this.run(
+      `INSERT INTO internal_capabilities (person_id, capability, granted_at, revoked_at)
+       VALUES (?, ?, ?, NULL)
+       ON CONFLICT (person_id, capability)
+       DO UPDATE SET granted_at = excluded.granted_at, revoked_at = NULL`,
+      grant.personId,
+      grant.capability,
+      grant.grantedAt,
+    );
+    const stored = this.findInternalCapability(grant.personId, grant.capability);
+    if (!stored) {
+      throw new Error("The internal capability was not readable immediately after being granted.");
+    }
+    return stored;
+  }
+
+  revokeInternalCapability(input: {
+    personId: string;
+    capability: InternalCapabilityName;
+    now: number;
+  }): boolean {
+    const result = this.run(
+      "UPDATE internal_capabilities SET revoked_at = ? WHERE person_id = ? AND capability = ? AND revoked_at IS NULL",
+      input.now,
+      input.personId,
+      input.capability,
+    );
+    return changesOf(result) > 0;
+  }
+
+  findInternalCapability(
+    personId: string,
+    capability: InternalCapabilityName,
+  ): InternalCapabilityGrant | null {
+    const row = this.get(
+      "SELECT * FROM internal_capabilities WHERE person_id = ? AND capability = ?",
+      personId,
+      capability,
+    );
+    return row ? this.toInternalCapability(row) : null;
+  }
+
+  listActiveInternalCapabilities(personId: string): InternalCapabilityGrant[] {
+    return this.all(
+      "SELECT * FROM internal_capabilities WHERE person_id = ? AND revoked_at IS NULL ORDER BY capability ASC",
+      personId,
+    ).map((row) => this.toInternalCapability(row));
   }
 
   // --- project access ------------------------------------------------------
@@ -795,6 +951,36 @@ export class SqlitePlatformStore implements PlatformStore {
   }
 
   // --- audit ---------------------------------------------------------------
+
+  private toAuditEvent(row: Row): AuditEvent {
+    const rawMetadata = nullableText(row, "metadata");
+    let metadata: Record<string, unknown> | null = null;
+    if (rawMetadata !== null) {
+      const parsed: unknown = JSON.parse(rawMetadata);
+      // A stored value is not trusted to have the declared shape.
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        metadata = parsed as Record<string, unknown>;
+      }
+    }
+    return {
+      id: text(row, "id"),
+      organizationId: nullableText(row, "organization_id"),
+      personId: nullableText(row, "person_id"),
+      projectId: nullableText(row, "project_id"),
+      type: text(row, "type"),
+      occurredAt: int(row, "occurred_at"),
+      metadata,
+    };
+  }
+
+  listAuditEventsForProject(projectId: string, limit: number): AuditEvent[] {
+    const bounded = Math.max(1, Math.min(limit, 200));
+    return this.all(
+      "SELECT * FROM audit_events WHERE project_id = ? ORDER BY occurred_at DESC, id DESC LIMIT ?",
+      projectId,
+      bounded,
+    ).map((row) => this.toAuditEvent(row));
+  }
 
   appendAuditEvent(event: AuditEvent): void {
     this.run(

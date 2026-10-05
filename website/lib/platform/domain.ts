@@ -54,6 +54,52 @@ export interface Membership {
   createdAt: number;
 }
 
+/**
+ * Internal qualification outcomes, from docs/website/customer-platform-requirements.md
+ * section 7. Explicitly **not** customer-facing copy.
+ */
+export const INTERNAL_QUALIFICATION_STATES = [
+  "unreviewed",
+  "qualified",
+  "clarification_required",
+  "not_a_fit",
+  "no_decision",
+] as const;
+
+export type InternalQualificationState = (typeof INTERNAL_QUALIFICATION_STATES)[number];
+
+export function isInternalQualificationState(
+  value: unknown,
+): value is InternalQualificationState {
+  return (
+    typeof value === "string" &&
+    (INTERNAL_QUALIFICATION_STATES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * The Founder decision vocabulary, from the approved Founder Workspace ADR
+ * section 4.2.
+ *
+ * Distinct from qualification state: that describes the internal *assessment*,
+ * this records the operational *action* after review. The two are stored
+ * separately, are never derived from one another, and neither is customer-facing.
+ */
+export const FOUNDER_DECISIONS = [
+  "proceed",
+  "clarification_required",
+  "not_a_fit",
+  "hold",
+] as const;
+
+export type FounderDecision = (typeof FOUNDER_DECISIONS)[number];
+
+export function isFounderDecision(value: unknown): value is FounderDecision {
+  return (
+    typeof value === "string" && (FOUNDER_DECISIONS as readonly string[]).includes(value)
+  );
+}
+
 export interface ProjectInternal {
   id: ProjectId;
   organizationId: OrganizationId;
@@ -64,6 +110,15 @@ export interface ProjectInternal {
   createdAt: number;
   updatedAt: number;
   /**
+   * When the Founder explicitly started review. Null until then.
+   *
+   * This is the only thing that moves the customer-facing stage on to *Project
+   * Intake — Review*. It is written by the explicit Start Review action and by
+   * nothing else, so opening or reading a review cannot change what the customer
+   * sees.
+   */
+  reviewStartedAt: number | null;
+  /**
    * Internal-only business state. None of the fields below may appear in a
    * customer response, customer page, or customer email. They are stored
    * because the Founder workspace will own them, not because this slice
@@ -71,16 +126,25 @@ export interface ProjectInternal {
    */
   qualificationState: InternalQualificationState;
   internalNotes: string | null;
-  founderDecision: string | null;
+  founderDecision: FounderDecision | null;
   internalNextAction: string | null;
 }
 
-export type InternalQualificationState =
-  | "unreviewed"
-  | "qualified"
-  | "clarification_required"
-  | "not_a_fit"
-  | "no_decision";
+/**
+ * Internal capabilities a person may hold.
+ *
+ * A dedicated concept, deliberately separate from `OrganizationRole`: internal
+ * access is never inferred from, or granted through, customer membership.
+ */
+export type InternalCapabilityName = "founder";
+
+/** One internal capability held by one person. */
+export interface InternalCapabilityGrant {
+  personId: PersonId;
+  capability: InternalCapabilityName;
+  grantedAt: number;
+  revokedAt: number | null;
+}
 
 /**
  * Explicit project grant for an ordinary member. Administrators do not need a
@@ -233,4 +297,12 @@ export type AuditEventType =
   | "project_access.granted"
   | "project_access.revoked"
   | "project_intake.saved"
-  | "project_intake.submitted";
+  | "project_intake.submitted"
+  // Founder workspace. Internal-only; never returned to a customer.
+  | "project_intake.review_started"
+  | "project.customer_stage_changed"
+  | "project.qualification_changed"
+  | "project.internal_note_added"
+  | "project.internal_note_updated"
+  | "project.founder_decision_recorded"
+  | "project.internal_next_action_recorded";

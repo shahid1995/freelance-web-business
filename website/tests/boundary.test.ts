@@ -22,7 +22,11 @@ import { OWNER_EMAIL, createTestPlatform, signUpAsOwner } from "./support/harnes
 const INTERNAL_VALUES = {
   qualificationState: "not_a_fit" as const,
   internalNotes: "INTERNAL-NOTE-SENTINEL budget is below our floor",
-  founderDecision: "FOUNDER-DECISION-SENTINEL decline politely",
+  // The Founder decision is now a closed vocabulary, so an arbitrary sentinel is
+  // no longer representable and the fixture has to hold a real value. The
+  // leakage proof for the decision field is the key assertions below plus
+  // founder-workspace.test.ts, which drives the real service.
+  founderDecision: "not_a_fit" as const,
   internalNextAction: "INTERNAL-NEXT-ACTION-SENTINEL call back on Friday",
 };
 
@@ -36,6 +40,8 @@ const INTERNAL_KEYS = [
   "founder_decision",
   "internalNextAction",
   "internal_next_action",
+  "reviewStartedAt",
+  "review_started_at",
   "metadata",
   "auditEvents",
   "audit_events",
@@ -64,6 +70,7 @@ function internalProject(overrides: Partial<ProjectInternal> = {}): ProjectInter
     createdByPersonId: "person-internal-id",
     createdAt: 1,
     updatedAt: 2,
+    reviewStartedAt: 3,
     ...INTERNAL_VALUES,
     ...overrides,
   };

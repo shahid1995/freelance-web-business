@@ -98,23 +98,29 @@ export function countAnsweredFields(intake: ProjectIntake): number {
 
 /**
  * Maps a stored project to the customer stage shown in the customer timeline.
- * Derived from intake progress only, so internal qualification state can never
- * influence what a customer sees.
+ *
+ * Derived from intake progress plus the Founder's explicit Start Review action,
+ * so internal qualification state — and internal notes, the Founder decision,
+ * and the internal next action — can never influence what a customer sees.
+ *
+ * `reviewStartedAt` defaults to null so callers that have no internal context
+ * cannot accidentally advance the stage.
  */
 export function customerStageFor(
   intake: ProjectIntake | null,
+  reviewStartedAt: number | null = null,
 ): CustomerProjectStage {
   if (!intake || intake.status === "draft") {
     return "project_started";
   }
-  return "intake_information_submitted";
+  return reviewStartedAt === null ? "intake_information_submitted" : "intake_review";
 }
 
 export function toCustomerProjectSummary(
   project: ProjectInternal,
   intake: ProjectIntake | null,
 ): CustomerProjectSummary {
-  const stage = customerStageFor(intake);
+  const stage = customerStageFor(intake, project.reviewStartedAt);
   return {
     reference: project.reference,
     title: project.title,
