@@ -175,12 +175,22 @@ export class IntakeService {
   /**
    * Marks the intake as submitted. Kept separate from saving so a customer can
    * keep working on a draft without changing its state.
+   *
+   * Submission is idempotent. An intake that is already submitted is returned
+   * exactly as it stands, with no write at all, so a repeated or double-submitted
+   * request cannot move `submitted_at`, rewrite `last_saved_at`, or append a
+   * second `project_intake.submitted` audit event. Enforced here rather than in
+   * the UI, because the UI's disabled state is advisory and a retried form post
+   * must be safe on the server.
    */
   submit(personId: string, projectId: ProjectId): CustomerProjectDetail {
     const { project } = requireProjectAccess(this.options.store, personId, projectId);
     const intake = this.options.store.findProjectIntakeByProject(projectId);
     if (!intake) {
       throw new NotFoundError("Project Intake was not found for this project.");
+    }
+    if (intake.status === "submitted") {
+      return toCustomerProjectDetail(project, intake);
     }
 
     const now = this.options.clock.now();

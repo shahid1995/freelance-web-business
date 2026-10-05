@@ -192,6 +192,75 @@ describe("project intake draft", () => {
   });
 });
 
+describe("project intake submission idempotency", () => {
+  it("makes a repeated submission a no-op that preserves the first submission", async () => {
+    const { harness, personId, projectId } = await setup();
+    harness.platform.intake.saveDraft({
+      personId,
+      projectId,
+      patch: { serviceNeed: "A booking portal" },
+    });
+
+    // Count the writes the store actually receives, rather than trusting the
+    // service to have skipped them. A spied-on write here is a persisted effect.
+    const auditTypes: string[] = [];
+    const realAppend = harness.platform.store.appendAuditEvent.bind(harness.platform.store);
+    harness.platform.store.appendAuditEvent = (event) => {
+      auditTypes.push(event.type);
+      realAppend(event);
+    };
+    let intakeWrites = 0;
+    const realSave = harness.platform.store.saveProjectIntake.bind(harness.platform.store);
+    harness.platform.store.saveProjectIntake = (input) => {
+      intakeWrites += 1;
+      return realSave(input);
+    };
+
+    // First submission: exactly one write, one submission event, and the
+    // expected customer-facing stage.
+    const first = harness.platform.intake.submit(personId, projectId);
+    assert.equal(first.intake?.status, "submitted");
+    assert.equal(first.project.stage, "intake_information_submitted");
+    const submittedAt = first.intake!.submittedAt;
+    const lastSavedAt = first.intake!.lastSavedAt;
+    assert.equal(submittedAt, harness.clock.now());
+    assert.equal(intakeWrites, 1);
+    assert.deepEqual(auditTypes, ["project_intake.submitted"]);
+
+    // A repeat, as a double-submitted form post would produce, must not write
+    // anything or append another event.
+    harness.clock.advance(600_000);
+    const repeat = harness.platform.intake.submit(personId, projectId);
+    assert.equal(repeat.intake?.status, "submitted");
+    assert.equal(repeat.project.stage, "intake_information_submitted");
+    assert.equal(
+      repeat.intake?.submittedAt,
+      submittedAt,
+      "a repeat must not change the original submission timestamp",
+    );
+    assert.equal(
+      repeat.intake?.lastSavedAt,
+      lastSavedAt,
+      "a repeat must not rewrite last_saved_at",
+    );
+    assert.equal(intakeWrites, 1, "a repeat must not write the intake at all");
+    assert.deepEqual(auditTypes, ["project_intake.submitted"], "no second submission event");
+
+    // A burst of retries changes nothing further.
+    harness.platform.intake.submit(personId, projectId);
+    harness.platform.intake.submit(personId, projectId);
+    assert.equal(intakeWrites, 1);
+    assert.equal(auditTypes.length, 1);
+
+    // The persisted record still reflects the first submission exactly.
+    const stored = harness.platform.store.findProjectIntakeByProject(projectId);
+    assert.ok(stored);
+    assert.equal(stored.status, "submitted");
+    assert.equal(stored.submittedAt, submittedAt);
+    assert.equal(stored.lastSavedAt, lastSavedAt);
+  });
+});
+
 describe("project intake input validation", () => {
   it("rejects a field that is not part of Project Intake", () => {
     assert.throws(() => parseIntakePatch({ qualificationState: "qualified" }), ValidationError);
