@@ -2,6 +2,19 @@
 
 ## 2026-10-05
 
+### Founder Project Queue (implementation)
+- Added a Founder-only internal queue at /internal/projects that lists projects whose Project Intake has been submitted, newest submission first with project reference as the deterministic secondary order. Governed by docs/decisions/2026-10-05-founder-project-queue.md.
+- Cross-organization by design: the Founder holds the internal capability and membership in no customer organization, so customer organization and project access rules are not consulted for the queue.
+- Read-only. Loading the queue performs no write and creates no audit event, and cannot start a review.
+- Only submitted intake appears; the draft filter is applied in SQL, so an unfinished intake is never read.
+- Narrow internal projection carrying only project reference, title, organization name, submission timestamp, customer-facing stage, and whether review has started. Internal notes, qualification state, Founder decision, internal next action, intake answers, customer identity, and audit data are excluded by construction.
+- Each queue row links to the existing /internal/projects/{reference}/review page, which remains the only place internal work happens and is unchanged by this slice.
+- Added a cross-organization submitted-intake query to the existing store port and removed a vestigial unused index type. No table, column, migration, dependency, or customer-facing change was introduced.
+- Added 16 focused tests covering queue authorization, draft exclusion, cross-organization visibility, deterministic ordering, projection narrowness, read-only loading, and unchanged customer projections and access rules.
+- Did not deploy, activate any provider, or process live customer data.
+
+## 2026-10-05
+
 ### Founder Workspace and Project Intake review (implementation)
 - Implemented the approved Founder/internal workspace slice defined in docs/decisions/2026-10-05-customer-platform-founder-workspace.md.
 - Added a dedicated server-side internal capability (`founder`) attached to a Person, independent of organization membership and customer roles, never inferred from an organization owner/admin role, never grantable through customer UI or customer endpoints, and never returned in a customer response. Initial assignment is a controlled server-side bootstrap from `CUSTOMER_PLATFORM_FOUNDER_EMAIL_HASHES`, which is empty by default.

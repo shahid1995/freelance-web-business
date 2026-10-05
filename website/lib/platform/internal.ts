@@ -34,11 +34,13 @@ import type { Clock } from "./clock";
 import { requireFounderCapability } from "./authorization";
 import { NotFoundError, ValidationError } from "./errors";
 import type { PlatformStore } from "./ports";
-import type { InternalCustomerIdentity, InternalProjectReview } from "./internal-views";
-import { buildInternalReview } from "./internal-views";
+import type { FounderQueueRow, InternalCustomerIdentity, InternalProjectReview } from "./internal-views";
+import { buildFounderQueueRow, buildInternalReview } from "./internal-views";
+import { customerStageFor } from "./views";
 
 const MAX_INTERNAL_TEXT = 5000;
 const AUDIT_HISTORY_LIMIT = 50;
+const QUEUE_LIMIT = 100;
 
 export interface FounderWorkspaceOptions {
   store: PlatformStore;
@@ -134,6 +136,45 @@ export class FounderWorkspaceService {
       throw new NotFoundError("That project does not exist.");
     }
     return project.id;
+  }
+
+  /**
+   * The Founder's cross-organization project queue.
+   *
+   * An operational index into the existing review workflow, not a second review
+   * surface: it exists so the Founder does not have to know a project reference in
+   * advance, and every row links into the review page where the real work happens.
+   *
+   * Read-only, like `review`: no write, no audit event, and no change to any
+   * project or to the customer-facing stage. Loading the queue cannot tell a
+   * customer that anything happened.
+   *
+   * Scoped across organizations on purpose. The Founder holds the internal
+   * capability and membership in no customer organization, so the customer
+   * organization/project access rules are not consulted here and must not be.
+   *
+   * Only submitted intakes appear; the filter is in SQL, so a draft intake is
+   * never fetched, let alone shown.
+   */
+  queue(personId: string): FounderQueueRow[] {
+    this.requireFounder(personId);
+    const rows = this.options.store.listSubmittedIntakeProjects(QUEUE_LIMIT);
+
+    // Organization names are resolved per project rather than in the queue query:
+    // the store port returns projects, not joined organization rows, and a
+    // project always belongs to exactly one organization.
+    return rows.map(({ project, submittedAt }) => {
+      const organization = this.requireOrganization(project.organizationId);
+      return buildFounderQueueRow({
+        project,
+        organizationName: organization.name,
+        // Derived from the intake progress and the Founder's explicit review
+        // marker, exactly as the review page and the customer projection do. The
+        // queue only ever holds submitted intakes, so that is the status passed.
+        customerStage: customerStageFor({ status: "submitted" }, project.reviewStartedAt),
+        submittedAt,
+      });
+    });
   }
 
   /**

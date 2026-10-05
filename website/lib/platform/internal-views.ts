@@ -96,13 +96,32 @@ export interface InternalProjectReview {
   audit: InternalAuditEntry[];
 }
 
-export interface ReviewIndexEntry {
+/**
+ * One row in the Founder project queue.
+ *
+ * Intentionally narrow. This is a listing surface, not a review surface: it
+ * carries what is needed to identify and prioritize a project, and nothing more.
+ *
+ * Notably absent, and absent by construction rather than by convention:
+ * internal notes, qualification state, Founder decision, internal next action,
+ * intake answers, customer identity, session data, and audit entries. The queue
+ * answers "what is waiting?", and the review page answers "what is in it?".
+ */
+export interface FounderQueueRow {
+  /** Stable customer-visible reference; also the link key to the review page. */
   reference: string;
   title: string;
+  /** Organization name, so projects from different tenants are distinguishable. */
   organizationName: string;
+  /** When the Intake was submitted; also the queue's primary ordering. */
+  submittedAt: number;
+  /** Customer-facing stage, using only approved customer wording. */
+  customerStage: CustomerProjectStage;
   customerStageLabel: string;
-  submittedAt: number | null;
+  /** Null until the explicit Start Review action has run. */
   reviewStartedAt: number | null;
+  /** Derived from `reviewStartedAt` so the page cannot disagree with the stage. */
+  reviewStarted: boolean;
 }
 
 function toInternalOrganization(organization: Organization): InternalOrganizationSummary {
@@ -174,6 +193,30 @@ export function buildInternalReview(input: {
       occurredAt: event.occurredAt,
       personId: event.personId,
     })),
+  };
+}
+
+/**
+ * Builds one queue row.
+ *
+ * Takes the already-projected customer stage rather than recomputing it, so the
+ * queue cannot disagree with the review page about what stage a project is in.
+ */
+export function buildFounderQueueRow(input: {
+  project: ProjectInternal;
+  organizationName: string;
+  customerStage: CustomerProjectStage;
+  submittedAt: number;
+}): FounderQueueRow {
+  return {
+    reference: input.project.reference,
+    title: input.project.title,
+    organizationName: input.organizationName,
+    submittedAt: input.submittedAt,
+    customerStage: input.customerStage,
+    customerStageLabel: CUSTOMER_STAGE_LABELS[input.customerStage],
+    reviewStartedAt: input.project.reviewStartedAt,
+    reviewStarted: input.project.reviewStartedAt !== null,
   };
 }
 

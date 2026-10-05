@@ -137,6 +137,8 @@ Endpoints (all state-changing requests are same-origin POSTs):
 A separate internal surface, governed by
 `docs/decisions/2026-10-05-customer-platform-founder-workspace.md`:
 
+- /internal/projects — the Founder project queue (governed by
+  `docs/decisions/2026-10-05-founder-project-queue.md`)
 - /internal/projects/{reference}/review
 - POST /api/internal/projects/{reference}/review
 
@@ -160,6 +162,15 @@ on to *Project Intake — Review* only through the explicit **Start Review** POS
 which is authorized and audited. Internal qualification state, internal notes,
 the Founder decision, and the internal next action are internal-only and have no
 field in any customer projection.
+
+The project queue at `/internal/projects` is a read-only, cross-organization
+list of projects whose Project Intake has been submitted, newest first. It is
+the entry point into the review workflow, so the Founder does not need to know a
+project reference in advance. Loading it performs no write and creates no audit
+event, a draft intake never appears, and each row links to the existing review
+page. Queue rows carry only reference, title, organization name, submission
+timestamp, customer-facing stage, and whether review has started — no internal
+state, intake answers, or audit data.
 
 The Founder decision vocabulary is closed to `proceed`, `clarification_required`,
 `not_a_fit`, and `hold`; anything else is rejected on the server. It is stored
