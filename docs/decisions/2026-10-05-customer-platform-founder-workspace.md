@@ -1,16 +1,16 @@
 # Founder/Internal Workspace and Project Intake Review
 
-**Status:** Proposed  
+**Status:** Accepted  
 **Date:** 2026-10-05  
-**Founder approval:** Pending  
+**Founder approval:** Approved 2026-10-05  
 **Scope:** Design gate for the next customer-platform implementation slice  
 **Related:** Customer Platform Direction, Customer Platform Requirements, Customer Platform Foundation
 
-> **Status note.** This is a design proposal, not an approved or implemented
-> decision. Implementation of this slice **cannot proceed until the Founder
-> approves this document**. Approving it does not authorize deployment, live
-> customer-data processing, email-provider activation, hosting or domain
-> changes, or any other external action.
+> **Status note.** The Founder approved this decision on 2026-10-05. It is now
+> the governing design for the next customer-platform slice. Approval does not
+> authorize production deployment, live customer-data processing,
+> email-provider activation, hosting or domain changes, or any other external
+> action; those remain separately governed.
 
 ## Context
 
@@ -479,17 +479,20 @@ selection and activation remain separate decisions.
 
 ## Approval
 
-**Status: Proposed. Founder approval: Pending.**
+**Status: Accepted. Founder approval: Approved 2026-10-05.**
 
-Implementation cannot proceed until the Founder approves this document. Before
-approval, the following should be confirmed or adjusted by the Founder:
+The Founder approved this decision on 2026-10-05. It is now the governing design
+for the Founder/internal workspace and Project Intake review slice, approved as
+written, including:
 
 - the internal route/endpoint surface and its separation from customer routes;
-- the internal capability model and the controlled bootstrap/configuration
+- the internal capability model, and the controlled bootstrap/configuration
   mechanism by which the initial `founder` capability is assigned (section 2);
 - the exact internal action set that records audit events (section 7);
-- the Founder decision vocabulary (section 4.2).
+- the Founder decision vocabulary (section 4.2);
+- the customer-facing stage advancing to *Project Intake — Review* only through
+  the explicit, audited **Start Review** action, never as a side effect of
+  opening or viewing a review.
 
-Resolved in this revision, and no longer open: the customer-facing stage
-advances to *Project Intake — Review* only through the explicit, audited
-**Start Review** action, never as a side effect of opening or viewing a review.
+Approval of this design does not authorize production deployment, live
+customer-data operation, or provider activation.
