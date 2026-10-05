@@ -74,7 +74,7 @@ This document maps public website content to its authoritative source. It is a t
 | Surface | Content | Authoritative source |
 |---|---|---|
 | Page purpose | Start a conversation about a website or web application project. | docs/website/public-portfolio-foundation.md — section 3, Contact / Project Discussion |
-| Current state | The route is currently non-live and remains a public project-discussion entry point until the first authenticated customer-platform slice is implemented and authorized. | docs/website/customer-platform-requirements.md |
+| Current state | The route is currently non-live and remains a public project-discussion entry point until the first authenticated customer-platform slice is activated and authorized for live use. | docs/website/customer-platform-requirements.md |
 | Future behavior | Sign-in → organization → dashboard → Start Your Project → saved project onboarding | docs/website/customer-platform-requirements.md |
 
 **Claims/evidence boundary:** Until the customer-platform implementation is explicitly authorized for live use, the Contact page must not claim a live submission pipeline.

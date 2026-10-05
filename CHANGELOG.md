@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-05
+
+### Customer platform foundation merged and Founder-approved
+- Merged the first customer-platform vertical slice (PR #35, merge commit 904057f) into main.
+- Recorded Founder approval of the Customer Platform Foundation decision (docs/decisions/2026-10-04-customer-platform-foundation.md): Status Accepted, approved 2026-10-05.
+- The slice is implemented and merged but is not deployed or activated for live customers. Nothing is deployed, no provider is activated, and no live customer data is processed.
+- Updated repository status documentation so it no longer describes the first customer-platform vertical slice as a future or unmerged slice.
+- Opened the next design gate: Founder/internal workspace and Project Intake review, proposed in docs/decisions/2026-10-05-customer-platform-founder-workspace.md (Status Proposed; Founder approval pending). No application code, routes, database schema, or authentication behavior changed.
+
 ## 2026-10-04
 
 ### Customer platform first vertical slice (implementation)

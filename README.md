@@ -67,7 +67,8 @@ Phase 4 current direction:
 - Public portfolio website — established
 - Public website visual/design foundation — established
 - Customer platform direction and requirements — approved
-- Customer identity, organization, project, and saved-onboarding foundation — next implementation slice
+- Customer identity, organization, project, and saved-onboarding foundation — implemented and merged as a first vertical slice; not yet deployed or activated for live customers
+- Founder/internal workspace and Project Intake review — design proposed, pending Founder approval
 - Sales/commercial workflow integration — planned
 - Delivery workspace and lifecycle integration — planned
 - Domain/hosting — deferred
