@@ -1,8 +1,8 @@
 # Customer Platform Foundation: Identity, Organization, Project, and Intake Boundary
 
-**Status:** Proposed  
+**Status:** Accepted  
 **Date:** 2026-10-04  
-**Founder approval:** Pending  
+**Founder approval:** Approved 2026-10-05  
 **Scope:** Stage 1 design gate for the first customer-platform implementation slice  
 **Related:** Customer Platform Direction and Customer Platform Requirements
 
