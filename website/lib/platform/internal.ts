@@ -112,7 +112,7 @@ export class FounderWorkspaceService {
    */
   resolveProjectId(personId: string, reference: string): ProjectId {
     this.requireFounder(personId);
-    const project = this.options.store.findProjectByReferenceInternal(reference);
+    const project = this.options.store.findProjectByReferenceGlobal(reference);
     if (!project) {
       throw new NotFoundError("That project does not exist.");
     }

@@ -86,6 +86,11 @@ const INTAKE_ANSWER_COLUMNS = PROJECT_INTAKE_FIELDS.map(
  * Applied on every open, so it must be idempotent: the development server loads
  * the platform module separately per route bundle, and more than one connection
  * may open the same file over the lifetime of a process.
+ *
+ * The global uniqueness index on projects.reference is deliberately absent here.
+ * It is created by assertGloballyUniqueProjectReferences() instead, because it
+ * can legitimately fail on an existing database and has to do so with a message
+ * explaining what to do about it, rather than a bare SQLite constraint error.
  */
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS people (
@@ -159,7 +164,6 @@ CREATE TABLE IF NOT EXISTS projects (
   -- Makes "Start Your Project" idempotent so a double submit or a refresh
   -- cannot create two projects for one action.
   idempotency_key TEXT,
-  UNIQUE (organization_id, reference),
   UNIQUE (organization_id, idempotency_key)
 );
 CREATE INDEX IF NOT EXISTS projects_by_organization ON projects (organization_id, created_at);
@@ -243,6 +247,42 @@ export class SqlitePlatformStore implements PlatformStore {
     // Adding columns here keeps an existing local file working without a
     // separate migration tool; the check makes it idempotent.
     this.addColumnIfMissing("projects", "review_started_at", "INTEGER");
+    this.assertGloballyUniqueProjectReferences();
+  }
+
+  /**
+   * Enforces that project references are unique across the whole platform.
+   *
+   * A project reference is customer-visible, so it has to identify exactly one
+   * project. An organization-scoped constraint is not enough: two organizations
+   * could otherwise hold the same reference, and any lookup not scoped to one
+   * organization would then have no single right answer. This index is the
+   * guarantee; the allocation pre-check only avoids reaching it.
+   *
+   * Existing databases keep their original organization-scoped constraint, which
+   * this index makes redundant without disturbing.
+   *
+   * Creating it fails on a database that already contains references duplicated
+   * across organizations. That failure is the correct outcome and is re-thrown
+   * with an explanation rather than absorbed: those references are customer-visible
+   * data, and quietly rewriting or deduplicating them would change what customers
+   * are shown. A database in that state is never opened, so no lookup can return an
+   * arbitrary project.
+   */
+  private assertGloballyUniqueProjectReferences(): void {
+    try {
+      this.db.exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS projects_reference_unique ON projects (reference);",
+      );
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        "Could not enforce globally unique project references because this database already " +
+          "contains project references that are used by more than one organization. " +
+          "No project reference was changed. Resolve those duplicates explicitly, or point " +
+          `CUSTOMER_PLATFORM_DATABASE_PATH at a fresh database. Database error: ${detail}`,
+      );
+    }
   }
 
   /**
@@ -714,8 +754,10 @@ export class SqlitePlatformStore implements PlatformStore {
     return row ? this.toProject(row) : null;
   }
 
-  findProjectByReferenceInternal(reference: string): ProjectInternal | null {
-    const row = this.get("SELECT * FROM projects WHERE reference = ?", reference);
+  findProjectByReferenceGlobal(reference: string): ProjectInternal | null {
+    // Returns at most one row because `projects.reference` is globally unique;
+    // `LIMIT 1` states that dependency rather than relying on it silently.
+    const row = this.get("SELECT * FROM projects WHERE reference = ? LIMIT 1", reference);
     return row ? this.toProject(row) : null;
   }
 

@@ -143,11 +143,13 @@ export interface PlatformStore {
   /**
    * Lookup by reference across organizations.
    *
-   * Reserved for the internal workspace, which is authorized by the internal
-   * capability rather than by organization membership and therefore has no
-   * organization to scope the search with.
+   * Project references are globally unique, so this resolves exactly one project
+   * or none. Two callers need it: the internal workspace, which is authorized by
+   * the internal capability rather than by organization membership and so has no
+   * organization to scope the search with, and reference allocation, which has
+   * to check the whole platform because uniqueness is platform-wide.
    */
-  findProjectByReferenceInternal(reference: string): ProjectInternal | null;
+  findProjectByReferenceGlobal(reference: string): ProjectInternal | null;
   listProjectsByOrganization(organizationId: string): ProjectInternal[];
 
   // --- project access ------------------------------------------------------
