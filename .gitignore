@@ -26,6 +26,14 @@ out/
 dist/
 .vercel/
 
+# Customer platform local runtime
+# Compiled test output and the local customer-platform database. Both are
+# generated artifacts and must never be committed: .local holds live
+# customer records, which the public repository must not contain.
+.local/
+.test-build/
+*.tsbuildinfo
+
 # Python
 __pycache__/
 *.py[cod]

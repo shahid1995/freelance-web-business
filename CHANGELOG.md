@@ -2,6 +2,21 @@
 
 ## 2026-10-04
 
+### Customer platform first vertical slice (implementation)
+- Implemented passwordless customer identity → organization creation → customer dashboard → project creation → saved Project Intake draft progress as a server-authoritative slice.
+- Added the provider-neutral domain, data-store, and email-delivery boundaries under website/lib/platform/, with a `node:sqlite` adapter and a local email sink behind those ports. No database or mail dependency was added and no provider was activated.
+- Added single-use sign-in links with hashed secrets, short configurable expiry, atomic consumption, replay rejection, sign-in and verification rate limiting, and responses that do not reveal whether an address is registered.
+- Added opaque server-side sessions stored as hashes, HttpOnly/Secure/SameSite cookie handling that is environment-aware, server-side revocation, and origin checks on every state-changing request.
+- Added Person, Organization, Membership, Project, Project Access, Project Intake, Authentication Challenge, Session, and Audit Event records.
+- Added the ADR authorization matrix enforced on the server: organization owner/admin administration and organization-wide project access, ordinary members limited to explicitly assigned projects, and immediate revocation when an assignment is removed.
+- Added customer-facing projections that are built field by field, so qualification state, internal notes, Founder-only decisions, internal next actions, and audit metadata cannot reach a customer response.
+- Added customer routes /sign-in, /onboarding/organization, /dashboard, and /dashboard/projects/{reference}/intake, plus their endpoints. Existing public routes and public-site behavior are unchanged.
+- Added a Node test-runner suite covering the foundation ADR verification contract, and `npm test` plus `tsconfig.test.json`. No test framework dependency was added.
+- Added the foundation acceptance-gate documentation for the selected authentication/session and data-store approaches in website/README.md.
+- Did not deploy, activate any provider, or process live customer data. Merging this change does not authorize deployment or live customer operation.
+
+## 2026-10-04
+
 ### Customer platform direction
 - Approved the long-term evolution of the public website into a unified customer-facing application and Founder/internal workspace.
 - Defined the organization-centric model: person → organization → projects.
