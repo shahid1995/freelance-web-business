@@ -145,6 +145,16 @@ endpoints. Access requires a session holding the `founder` internal capability,
 which is checked on the server on every operation and is never inferred from an
 organization owner/admin role.
 
+`CUSTOMER_PLATFORM_FOUNDER_EMAIL_HASHES` is **initial assignment, not a live
+allow-list**. A person whose hash is listed is granted the capability the first
+time the workspace sees them; after that the stored grant is authoritative, and
+removing the hash does not revoke it. Revocation is an explicit server-side
+operation against the stored grant. This is the semantics the approved ADR fixes
+("assigned only through controlled server-side bootstrap/configuration"); treating
+the variable as a live allow-list would make the persisted capability
+meaningless. The variable is empty by default, so no one holds internal access
+until a deployment deliberately sets it.
+
 Opening the review page is strictly read-only. The customer-facing stage moves
 on to *Project Intake — Review* only through the explicit **Start Review** POST,
 which is authorized and audited. Internal qualification state, internal notes,

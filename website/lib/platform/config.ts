@@ -45,13 +45,19 @@ export interface PlatformConfig {
    * capability, supplied by server-side configuration.
    *
    * This is the controlled bootstrap the Founder Workspace ADR requires for the
-   * initial assignment. It is deliberately a list of hashes rather than
+   * *initial* assignment. It is deliberately a list of hashes rather than
    * addresses: the hashes are already the lookup key for a person, so no raw
    * address has to be written into configuration to identify the Founder.
    *
-   * Empty by default, which means no one holds internal access until a
-   * deployment deliberately configures it. Selecting and authorizing any
-   * production arrangement is a separate Founder decision.
+   * This is **not** a live allow-list. Once a person holds the capability the
+   * stored grant is authoritative, and removing a hash here does not revoke it;
+   * revocation is an explicit server-side operation. Reading it as a live
+   * allow-list would contradict the approved decision, which approves this as the
+   * mechanism “by which the initial `founder` capability is assigned”.
+   *
+   * Empty by default, which means no one gains internal access until a deployment
+   * deliberately configures it. Selecting and authorizing any production
+   * arrangement is a separate Founder decision.
    */
   founderEmailHashes: string[];
   signInLimits: { perAddress: RateLimitRule; perClient: RateLimitRule };

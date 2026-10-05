@@ -79,11 +79,28 @@ export class FounderWorkspaceService {
   /**
    * Grants the configured `founder` capability when it is due, then checks it.
    *
-   * The bootstrap is idempotent and only ever *adds* the capability for an
-   * address hash the deployment configured; it never grants anything else, never
-   * grants to a customer role, and is never reachable from a request. It runs
-   * here rather than once at startup so the capability works for a Founder who
-   * signs in after the container was built.
+   * Lifecycle, as the approved ADR defines it (section 2.1, “Assigned only through
+   * controlled server-side bootstrap/configuration”, approved as the mechanism
+   * “by which the **initial** `founder` capability is assigned”):
+   *
+   * - **Configuration is initial assignment, not a live allow-list.** Once a grant
+   *   row exists it is authoritative, and removing the address hash from
+   *   configuration does not revoke it. Revocation has to be an explicit
+   *   server-side operation against the stored grant. Treating configuration as
+   *   the ongoing source of truth would contradict the approved design and would
+   *   make the persisted capability meaningless.
+   * - **The bootstrap only ever adds.** It never grants a capability the
+   *   deployment did not configure, never grants to a customer role, and is never
+   *   reachable from a request.
+   * - **It runs here rather than at startup** so the capability works for a
+   *   Founder whose person record does not exist until they first authenticate.
+   *
+   * Known limitation, recorded rather than worked around: because the bootstrap
+   * re-grants when a stored grant is revoked, a revocation made while the address
+   * hash is still configured would be undone on the next internal call. Nothing in
+   * this slice revokes — there is no administration surface, by design — so the
+   * path is unreachable today. Durable revocation needs its own decision before any
+   * administration surface exists.
    */
   requireFounder(personId: string): Person {
     if (this.options.founderEmailHashes.length > 0) {
