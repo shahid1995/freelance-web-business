@@ -58,6 +58,20 @@ export const CUSTOMER_STAGE_LABELS: Record<CustomerProjectStage, string> = {
   completed: "Completed",
 };
 
+/**
+ * The single date format the portal surfaces use.
+ *
+ * Was declared separately in each page, which meant the same five-line literal
+ * appeared four times and a formatting change meant four edits. Presentation
+ * concerns belong here with the other shaping helpers rather than being copied
+ * into route files.
+ */
+export const PORTAL_DATE_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "UTC",
+});
+
 export interface CustomerProjectSummary {
   /** Stable, non-sensitive reference. Not the internal record id. */
   reference: string;
@@ -103,11 +117,15 @@ export function countAnsweredFields(intake: ProjectIntake): number {
  * so internal qualification state — and internal notes, the Founder decision,
  * and the internal next action — can never influence what a customer sees.
  *
+ * The intake parameter is structural: only `status` is read. A `ProjectIntake`
+ * satisfies it, and a caller that already knows the status (the Founder queue,
+ * which only ever holds submitted intakes) can pass just that without casting.
+ *
  * `reviewStartedAt` defaults to null so callers that have no internal context
  * cannot accidentally advance the stage.
  */
 export function customerStageFor(
-  intake: ProjectIntake | null,
+  intake: Pick<ProjectIntake, "status"> | null,
   reviewStartedAt: number | null = null,
 ): CustomerProjectStage {
   if (!intake || intake.status === "draft") {

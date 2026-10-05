@@ -36,7 +36,12 @@ import {
   type ProjectInternal,
   type Session,
 } from "./domain";
-import type { PlatformStore, RateLimitDecision, RateLimitWindow } from "./ports";
+import type {
+  PlatformStore,
+  RateLimitDecision,
+  RateLimitWindow,
+  SubmittedIntakeProject,
+} from "./ports";
 
 type Row = Record<string, unknown>;
 
@@ -778,6 +783,28 @@ export class SqlitePlatformStore implements PlatformStore {
       "SELECT * FROM projects WHERE organization_id = ? ORDER BY created_at ASC, id ASC",
       organizationId,
     ).map((row) => this.toProject(row));
+  }
+
+  listSubmittedIntakeProjects(limit: number): SubmittedIntakeProject[] {
+    const bounded = Math.max(1, Math.min(limit, 200));
+    // One query, so nothing is read twice and the ordering cannot drift out of
+    // step with the rows. The draft filter is in the WHERE clause, so an
+    // unfinished intake is never materialized at all, and the organization name
+    // is joined in rather than looked up once per project.
+    return this.all(
+      `SELECT p.*, i.submitted_at AS intake_submitted_at, o.name AS organization_name
+         FROM projects p
+         JOIN project_intake i ON i.project_id = p.id
+         JOIN organizations o ON o.id = p.organization_id
+        WHERE i.status = 'submitted' AND i.submitted_at IS NOT NULL
+        ORDER BY i.submitted_at DESC, p.reference ASC
+        LIMIT ?`,
+      bounded,
+    ).map((row) => ({
+      project: this.toProject(row),
+      organizationName: text(row, "organization_name"),
+      submittedAt: int(row, "intake_submitted_at"),
+    }));
   }
 
   // --- internal capabilities ------------------------------------------------

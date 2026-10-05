@@ -30,6 +30,24 @@ export interface RateLimitWindow {
   count: number;
 }
 
+/**
+ * A project paired with the fact that its Project Intake was submitted, and with
+ * the name of the organization that owns it.
+ *
+ * Carries only the submission timestamp rather than the whole intake: the queue
+ * needs to know that an intake exists and when it arrived, and returning the
+ * answers would put customer-submitted content into a listing surface for no
+ * reason.
+ *
+ * The organization name travels with the row so the queue does not have to look
+ * it up once per project.
+ */
+export interface SubmittedIntakeProject {
+  project: ProjectInternal;
+  organizationName: string;
+  submittedAt: number;
+}
+
 export interface RateLimitDecision extends RateLimitWindow {
   /**
    * False when the attempt was refused. `count` is then the count that was
@@ -151,6 +169,22 @@ export interface PlatformStore {
    */
   findProjectByReferenceGlobal(reference: string): ProjectInternal | null;
   listProjectsByOrganization(organizationId: string): ProjectInternal[];
+
+  /**
+   * Projects whose Project Intake has been submitted, across all organizations.
+   *
+   * For the internal Founder queue only. It is deliberately unscoped: the Founder
+   * is authorized by the internal capability and holds membership in no customer
+   * organization, so an organization-scoped read would be wrong rather than merely
+   * inconvenient.
+   *
+   * Draft intakes are excluded in SQL rather than filtered afterwards, so a
+   * half-finished intake can never appear in the queue at all. Ordering is fixed
+   * here rather than in the caller: newest submission first, then project
+   * reference, so the queue is stable across requests. `reference` is globally
+   * unique, which is what makes the tie-break a total order.
+   */
+  listSubmittedIntakeProjects(limit: number): SubmittedIntakeProject[];
 
   // --- project access ------------------------------------------------------
   findProjectAccess(projectId: ProjectId, personId: string): ProjectAccess | null;
