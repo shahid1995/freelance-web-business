@@ -76,17 +76,34 @@ Current:
 
 These are implemented and merged into main, but nothing is deployed or activated for live customers and no live customer data is processed.
 
-### Approved but not yet implemented
+### Future capabilities — implementation not yet approved
 
-- The customer-facing commercial workflow beyond the Proposal Foundation. The approved requirements call for proposal review, request changes, and customer acceptance, followed by agreement/e-signature, payments, and automatic project activation, and then delivery onboarding, milestones, QA, handover, closure, documents, messaging, and notifications. Each of these requires its own future design and implementation decision; none is approved or implemented yet.
+The approved product requirements describe the rest of the customer and delivery journey. These capabilities are present in the approved requirements, but no implementation decision has been approved for them, and they are not authorized merely by appearing in the requirements.
+
+- customer proposal review
+- request changes
+- customer acceptance
+- agreement/e-signature
+- payments
+- automatic project activation
+- Delivery Onboarding
+- customer/project documents
+- project messaging/communication
+- milestones
+- client review
+- QA
+- handover
+- closure
+- notifications
+
+Each of these remains a future design and implementation step until its own implementation decision is approved.
 
 ### Planned or deferred
 
-- Delivery workspace, milestones, QA, handover, closure integration — planned
 - Domain/hosting — deferred
 - Analytics — deferred
 
-The customer platform requirements are defined in docs/website/customer-platform-requirements.md. Product direction is recorded in docs/decisions/2026-10-04-customer-platform-direction.md. The implementation architecture is described in website/README.md. The implemented slices are governed by the accepted decisions docs/decisions/2026-10-04-customer-platform-foundation.md, docs/decisions/2026-10-05-customer-platform-founder-workspace.md, docs/decisions/2026-10-05-founder-project-queue.md, and docs/decisions/2026-10-05-proposal-foundation.md. Nothing is deployed or activated for live customers. The next customer-facing commercial capability (proposal review, request changes, and acceptance) has not been approved or implemented, and no proposal-review decision record exists.
+The customer platform requirements are defined in docs/website/customer-platform-requirements.md. Product direction is recorded in docs/decisions/2026-10-04-customer-platform-direction.md. The implementation architecture is described in website/README.md. The implemented slices are governed by the accepted decisions docs/decisions/2026-10-04-customer-platform-foundation.md, docs/decisions/2026-10-05-customer-platform-founder-workspace.md, docs/decisions/2026-10-05-founder-project-queue.md, and docs/decisions/2026-10-05-proposal-foundation.md.
 
 The first slice uses a local SQLite data store and a local email sink behind provider-neutral ports. Selecting a managed database and activating a live email provider remain separate decisions.
 
