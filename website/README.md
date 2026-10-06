@@ -111,7 +111,8 @@ separate from the public content model in `lib/content.ts` and `lib/services.ts`
 | Project Intake | `lib/platform/intake.ts` | Partial saves, closed field list, access checked per operation |
 | Customer projections | `lib/platform/views.ts` | Builds customer objects field by field |
 | Founder workspace | `lib/platform/internal.ts` | Founder-only: read-only review plus the explicit Start Review action |
-| Internal projections | `lib/platform/internal-views.ts` | Internal view built field by field; drops audit metadata |
+| Proposal foundation | `lib/platform/proposals.ts` | Founder-only: one proposal per project, append-only numbered versions, explicit publication |
+| Internal projections | `lib/platform/internal-views.ts` | Internal views built field by field; drops audit metadata and never spreads a stored record |
 | Request guard | `lib/platform/http.ts` | Origin check plus session requirement |
 | Next.js adapter | `lib/platform/server.ts` | Reads headers, redirects; no authorization logic |
 | Wiring | `lib/platform/container.ts` | Lazy build of one instance per process |
@@ -141,6 +142,9 @@ A separate internal surface, governed by
   `docs/decisions/2026-10-05-founder-project-queue.md`)
 - /internal/projects/{reference}/review
 - POST /api/internal/projects/{reference}/review
+- /internal/projects/{reference}/proposal — proposal authoring (governed by
+  `docs/decisions/2026-10-05-proposal-foundation.md`)
+- POST /api/internal/projects/{reference}/proposal
 
 It is not linked from any customer page and shares no handler with the customer
 endpoints. Access requires a session holding the `founder` internal capability,
@@ -175,6 +179,29 @@ state, intake answers, or audit data.
 The Founder decision vocabulary is closed to `proceed`, `clarification_required`,
 `not_a_fit`, and `hold`; anything else is rejected on the server. It is stored
 separately from qualification state and is never derived from it.
+
+### Proposal foundation
+
+The proposal surface is governed by
+`docs/decisions/2026-10-05-proposal-foundation.md`. A project has **at most one
+proposal**, enforced by a database unique constraint, and a proposal carries
+**immutable, numbered versions** appended oldest first. A version is written once
+and never edited: changing what a proposal says means writing the next version,
+so "what was committed to, and when" stays answerable. There is no delete path.
+
+Version status is `draft` or `published`, and `draft` is the default. Publication
+is a separate, explicit, Founder-only, audited act; it does **not** mean the
+customer has seen or accepted anything, and creating or publishing a version does
+**not** move the customer-facing project stage. Proposal content is all free text
+with no amount or currency column, because pricing is a separate, unapproved
+Founder decision; `commercialTerms` records the terms the Founder has approved.
+
+Nothing here is customer-facing. No customer route, endpoint, or projection reads
+a proposal, and drafts never reach a customer view. Audit metadata records the
+actor, project, proposal, and version number and never copies proposal content,
+so the audit trail cannot become a second copy of the commercial document.
+Authorization reuses the same `founder` capability as the rest of the internal
+workspace rather than introducing a second permission concept.
 
 ### Data store
 

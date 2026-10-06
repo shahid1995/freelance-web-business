@@ -21,6 +21,7 @@ import { IntakeService } from "./intake";
 import { LocalEmailSink } from "./local-email";
 import { OrganizationService } from "./organizations";
 import { ProjectService } from "./projects";
+import { ProposalService } from "./proposals";
 import { SessionService, sessionCookieSettings } from "./sessions";
 import type { EmailDelivery, PlatformStore } from "./ports";
 
@@ -36,6 +37,8 @@ export interface Platform {
   intake: IntakeService;
   /** Founder-only. Never mounted into the customer workspace. */
   internal: FounderWorkspaceService;
+  /** Founder-only proposal authoring. Never mounted into the customer workspace. */
+  proposals: ProposalService;
   close(): void;
 }
 
@@ -107,6 +110,12 @@ export async function createPlatform(
     projects: new ProjectService({ store: resolvedStore, clock, newId }),
     intake: new IntakeService({ store: resolvedStore, clock, newId }),
     internal: new FounderWorkspaceService({
+      store: resolvedStore,
+      clock,
+      newId,
+      founderEmailHashes: config.founderEmailHashes,
+    }),
+    proposals: new ProposalService({
       store: resolvedStore,
       clock,
       newId,

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import {
@@ -73,6 +74,11 @@ export default async function InternalReviewPage({
             <p className="portal__meta">
               {review.organization.name} · created{" "}
               {PORTAL_DATE_FORMAT.format(new Date(review.project.createdAt))}
+            </p>
+            <p className="portal__meta">
+              <Link href={`/internal/projects/${encodeURIComponent(reference)}/proposal`}>
+                Open proposal
+              </Link>
             </p>
           </div>
         </div>

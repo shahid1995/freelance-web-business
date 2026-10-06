@@ -2,6 +2,21 @@
 
 ## 2026-10-05
 
+### Proposal Foundation (implementation)
+- Implemented the approved Proposal Foundation slice from docs/decisions/2026-10-05-proposal-foundation.md.
+- Added a proposal domain, store-port methods, a `node:sqlite` adapter, an internal projection, a Founder-only service, and a Founder-only internal UI surface (`/internal/projects/{reference}/proposal` plus `POST /api/internal/projects/{reference}/proposal`). No new dependency, table outside the existing store, or customer-facing change was introduced.
+- One proposal per project, enforced by a database unique constraint. One proposal identity stays stable across versions.
+- Versions are immutable and append-only, numbered oldest first and unique within the proposal. Changing what a proposal says means writing the next version; there is no update or delete path for a written version.
+- Proposal content is deliberately all free text with no amount or currency column, because pricing is a separate, unapproved Founder decision; `commercialTerms` records the terms the Founder has approved.
+- `draft` is the default version status. Publication is a separate, explicit, Founder-only, idempotent act that records a publish instant. Publishing does not mean the customer has seen or accepted anything, and it does not move the customer-facing stage.
+- Customer boundary unchanged: no customer route, endpoint, or projection reads a proposal, drafts never reach a customer view, and the customer-facing project stage, customer projections, and access rules are untouched by creating, versioning, or publishing a proposal.
+- Authorization reuses the existing `founder` internal capability and never infers internal access from an organization owner/admin role, so no second permission concept was added.
+- Added audit events `proposal.created`, `proposal_version.created`, and `proposal_version.published`. Metadata identifies the actor, project, proposal, and version number and never copies proposal content, so the audit trail cannot become a second copy of the commercial document.
+- Added 19 focused tests covering proposal authorization, version immutability and deterministic numbering, publication behaviour, the unchanged customer boundary and access rules, the audit contract (including that metadata never copies proposal content), and server-side status validation.
+- Did not deploy, activate any provider, or process live customer data. Customer review, request-changes, acceptance, agreement/e-signature, payments, automatic activation, notifications/email, file attachments, AI/LLM, templates, analytics, and delivery onboarding remain out of scope.
+
+## 2026-10-05
+
 ### Founder Project Queue (implementation)
 - Added a Founder-only internal queue at /internal/projects that lists projects whose Project Intake has been submitted, newest submission first with project reference as the deterministic secondary order. Governed by docs/decisions/2026-10-05-founder-project-queue.md.
 - Cross-organization by design: the Founder holds the internal capability and membership in no customer organization, so customer organization and project access rules are not consulted for the queue.

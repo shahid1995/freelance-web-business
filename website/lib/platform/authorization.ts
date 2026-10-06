@@ -16,6 +16,7 @@ import type {
   ProjectInternal,
 } from "./domain";
 import { isOrganizationAdministrator } from "./domain";
+import type { Clock } from "./clock";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "./errors";
 import type { PlatformStore } from "./ports";
 
@@ -146,6 +147,56 @@ export function requireInternalCapability(
 /** The Founder-only capability required by the approved Founder Workspace ADR. */
 export function requireFounderCapability(store: PlatformStore, personId: string): Person {
   return requireInternalCapability(store, personId, "founder");
+}
+
+/**
+ * Grants the configured `founder` capability when it is due, then requires it.
+ *
+ * This is the controlled server-side bootstrap the Founder Workspace ADR defines
+ * for the **initial** assignment of the capability, shared by every internal
+ * service so the lifecycle is implemented in exactly one place.
+ *
+ * - **Configuration is initial assignment, not a live allow-list.** Once a grant
+ *   row exists it is authoritative, and removing the address hash from
+ *   configuration does not revoke it. Revocation has to be an explicit
+ *   server-side operation against the stored grant. Treating configuration as
+ *   the ongoing source of truth would contradict the approved design and would
+ *   make the persisted capability meaningless.
+ * - **The bootstrap only ever adds.** It never grants a capability the
+ *   deployment did not configure, never grants to a customer role, and is never
+ *   reachable from a request.
+ * - **It runs on each internal call rather than at startup** so the capability
+ *   works for a Founder whose person record does not exist until they first
+ *   authenticate.
+ *
+ * Known limitation, recorded rather than worked around: because the bootstrap
+ * re-grants when a stored grant is revoked, a revocation made while the address
+ * hash is still configured would be undone on the next internal call. Nothing in
+ * this slice revokes — there is no administration surface, by design — so the
+ * path is unreachable today. Durable revocation needs its own decision before any
+ * administration surface exists.
+ */
+export function requireFounderWithBootstrap(
+  store: PlatformStore,
+  clock: Clock,
+  founderEmailHashes: readonly string[],
+  personId: string,
+): Person {
+  if (founderEmailHashes.length > 0) {
+    const person = store.findPersonById(personId);
+    if (person && founderEmailHashes.includes(person.emailHash)) {
+      const existing = store.findInternalCapability(personId, "founder");
+      if (!existing || existing.revokedAt !== null) {
+        store.grantInternalCapability({
+          personId,
+          capability: "founder",
+          grantedAt: clock.now(),
+          revokedAt: null,
+        });
+      }
+    }
+  }
+  return requireFounderCapability(store, personId);
 }
 
 /**

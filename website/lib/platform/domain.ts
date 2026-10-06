@@ -146,6 +146,80 @@ export interface InternalCapabilityGrant {
   revokedAt: number | null;
 }
 
+export type ProposalId = string;
+export type ProposalVersionId = string;
+
+/**
+ * Version state.
+ *
+ * `draft` is Founder-only and never leaves the internal workspace. `published`
+ * records that the Founder explicitly made that version available; it does not
+ * mean the customer has seen it, accepted it, or agreed to anything. The
+ * customer-facing step is a separate, later decision.
+ */
+export type ProposalVersionStatus = "draft" | "published";
+
+export const PROPOSAL_VERSION_STATUSES = ["draft", "published"] as const;
+
+export function isProposalVersionStatus(value: unknown): value is ProposalVersionStatus {
+  return (
+    typeof value === "string" &&
+    (PROPOSAL_VERSION_STATUSES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * The commercial baseline a version carries.
+ *
+ * Deliberately all free text. The approved proposal template requires commercial
+ * amounts to come from Founder-approved pricing, and pricing is a separate,
+ * unapproved Founder decision — so there is deliberately no amount or currency
+ * column here to pre-empt it. `commercialTerms` is where the Founder records the
+ * terms they have approved; turning that into structured money is that later
+ * decision's job.
+ */
+export interface ProposalContent {
+  summary: string;
+  scopeIncluded: string;
+  scopeExcluded: string;
+  deliverables: string;
+  timeline: string;
+  assumptions: string;
+  commercialTerms: string;
+  /** Optional expiry the Founder sets for this version. Not a pricing field. */
+  validUntil: number | null;
+}
+
+/** The stable proposal record: one per project. */
+export interface ProposalInternal {
+  id: ProposalId;
+  projectId: ProjectId;
+  /** Founder who created the proposal. */
+  createdByPersonId: PersonId;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * One immutable version of a proposal.
+ *
+ * Content is written once at creation and never updated. Publishing only sets
+ * `publishedAt`, so what a version said and when it was made available are both
+ * durable facts.
+ */
+export interface ProposalVersionInternal extends ProposalContent {
+  id: ProposalVersionId;
+  proposalId: ProposalId;
+  /** 1-based, gapless within a proposal. */
+  versionNumber: number;
+  status: ProposalVersionStatus;
+  /** Founder who authored this version. */
+  createdByPersonId: PersonId;
+  createdAt: number;
+  /** Null while the version is a draft. Set once, when the Founder publishes it. */
+  publishedAt: number | null;
+}
+
 /**
  * Explicit project grant for an ordinary member. Administrators do not need a
  * grant: organization-wide access is derived from the membership role.
@@ -305,4 +379,8 @@ export type AuditEventType =
   | "project.internal_note_added"
   | "project.internal_note_updated"
   | "project.founder_decision_recorded"
-  | "project.internal_next_action_recorded";
+  | "project.internal_next_action_recorded"
+  // Proposal foundation. Internal metadata only — never proposal content.
+  | "proposal.created"
+  | "proposal_version.created"
+  | "proposal_version.published";

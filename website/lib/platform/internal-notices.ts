@@ -33,6 +33,18 @@ const MESSAGES: Record<string, InternalNotice> = {
     kind: "success",
     message: "Saved. This stays internal.",
   },
+  "proposal-created": {
+    kind: "success",
+    message: "Proposal started. The first version is a draft and stays internal.",
+  },
+  "proposal-version-created": {
+    kind: "success",
+    message: "New draft version saved. Earlier versions are unchanged.",
+  },
+  "proposal-version-published": {
+    kind: "success",
+    message: "Version published. The customer has still seen and accepted nothing.",
+  },
 };
 
 export function internalNoticeFor(

@@ -17,11 +17,16 @@ import type {
   Membership,
   Organization,
   Person,
+  PersonId,
   ProjectAccess,
   ProjectId,
   ProjectIntake,
   ProjectIntakePatch,
   ProjectInternal,
+  ProposalId,
+  ProposalInternal,
+  ProposalVersionId,
+  ProposalVersionInternal,
   Session,
 } from "./domain";
 
@@ -185,6 +190,37 @@ export interface PlatformStore {
    * unique, which is what makes the tie-break a total order.
    */
   listSubmittedIntakeProjects(limit: number): SubmittedIntakeProject[];
+
+  // --- proposals ------------------------------------------------------------
+  findProposalByProject(projectId: ProjectId): ProposalInternal | null;
+  findProposalById(id: ProposalId): ProposalInternal | null;
+  listProposalVersions(proposalId: ProposalId): ProposalVersionInternal[];
+  findProposalVersionById(id: ProposalVersionId): ProposalVersionInternal | null;
+  createProposal(input: {
+    id: string;
+    projectId: ProjectId;
+    createdByPersonId: PersonId;
+    createdAt: number;
+    updatedAt: number;
+  }): ProposalInternal;
+  createProposalVersion(input: {
+    id: string;
+    proposalId: ProposalId;
+    versionNumber: number;
+    status: ProposalVersionInternal["status"];
+    summary: string;
+    scopeIncluded: string;
+    scopeExcluded: string;
+    deliverables: string;
+    timeline: string;
+    assumptions: string;
+    commercialTerms: string;
+    validUntil: number | null;
+    createdByPersonId: PersonId;
+    createdAt: number;
+    publishedAt: number | null;
+  }): ProposalVersionInternal;
+  publishProposalVersion(input: { id: ProposalVersionId; now: number }): void;
 
   // --- project access ------------------------------------------------------
   findProjectAccess(projectId: ProjectId, personId: string): ProjectAccess | null;
