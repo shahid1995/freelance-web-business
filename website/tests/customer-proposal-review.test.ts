@@ -18,6 +18,8 @@ import { describe, it } from "node:test";
 import { isPlatformError } from "../lib/platform/errors";
 import type { CustomerProposalView } from "../lib/platform/views";
 import { emailHash } from "../lib/platform/secrets";
+import type { ProjectWithProposalSignal } from "../lib/platform/ports";
+import { SqlitePlatformStore } from "../lib/platform/sqlite-store";
 import {
   MEMBER_EMAIL,
   OTHER_EMAIL,
@@ -33,6 +35,28 @@ const FOUNDER_HASH = emailHash(OWNER_EMAIL);
 
 async function reviewHarness(): Promise<TestPlatform> {
   return createTestPlatform({ config: { founderEmailHashes: [FOUNDER_HASH] } });
+}
+
+/**
+ * A real SQLite store that records how each published-proposal question is
+ * answered, so a test can prove the project listing uses the bulk query instead
+ * of the single-project existence check once per project.
+ */
+class CountingSqliteStore extends SqlitePlatformStore {
+  hasPublishedProposalCalls = 0;
+  bulkListCalls = 0;
+
+  override hasPublishedProposalVersion(projectId: string): boolean {
+    this.hasPublishedProposalCalls += 1;
+    return super.hasPublishedProposalVersion(projectId);
+  }
+
+  override listProjectsByOrganizationWithProposalSignal(
+    organizationId: string,
+  ): ProjectWithProposalSignal[] {
+    this.bulkListCalls += 1;
+    return super.listProjectsByOrganizationWithProposalSignal(organizationId);
+  }
 }
 
 type Owner = {
@@ -448,6 +472,85 @@ describe("dashboard published-proposal signal", () => {
     publish(harness, owner, 2);
     assert.equal(hasPublished(harness, owner.personId, owner.projectId), true);
     harness.platform.close();
+  });
+
+  it("answers the published signal for the whole listing in one bulk query", async () => {
+    // Real SQLite behind a counting subclass, so the test can prove the listing
+    // does not issue one existence check per project.
+    const store = new CountingSqliteStore(":memory:");
+    const harness = await createTestPlatform({
+      config: { founderEmailHashes: [FOUNDER_HASH] },
+      createOptions: { store },
+    });
+
+    const owner = await ownerWithProject(harness);
+    const author = (projectId: string): Author => ({ personId: owner.personId, projectId });
+    const project = (title: string) =>
+      harness.platform.projects.createProject({
+        personId: owner.personId,
+        organizationId: owner.organizationId,
+        title,
+      }).project;
+
+    const noProposal = project("No proposal");
+    const draftsOnly = project("Drafts only");
+    const published = project("Published");
+    const inconsistent = project("Published without an instant");
+
+    startProposal(harness, author(draftsOnly.id), "draft-only");
+    addVersion(harness, author(draftsOnly.id), "draft-only-2");
+    publishFirstVersion(harness, author(published.id));
+
+    // The only way to reach a published row without a publication instant: the
+    // store seam, since `publishVersion` stamps both together.
+    const proposal = harness.platform.store.createProposal({
+      id: "proposal-inconsistent-list",
+      projectId: inconsistent.id,
+      createdByPersonId: owner.personId,
+      createdAt: harness.clock.now(),
+      updatedAt: harness.clock.now(),
+    });
+    harness.platform.store.createProposalVersion({
+      id: "version-published-without-instant-list",
+      proposalId: proposal.id,
+      versionNumber: 1,
+      status: "published",
+      ...content("published-without-instant"),
+      validUntil: null,
+      createdByPersonId: owner.personId,
+      createdAt: harness.clock.now(),
+      publishedAt: null,
+    });
+
+    const before = store.hasPublishedProposalCalls;
+    const summaries = harness.platform.projects.listAccessibleProjects(owner.personId);
+
+    // The listing used the bulk query and did not fall back to a lookup per
+    // project, so it stays one statement regardless of how many projects exist.
+    assert.ok(store.bulkListCalls > 0, "the listing must use the bulk proposal query");
+    assert.equal(
+      store.hasPublishedProposalCalls,
+      before,
+      "the listing must not issue one existence check per project",
+    );
+
+    const signal = (reference: string) => {
+      const summary = summaries.find((entry) => entry.reference === reference);
+      assert.ok(summary, `expected a listing entry for ${reference}`);
+      return summary.hasPublishedProposal;
+    };
+
+    assert.equal(signal(owner.reference), false, "no proposal -> false");
+    assert.equal(signal(noProposal.reference), false, "no proposal -> false");
+    assert.equal(signal(draftsOnly.reference), false, "drafts only -> false");
+    assert.equal(signal(published.reference), true, "valid published proposal -> true");
+    assert.equal(
+      signal(inconsistent.reference),
+      false,
+      "published without a publication instant -> false",
+    );
+
+    store.close();
   });
 
   it("reports a published version without a publication instant as not published on both surfaces", async () => {

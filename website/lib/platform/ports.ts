@@ -53,6 +53,18 @@ export interface SubmittedIntakeProject {
   submittedAt: number;
 }
 
+/**
+ * A project paired with whether it currently has a customer-visible published
+ * proposal version.
+ *
+ * The signal travels with the project so a listing can answer the question for
+ * the whole set in one query rather than one existence check per project.
+ */
+export interface ProjectWithProposalSignal {
+  project: ProjectInternal;
+  hasPublishedProposal: boolean;
+}
+
 export interface RateLimitDecision extends RateLimitWindow {
   /**
    * False when the attempt was refused. `count` is then the count that was
@@ -174,6 +186,16 @@ export interface PlatformStore {
    */
   findProjectByReferenceGlobal(reference: string): ProjectInternal | null;
   listProjectsByOrganization(organizationId: string): ProjectInternal[];
+  /**
+   * Projects in one organization, each with its published-proposal signal.
+   *
+   * The signal is computed inside the same statement (a correlated `EXISTS` over
+   * the proposal tables), so listing N projects stays one query rather than N
+   * existence checks. Only the boolean is produced; no proposal content is read.
+   */
+  listProjectsByOrganizationWithProposalSignal(
+    organizationId: string,
+  ): ProjectWithProposalSignal[];
 
   /**
    * Projects whose Project Intake has been submitted, across all organizations.
@@ -204,6 +226,17 @@ export interface PlatformStore {
    * project has no proposal or every version is still a draft.
    */
   hasPublishedProposalVersion(projectId: ProjectId): boolean;
+  /**
+   * The current published version for a project, or null when it has none.
+   *
+   * "Current" is the highest-numbered version that is both published and carries
+   * a publication instant. Resolved in one query, so the customer read does not
+   * have to traverse proposal → versions itself and the publication invariant is
+   * not re-derived in the service.
+   */
+  findCurrentPublishedProposalVersion(
+    projectId: ProjectId,
+  ): ProposalVersionInternal | null;
   findProposalVersionById(id: ProposalVersionId): ProposalVersionInternal | null;
   createProposal(input: {
     id: string;

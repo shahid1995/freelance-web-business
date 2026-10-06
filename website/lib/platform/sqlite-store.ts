@@ -43,6 +43,7 @@ import {
 } from "./domain";
 import type {
   PlatformStore,
+  ProjectWithProposalSignal,
   RateLimitDecision,
   RateLimitWindow,
   SubmittedIntakeProject,
@@ -87,6 +88,18 @@ function nullableInt(row: Row, column: string): number | null {
 function changesOf(result: { changes: number | bigint }): number {
   return typeof result.changes === "bigint" ? Number(result.changes) : result.changes;
 }
+
+/**
+ * The customer-visible publication invariant, as one shared SQL fragment.
+ *
+ * A version is customer-visible only when it is both published and carries a
+ * publication instant. Declared once and interpolated into every query that
+ * answers a visibility question, so the dashboard signal, the current-version
+ * lookup, and the bulk project listing cannot drift apart. `v` is always the
+ * `proposal_versions` alias in the queries that use it.
+ */
+const PUBLISHED_PROPOSAL_PREDICATE =
+  "v.status = 'published' AND v.published_at IS NOT NULL";
 
 const INTAKE_ANSWER_COLUMNS = PROJECT_INTAKE_FIELDS.map(
   (field) => `${PROJECT_INTAKE_COLUMNS[field]} TEXT`,
@@ -819,6 +832,37 @@ export class SqlitePlatformStore implements PlatformStore {
     ).map((row) => this.toProject(row));
   }
 
+  /**
+   * Projects in one organization, each with its published-proposal signal.
+   *
+   * A correlated `EXISTS` answers the boolean inside the same statement, so the
+   * listing is one query regardless of how many projects the organization has;
+   * the alternative — one existence check per project — grows a query per row.
+   * The `EXISTS` selects `1`, so no proposal content is read, and it applies the
+   * same shared publication predicate as the other visibility queries. Ordering
+   * matches `listProjectsByOrganization` so both listings agree.
+   */
+  listProjectsByOrganizationWithProposalSignal(
+    organizationId: string,
+  ): ProjectWithProposalSignal[] {
+    return this.all(
+      `SELECT p.*,
+              EXISTS (
+                SELECT 1
+                  FROM proposals pr
+                  JOIN proposal_versions v ON v.proposal_id = pr.id
+                 WHERE pr.project_id = p.id AND ${PUBLISHED_PROPOSAL_PREDICATE}
+              ) AS has_published_proposal
+         FROM projects p
+        WHERE p.organization_id = ?
+        ORDER BY p.created_at ASC, p.id ASC`,
+      organizationId,
+    ).map((row) => ({
+      project: this.toProject(row),
+      hasPublishedProposal: int(row, "has_published_proposal") === 1,
+    }));
+  }
+
   listSubmittedIntakeProjects(limit: number): SubmittedIntakeProject[] {
     const bounded = Math.max(1, Math.min(limit, 200));
     // One query, so nothing is read twice and the ordering cannot drift out of
@@ -906,23 +950,40 @@ export class SqlitePlatformStore implements PlatformStore {
    * Existence check for the customer dashboard's `hasPublishedProposal` signal.
    *
    * One indexed lookup joined through `proposals`, so the customer listing does
-   * not have to load proposal content to answer a boolean question.
-   *
-   * Requires both the published status and a recorded publication instant, which
-   * is the same invariant `selectCurrentPublishedVersion` applies before a
-   * version is shown to a customer. A row marked published without an instant is
-   * therefore reported as not published here too, so the dashboard signal and the
-   * customer read cannot disagree.
+   * not have to load proposal content to answer a boolean question. It applies
+   * the shared publication predicate — published status and a recorded
+   * publication instant — so it agrees with `findCurrentPublishedProposalVersion`
+   * and a row marked published without an instant is reported as not published
+   * here too.
    */
   hasPublishedProposalVersion(projectId: ProjectId): boolean {
     const row = this.get(
       "SELECT 1 AS present FROM proposal_versions v " +
         "JOIN proposals p ON p.id = v.proposal_id " +
-        "WHERE p.project_id = ? AND v.status = 'published' AND v.published_at IS NOT NULL " +
-        "LIMIT 1",
+        `WHERE p.project_id = ? AND ${PUBLISHED_PROPOSAL_PREDICATE} LIMIT 1`,
       projectId,
     );
     return row !== undefined;
+  }
+
+  /**
+   * The current published version for a project, or null when it has none.
+   *
+   * One query resolves the whole rule: the shared publication predicate excludes
+   * drafts and versions without an instant, and `ORDER BY version_number DESC`
+   * makes a newer published version win while a newer draft cannot displace it.
+   */
+  findCurrentPublishedProposalVersion(
+    projectId: ProjectId,
+  ): ProposalVersionInternal | null {
+    const row = this.get(
+      "SELECT v.* FROM proposal_versions v " +
+        "JOIN proposals p ON p.id = v.proposal_id " +
+        `WHERE p.project_id = ? AND ${PUBLISHED_PROPOSAL_PREDICATE} ` +
+        "ORDER BY v.version_number DESC LIMIT 1",
+      projectId,
+    );
+    return row ? this.toProposalVersion(row) : null;
   }
 
   createProposal(input: {
