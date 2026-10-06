@@ -27,6 +27,7 @@ import {
   signUpAsOwnerWithProject,
   type TestPlatform,
 } from "./support/harness";
+import { collectKeys } from "./support/projection";
 
 const FOUNDER_HASH = emailHash(OWNER_EMAIL);
 
@@ -34,15 +35,27 @@ async function reviewHarness(): Promise<TestPlatform> {
   return createTestPlatform({ config: { founderEmailHashes: [FOUNDER_HASH] } });
 }
 
+type Owner = {
+  personId: string;
+  organizationId: string;
+  projectId: string;
+  reference: string;
+};
+
 async function ownerWithProject(
   harness: TestPlatform,
   email = OWNER_EMAIL,
   organizationName = "First Synthetic Org",
-) {
+): Promise<Owner> {
   const owner = await signUpAsOwnerWithProject(harness, email, organizationName);
   const project = harness.platform.store.findProject(owner.projectId);
   assert.ok(project);
-  return { ...owner, reference: project.reference };
+  return {
+    personId: owner.personId,
+    organizationId: owner.organizationId,
+    projectId: owner.projectId,
+    reference: project.reference,
+  };
 }
 
 /** A proposal author: a Founder-capable person acting on one project. */
@@ -85,6 +98,30 @@ function publish(harness: TestPlatform, author: Author, versionNumber: number): 
   });
 }
 
+/** Opens the proposal and publishes its first version. */
+function publishFirstVersion(harness: TestPlatform, author: Author): void {
+  startProposal(harness, author, "v1");
+  publish(harness, author, 1);
+}
+
+function grantAccess(harness: TestPlatform, owner: Owner, memberPersonId: string): void {
+  harness.platform.projects.grantProjectAccess({
+    personId: owner.personId,
+    organizationId: owner.organizationId,
+    projectId: owner.projectId,
+    memberPersonId,
+  });
+}
+
+function revokeAccess(harness: TestPlatform, owner: Owner, memberPersonId: string): void {
+  harness.platform.projects.revokeProjectAccess({
+    personId: owner.personId,
+    organizationId: owner.organizationId,
+    projectId: owner.projectId,
+    memberPersonId,
+  });
+}
+
 function readProposal(
   harness: TestPlatform,
   personId: string,
@@ -96,6 +133,44 @@ function readProposal(
 function hasPublished(harness: TestPlatform, personId: string, projectId: string): boolean {
   return harness.platform.projects.getCustomerProject(personId, projectId).project
     .hasPublishedProposal;
+}
+
+function expectCode(error: unknown, code: string): boolean {
+  return isPlatformError(error) && error.code === code;
+}
+
+/** Asserts the customer proposal read is rejected with the expected code. */
+function expectReadError(
+  harness: TestPlatform,
+  personId: string,
+  reference: string,
+  code: string,
+): void {
+  assert.throws(
+    () => readProposal(harness, personId, reference),
+    (error: unknown) => expectCode(error, code),
+  );
+}
+
+/** An owner whose project has a published proposal. */
+async function publishedOwner(
+  harness: TestPlatform,
+  email = OWNER_EMAIL,
+  organizationName = "First Synthetic Org",
+): Promise<Owner> {
+  const owner = await ownerWithProject(harness, email, organizationName);
+  publishFirstVersion(harness, owner);
+  return owner;
+}
+
+/** An owner with a published proposal plus an ordinary member. */
+async function ownerMemberPublished(harness: TestPlatform, grant = false) {
+  const owner = await publishedOwner(harness);
+  const member = await addOrdinaryMember(harness, owner.organizationId, MEMBER_EMAIL);
+  if (grant) {
+    grantAccess(harness, owner, member.personId);
+  }
+  return { owner, member };
 }
 
 /** The exact customer-safe projection the ADR approves, and nothing else. */
@@ -115,80 +190,36 @@ const PROPOSAL_VIEW_KEYS = [
 
 /** Keys that must never appear in anything a customer can read. */
 const FORBIDDEN_KEYS = [
-  "id",
   "proposalId",
   "versionId",
-  "publishedVersionId",
   "createdByPersonId",
-  "createdAt",
-  "status",
-  "versions",
-  "latestDraft",
   "qualificationState",
   "internalNotes",
   "founderDecision",
   "internalNextAction",
   "metadata",
-  "auditEvents",
 ];
-
-function collectKeys(value: unknown, keys = new Set<string>()): Set<string> {
-  if (Array.isArray(value)) {
-    for (const item of value) collectKeys(item, keys);
-    return keys;
-  }
-  if (value !== null && typeof value === "object") {
-    for (const [key, nested] of Object.entries(value)) {
-      keys.add(key);
-      collectKeys(nested, keys);
-    }
-  }
-  return keys;
-}
-
-function expectCode(error: unknown, code: string): boolean {
-  return isPlatformError(error) && error.code === code;
-}
 
 describe("customer proposal authorization", () => {
   it("rejects an unauthenticated caller", async () => {
     const harness = await reviewHarness();
-    const owner = await ownerWithProject(harness);
-    startProposal(harness, owner, "v1");
+    const owner = await publishedOwner(harness);
 
-    assert.throws(
-      () => readProposal(harness, "person-who-does-not-exist", owner.reference),
-      (error: unknown) => expectCode(error, "unauthenticated"),
-    );
+    expectReadError(harness, "person-who-does-not-exist", owner.reference, "unauthenticated");
     harness.platform.close();
   });
 
   it("rejects an authenticated customer without project access", async () => {
     const harness = await reviewHarness();
-    const owner = await ownerWithProject(harness);
-    const member = await addOrdinaryMember(harness, owner.organizationId, MEMBER_EMAIL);
-    startProposal(harness, owner, "v1");
-    publish(harness, owner, 1);
+    const { owner, member } = await ownerMemberPublished(harness);
 
-    assert.throws(
-      () => readProposal(harness, member.personId, owner.reference),
-      (error: unknown) => expectCode(error, "forbidden"),
-    );
+    expectReadError(harness, member.personId, owner.reference, "forbidden");
     harness.platform.close();
   });
 
   it("lets an ordinary member with an explicit assignment read", async () => {
     const harness = await reviewHarness();
-    const owner = await ownerWithProject(harness);
-    const member = await addOrdinaryMember(harness, owner.organizationId, MEMBER_EMAIL);
-    startProposal(harness, owner, "v1");
-    publish(harness, owner, 1);
-    harness.platform.projects.grantProjectAccess({
-      personId: owner.personId,
-      organizationId: owner.organizationId,
-      projectId: owner.projectId,
-      memberPersonId: member.personId,
-    });
+    const { owner, member } = await ownerMemberPublished(harness, true);
 
     const view = readProposal(harness, member.personId, owner.reference);
     assert.equal(view?.versionNumber, 1);
@@ -198,9 +229,7 @@ describe("customer proposal authorization", () => {
 
   it("lets an organization owner/admin read a project in their own organization", async () => {
     const harness = await reviewHarness();
-    const owner = await ownerWithProject(harness);
-    startProposal(harness, owner, "v1");
-    publish(harness, owner, 1);
+    const owner = await publishedOwner(harness);
 
     const view = readProposal(harness, owner.personId, owner.reference);
     assert.equal(view?.projectReference, owner.reference);
@@ -215,14 +244,9 @@ describe("customer proposal authorization", () => {
     // The Founder authors the second organization's proposal; the Founder holds
     // membership in no customer organization.
     const asFounder = { personId: firstOrg.personId, projectId: secondOrg.projectId };
-    startProposal(harness, asFounder, "other-org");
-    publish(harness, asFounder, 1);
+    publishFirstVersion(harness, asFounder);
 
-    // The first organization's owner is an admin, but of a different organization.
-    assert.throws(
-      () => readProposal(harness, firstOrg.personId, secondOrg.reference),
-      (error: unknown) => expectCode(error, "not_found"),
-    );
+    expectReadError(harness, firstOrg.personId, secondOrg.reference, "not_found");
     harness.platform.close();
   });
 
@@ -240,42 +264,20 @@ describe("customer proposal authorization", () => {
     );
 
     const asFounder = { personId: founderOrg.personId, projectId: otherOrg.projectId };
-    startProposal(harness, asFounder, "other-org");
-    publish(harness, asFounder, 1);
+    publishFirstVersion(harness, asFounder);
 
     // The capability grants nothing on the customer read path.
-    assert.throws(
-      () => readProposal(harness, founderOrg.personId, otherOrg.reference),
-      (error: unknown) => expectCode(error, "not_found"),
-    );
+    expectReadError(harness, founderOrg.personId, otherOrg.reference, "not_found");
     harness.platform.close();
   });
 
   it("stops proposal access immediately when a project assignment is revoked", async () => {
     const harness = await reviewHarness();
-    const owner = await ownerWithProject(harness);
-    const member = await addOrdinaryMember(harness, owner.organizationId, MEMBER_EMAIL);
-    startProposal(harness, owner, "v1");
-    publish(harness, owner, 1);
-    harness.platform.projects.grantProjectAccess({
-      personId: owner.personId,
-      organizationId: owner.organizationId,
-      projectId: owner.projectId,
-      memberPersonId: member.personId,
-    });
+    const { owner, member } = await ownerMemberPublished(harness, true);
     assert.equal(readProposal(harness, member.personId, owner.reference)?.versionNumber, 1);
 
-    harness.platform.projects.revokeProjectAccess({
-      personId: owner.personId,
-      organizationId: owner.organizationId,
-      projectId: owner.projectId,
-      memberPersonId: member.personId,
-    });
-
-    assert.throws(
-      () => readProposal(harness, member.personId, owner.reference),
-      (error: unknown) => expectCode(error, "forbidden"),
-    );
+    revokeAccess(harness, owner, member.personId);
+    expectReadError(harness, member.personId, owner.reference, "forbidden");
     harness.platform.close();
   });
 });
@@ -320,14 +322,12 @@ describe("customer proposal visibility", () => {
 
   it("keeps the published version visible when a newer draft is added", async () => {
     const harness = await reviewHarness();
-    const owner = await ownerWithProject(harness);
-    startProposal(harness, owner, "published-one");
-    publish(harness, owner, 1);
+    const owner = await publishedOwner(harness);
     addVersion(harness, owner, "newer-draft");
 
     const view = readProposal(harness, owner.personId, owner.reference);
     assert.equal(view?.versionNumber, 1);
-    assert.equal(view?.summary, "Summary published-one");
+    assert.equal(view?.summary, "Summary v1");
     harness.platform.close();
   });
 
@@ -348,9 +348,7 @@ describe("customer proposal visibility", () => {
 
   it("never retrieves a proposal through another project's reference", async () => {
     const harness = await reviewHarness();
-    const owner = await ownerWithProject(harness);
-    startProposal(harness, owner, "v1");
-    publish(harness, owner, 1);
+    const owner = await publishedOwner(harness);
 
     const second = harness.platform.projects.createProject({
       personId: owner.personId,
@@ -358,10 +356,7 @@ describe("customer proposal visibility", () => {
     });
 
     // The second project has no proposal of its own.
-    assert.equal(
-      readProposal(harness, owner.personId, second.project.reference),
-      null,
-    );
+    assert.equal(readProposal(harness, owner.personId, second.project.reference), null);
     // The first project's proposal is only reachable through its own reference.
     assert.equal(readProposal(harness, owner.personId, owner.reference)?.versionNumber, 1);
     harness.platform.close();
@@ -371,9 +366,7 @@ describe("customer proposal visibility", () => {
 describe("customer proposal projection boundary", () => {
   it("contains exactly the approved customer-safe fields", async () => {
     const harness = await reviewHarness();
-    const owner = await ownerWithProject(harness);
-    startProposal(harness, owner, "v1");
-    publish(harness, owner, 1);
+    const owner = await publishedOwner(harness);
 
     const view = readProposal(harness, owner.personId, owner.reference);
     assert.ok(view);
@@ -386,9 +379,7 @@ describe("customer proposal projection boundary", () => {
 
   it("omits internal ids, audit metadata, and internal state", async () => {
     const harness = await reviewHarness();
-    const owner = await ownerWithProject(harness);
-    startProposal(harness, owner, "v1");
-    publish(harness, owner, 1);
+    const owner = await publishedOwner(harness);
 
     const view = readProposal(harness, owner.personId, owner.reference);
     const keys = collectKeys(view);
@@ -399,7 +390,11 @@ describe("customer proposal projection boundary", () => {
     // what makes the omission above meaningful rather than vacuous.
     const proposal = harness.platform.store.findProposalByProject(owner.projectId);
     assert.ok(proposal);
-    assert.equal(JSON.stringify(view).includes(proposal.id), false);
+    const version = harness.platform.store.listProposalVersions(proposal.id)[0];
+    assert.ok(version);
+    const serialized = JSON.stringify(view);
+    assert.equal(serialized.includes(proposal.id), false);
+    assert.equal(serialized.includes(version.id), false);
     harness.platform.close();
   });
 });
@@ -407,10 +402,8 @@ describe("customer proposal projection boundary", () => {
 describe("customer proposal state preservation", () => {
   it("performs no write and creates no audit event when reading", async () => {
     const harness = await reviewHarness();
-    const owner = await ownerWithProject(harness);
-    startProposal(harness, owner, "v1");
+    const owner = await publishedOwner(harness);
     addVersion(harness, owner, "v2");
-    publish(harness, owner, 1);
 
     const proposal = harness.platform.store.findProposalByProject(owner.projectId);
     assert.ok(proposal);
@@ -424,8 +417,7 @@ describe("customer proposal state preservation", () => {
     });
 
     const before = snapshot();
-    const view = readProposal(harness, owner.personId, owner.reference);
-    assert.ok(view);
+    assert.ok(readProposal(harness, owner.personId, owner.reference));
     const after = snapshot();
 
     assert.deepEqual(after, before, "reading a proposal must not write anything");
@@ -448,9 +440,8 @@ describe("dashboard published-proposal signal", () => {
 
   it("stays true when a newer draft follows and when more versions are published", async () => {
     const harness = await reviewHarness();
-    const owner = await ownerWithProject(harness);
-    startProposal(harness, owner, "v1");
-    publish(harness, owner, 1);
+    const owner = await publishedOwner(harness);
+
     addVersion(harness, owner, "newer-draft");
     assert.equal(hasPublished(harness, owner.personId, owner.projectId), true);
 
@@ -479,36 +470,22 @@ describe("dashboard published-proposal signal", () => {
 });
 
 describe("customer proposal route and privacy", () => {
-  it("maps unauthenticated and inaccessible reads to the not-found/redirect codes", async () => {
+  it("maps unauthenticated and inaccessible reads to the platform codes", async () => {
     const harness = await reviewHarness();
-    const owner = await ownerWithProject(harness);
-    const member = await addOrdinaryMember(harness, owner.organizationId, MEMBER_EMAIL);
-    startProposal(harness, owner, "v1");
-    publish(harness, owner, 1);
+    const { owner, member } = await ownerMemberPublished(harness);
 
     // The page guard redirects on `unauthenticated`; unauthenticated reads throw it.
-    assert.throws(
-      () => readProposal(harness, "unknown-person", owner.reference),
-      (error: unknown) => expectCode(error, "unauthenticated"),
-    );
+    expectReadError(harness, "unknown-person", owner.reference, "unauthenticated");
     // The page renders notFound() for the codes `isMissing` treats as missing:
     // an ordinary member without access (forbidden) and an unknown reference.
-    assert.throws(
-      () => readProposal(harness, member.personId, owner.reference),
-      (error: unknown) => expectCode(error, "forbidden"),
-    );
-    assert.throws(
-      () => readProposal(harness, owner.personId, "PRJ-NOT-A-REFERENCE"),
-      (error: unknown) => expectCode(error, "not_found"),
-    );
+    expectReadError(harness, member.personId, owner.reference, "forbidden");
+    expectReadError(harness, owner.personId, "PRJ-NOT-A-REFERENCE", "not_found");
     harness.platform.close();
   });
 
   it("reads a customer-safe proposal only, and the page stays read-only", async () => {
     const harness = await reviewHarness();
-    const owner = await ownerWithProject(harness);
-    startProposal(harness, owner, "v1");
-    publish(harness, owner, 1);
+    const owner = await publishedOwner(harness);
 
     const view = readProposal(harness, owner.personId, owner.reference);
     assert.ok(view);

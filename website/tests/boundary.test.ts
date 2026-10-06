@@ -18,6 +18,7 @@ import {
   toCustomerProjectSummary,
 } from "../lib/platform/views";
 import { OWNER_EMAIL, createTestPlatform, signUpAsOwner } from "./support/harness";
+import { collectKeys } from "./support/projection";
 
 const INTERNAL_VALUES = {
   qualificationState: "not_a_fit" as const,
@@ -47,19 +48,6 @@ const INTERNAL_KEYS = [
   "audit_events",
 ];
 
-function collectKeys(value: unknown, keys = new Set<string>()): Set<string> {
-  if (Array.isArray(value)) {
-    for (const item of value) collectKeys(item, keys);
-    return keys;
-  }
-  if (value !== null && typeof value === "object") {
-    for (const [key, nested] of Object.entries(value)) {
-      keys.add(key);
-      collectKeys(nested, keys);
-    }
-  }
-  return keys;
-}
 
 function internalProject(overrides: Partial<ProjectInternal> = {}): ProjectInternal {
   return {
