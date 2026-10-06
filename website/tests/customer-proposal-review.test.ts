@@ -38,13 +38,32 @@ async function reviewHarness(): Promise<TestPlatform> {
 }
 
 /**
- * A real SQLite store that records how each published-proposal question is
- * answered, so a test can prove the project listing uses the bulk query instead
- * of the single-project existence check once per project.
+ * A real SQLite store that records how often the resolution- and
+ * authorization-sensitive reads happen, so tests can prove the project listing
+ * uses the bulk proposal query and the customer proposal read performs no
+ * reference resolution or access check of its own.
  */
 class CountingSqliteStore extends SqlitePlatformStore {
   hasPublishedProposalCalls = 0;
   bulkListCalls = 0;
+  findProjectByReferenceCalls = 0;
+  findProjectAccessCalls = 0;
+
+  override findProjectByReference(
+    organizationId: string,
+    reference: string,
+  ): ReturnType<SqlitePlatformStore["findProjectByReference"]> {
+    this.findProjectByReferenceCalls += 1;
+    return super.findProjectByReference(organizationId, reference);
+  }
+
+  override findProjectAccess(
+    projectId: string,
+    personId: string,
+  ): ReturnType<SqlitePlatformStore["findProjectAccess"]> {
+    this.findProjectAccessCalls += 1;
+    return super.findProjectAccess(projectId, personId);
+  }
 
   override hasPublishedProposalVersion(projectId: string): boolean {
     this.hasPublishedProposalCalls += 1;
@@ -146,12 +165,22 @@ function revokeAccess(harness: TestPlatform, owner: Owner, memberPersonId: strin
   });
 }
 
+/**
+ * Mirrors the proposal page: resolve and authorize the customer-facing
+ * reference exactly once through the customer project service, then read the
+ * proposal by that authorized project id. Authorization therefore still runs on
+ * every read, in the same layer as every other customer read.
+ */
 function readProposal(
   harness: TestPlatform,
   personId: string,
   reference: string,
 ): CustomerProposalView | null {
-  return harness.platform.customerProposals.readByProjectReference(personId, reference);
+  const projectId = harness.platform.projects.resolveProjectIdByReference(
+    personId,
+    reference,
+  );
+  return harness.platform.customerProposals.readByProjectId(projectId);
 }
 
 function hasPublished(harness: TestPlatform, personId: string, projectId: string): boolean {
@@ -626,6 +655,42 @@ describe("customer proposal route and privacy", () => {
     harness.platform.close();
   });
 
+  it("reads the proposal by an authorized project id without resolving or authorizing again", async () => {
+    const store = new CountingSqliteStore(":memory:");
+    const harness = await createTestPlatform({
+      config: { founderEmailHashes: [FOUNDER_HASH] },
+      createOptions: { store },
+    });
+    const owner = await publishedOwner(harness);
+    const projectId = harness.platform.projects.resolveProjectIdByReference(
+      owner.personId,
+      owner.reference,
+    );
+
+    // The reference was resolved and authorized exactly once, above. The proposal
+    // read that follows must be a pure proposal read: no reference resolution and
+    // no repeated access check.
+    const before = {
+      resolve: store.findProjectByReferenceCalls,
+      access: store.findProjectAccessCalls,
+    };
+    const view = harness.platform.customerProposals.readByProjectId(projectId);
+
+    assert.equal(view?.projectReference, owner.reference);
+    assert.equal(view?.versionNumber, 1);
+    assert.equal(
+      store.findProjectByReferenceCalls,
+      before.resolve,
+      "the proposal read must not resolve the reference again",
+    );
+    assert.equal(
+      store.findProjectAccessCalls,
+      before.access,
+      "the proposal read must not repeat the access check",
+    );
+    store.close();
+  });
+
   it("reads a customer-safe proposal only, and the page stays read-only", async () => {
     const harness = await reviewHarness();
     const owner = await publishedOwner(harness);
@@ -658,6 +723,21 @@ describe("customer proposal route and privacy", () => {
     assert.ok(!/\bexport\s+(async\s+)?function\s+POST\b/.test(source));
     assert.ok(!source.includes("platform.proposals"));
     assert.ok(source.includes("customerProposals"));
+    // The page resolves and authorizes the reference once and passes the
+    // authorized project id into the proposal read, so one request does not
+    // resolve and authorize the same reference twice.
+    assert.ok(
+      source.includes("readByProjectId"),
+      "the page must read the proposal by project id",
+    );
+    assert.ok(
+      !source.includes("readByProjectReference"),
+      "the page must not resolve the proposal service by reference",
+    );
+    assert.ok(
+      source.includes("resolveProjectIdByReference"),
+      "the page must resolve the customer-facing reference once",
+    );
 
     const dashboardSource = readFileSync(
       join(__dirname, "..", "..", "app", "dashboard", "page.tsx"),

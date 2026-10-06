@@ -132,7 +132,6 @@ export async function createPlatform(
     }),
     customerProposals: new CustomerProposalService({
       store: resolvedStore,
-      projects,
     }),
     close() {
       if (ownsStore) {
