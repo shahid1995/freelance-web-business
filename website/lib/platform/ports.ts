@@ -25,6 +25,7 @@ import type {
   ProjectInternal,
   ProposalId,
   ProposalInternal,
+  ProposalResponseInternal,
   ProposalVersionId,
   ProposalVersionInternal,
   Session,
@@ -263,6 +264,39 @@ export interface PlatformStore {
     publishedAt: number | null;
   }): ProposalVersionInternal;
   publishProposalVersion(input: { id: ProposalVersionId; now: number }): void;
+
+  // --- proposal responses --------------------------------------------------
+  /**
+   * Appends one immutable customer response row.
+   *
+   * Insert only. The port deliberately exposes no update and no delete method
+   * for a response: the row is the durable evidence, so it is written once and
+   * read afterwards. Duplicate `actionKey` values are rejected by the database.
+   */
+  createProposalResponse(input: ProposalResponseInternal): ProposalResponseInternal;
+  /**
+   * All responses recorded for one project, oldest first.
+   *
+   * The response history is the source of truth for a version's standing;
+   * callers derive from it rather than reading a stored state.
+   */
+  listProposalResponses(projectId: ProjectId): ProposalResponseInternal[];
+  /**
+   * Looks up one submission by its idempotency key.
+   *
+   * A retried or replayed submission hits this first and resolves to the
+   * already-recorded result instead of creating a second row.
+   */
+  findProposalResponseByKey(actionKey: string): ProposalResponseInternal | null;
+  /**
+   * The acceptance recorded against a proposal version, if any.
+   *
+   * At most one can exist — a partial unique index enforces it — so this is the
+   * version's terminality check rather than a scan of the history.
+   */
+  findAcceptedProposalVersion(
+    proposalVersionId: ProposalVersionId,
+  ): ProposalResponseInternal | null;
 
   // --- project access ------------------------------------------------------
   findProjectAccess(projectId: ProjectId, personId: string): ProjectAccess | null;

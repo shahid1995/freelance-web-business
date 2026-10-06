@@ -17,6 +17,7 @@ import { systemClock, type Clock } from "./clock";
 import { loadPlatformConfig, type PlatformConfig, type EnvironmentLike } from "./config";
 import { AuthService } from "./auth";
 import { CustomerProposalService } from "./customer-proposals";
+import { CustomerProposalResponseService } from "./customer-proposal-responses";
 import { FounderWorkspaceService } from "./internal";
 import { IntakeService } from "./intake";
 import { LocalEmailSink } from "./local-email";
@@ -46,6 +47,13 @@ export interface Platform {
    * capability.
    */
   customerProposals: CustomerProposalService;
+  /**
+   * Customer-facing proposal response actions (Request Changes and Accept),
+   * sibling to the read seam rather than part of it. Authorized by the customer
+   * project model on every call; Accept additionally requires the organization
+   * Owner/Admin role. The `founder` capability is never consulted here.
+   */
+  customerProposalResponses: CustomerProposalResponseService;
   close(): void;
 }
 
@@ -132,6 +140,11 @@ export async function createPlatform(
     }),
     customerProposals: new CustomerProposalService({
       store: resolvedStore,
+    }),
+    customerProposalResponses: new CustomerProposalResponseService({
+      store: resolvedStore,
+      clock,
+      newId,
     }),
     close() {
       if (ownsStore) {

@@ -113,6 +113,7 @@ separate from the public content model in `lib/content.ts` and `lib/services.ts`
 | Founder workspace | `lib/platform/internal.ts` | Founder-only: read-only review plus the explicit Start Review action |
 | Proposal foundation | `lib/platform/proposals.ts` | Founder-only: one proposal per project, append-only numbered versions, explicit publication |
 | Customer proposal review | `lib/platform/customer-proposals.ts` | Customer-facing read-only: the current published version only, never a draft |
+| Customer proposal response | `lib/platform/customer-proposal-responses.ts` | Customer-facing: Request Changes and Accept, each bound to the current published version, append-only, Accept restricted to organization Owner/Admin |
 | Internal projections | `lib/platform/internal-views.ts` | Internal views built field by field; drops audit metadata and never spreads a stored record |
 | Request guard | `lib/platform/http.ts` | Origin check plus session requirement |
 | Next.js adapter | `lib/platform/server.ts` | Reads headers, redirects; no authorization logic |
@@ -134,6 +135,7 @@ Endpoints (all state-changing requests are same-origin POSTs):
 - POST /api/organization
 - POST /api/projects
 - POST /api/projects/{reference}/intake
+- POST /api/projects/{reference}/proposal-response
 
 ### Founder workspace
 
@@ -213,20 +215,62 @@ version whose status is `published` — for a project the customer may already
 access. Drafts never reach a customer, and a newer draft does not displace or
 hide the published version.
 
-The page at `/dashboard/projects/{reference}/proposal` is server-rendered and has
-no form and no state-changing control: there is no acceptance, request-change,
-agreement, or payment action. It renders a field-by-field customer-safe
-projection (`lib/platform/views.ts`) carrying only the project reference, the
-version number, the publication instant, and the approved proposal text; internal
-ids, audit metadata, and Founder/internal state are absent by construction. The
-dashboard shows the link only when the customer project summary reports
-`hasPublishedProposal`.
+The page at `/dashboard/projects/{reference}/proposal` is server-rendered. It
+renders a field-by-field customer-safe projection (`lib/platform/views.ts`)
+carrying only the project reference, the version number, the publication
+instant, and the approved proposal text; internal ids, audit metadata, and
+Founder/internal state are absent by construction. The dashboard shows the link
+only when the customer project summary reports `hasPublishedProposal`.
 
 Authorization reuses the existing customer project model — organization
 Owner/Admin organization-wide, ordinary members by explicit assignment — never
 the `founder` internal capability. The read performs no write, creates no audit
 event, and does not change the customer-facing project stage. There is no
 customer JSON endpoint for it.
+
+The page's two response actions (Request Changes and Accept) are governed by
+`docs/decisions/2026-10-06-customer-proposal-response.md` and described in the
+next section; rendering the page still writes nothing.
+
+### Customer proposal response
+
+The customer's two explicit actions on a published proposal version are governed
+by `docs/decisions/2026-10-06-customer-proposal-response.md` and live in
+`lib/platform/customer-proposal-responses.ts` — a sibling of the read seam rather
+than part of it, so the read seam's documented single-fact contract stays
+intact.
+
+- **Two actions only**, both explicit and server-authorized: `changes_requested`
+  (any authorized customer with project access, required message up to 5,000
+  characters) and `accepted` (**organization Owner/Admin only**). No reject, no
+  decline, no implicit action, and no new role: the existing customer project
+  model is reused, with the existing Owner/Admin check evaluated inside the
+  service on every call.
+- **Append-only `proposal_responses` history is the source of truth.** A version's
+  standing (open / changes requested / accepted) is always derived from those
+  rows — there is no stored response state on the proposal, version, or
+  project — and there is no update or delete path for a written row.
+- **Version binding.** The customer submits the visible version number; the
+  server re-derives the current published version under the shared publication
+  predicate inside the same transaction that writes. A stale number rejects the
+  whole submission and writes nothing — no silent rebinding, no superseded-version
+  acceptance, no partial record.
+- **The rule table.** Request Changes is allowed while a version is open or
+  already has changes requested; Accept is allowed only while a version is open,
+  so a version with a change request can no longer be accepted; an accepted
+  version is terminal, and the database enforces at most one acceptance per
+  version with a partial unique index.
+- **Evidence.** Each response appends its audit event
+  (`proposal_response.accepted` / `proposal_response.changes_requested`) in the
+  same transaction, carrying identifiers only — never the customer's message and
+  never proposal content. Reading stays non-mutating with no view event.
+- **Endpoint.** `POST /api/projects/{reference}/proposal-response`, a form-post
+  endpoint mirroring the intake route, redirecting back with approved notice
+  codes from `lib/platform/notices.ts` — no service message ever passes through
+  a redirect, and no customer JSON read endpoint exists.
+- Acceptance is application-level evidence only: not a signature, no agreement,
+  no payment, no activation, and no customer project-stage change —
+  `customerStageFor` is untouched and no project-level acceptance state exists.
 
 ### Data store
 

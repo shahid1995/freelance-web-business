@@ -66,6 +66,45 @@ const MESSAGES: Record<string, Notice> = {
     kind: "error",
     message: "That request could not be verified. Please reload the page and try again.",
   },
+  // Customer proposal response (Request Changes / Accept).
+  "proposal-response-accepted": {
+    kind: "success",
+    message:
+      "Your acceptance of this proposal version has been recorded. It applies to this version only.",
+  },
+  "proposal-response-changes-requested": {
+    kind: "success",
+    message:
+      "Your change request has been recorded for this proposal version. Requesting changes does not change, accept, or reject the proposal.",
+  },
+  "proposal-response-denied": {
+    kind: "error",
+    message: "We could not record that response. Please reload the page and try again.",
+  },
+  "proposal-response-invalid": {
+    kind: "error",
+    message:
+      "That response was not accepted. Check the proposal version and your message, then try again.",
+  },
+  "proposal-response-rate-limited": {
+    kind: "error",
+    message: "Too many requests. Please wait a moment and try again.",
+  },
+  "proposal-updated": {
+    kind: "error",
+    message:
+      "This proposal has been updated. Review the latest version, then respond again.",
+  },
+  "proposal-version-accepted": {
+    kind: "error",
+    message:
+      "This proposal version has already been accepted, so no further response can be recorded against it.",
+  },
+  "proposal-not-acceptable": {
+    kind: "error",
+    message:
+      "This proposal version can no longer be accepted because changes were requested against it.",
+  },
 };
 
 export function noticeFor(

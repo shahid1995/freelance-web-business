@@ -92,3 +92,47 @@ export class RateLimitedError extends PlatformError {
     this.retryAfterSeconds = retryAfterSeconds;
   }
 }
+
+/**
+ * Customer proposal response outcomes (accepted Customer Proposal Response ADR,
+ * sections 10 and 16).
+ *
+ * Each has its own stable code so the form-post handler can branch on the code
+ * and give each outcome its own approved notice, without a service message ever
+ * travelling through the redirect. Messages are customer-safe wording.
+ */
+export const PROPOSAL_RESPONSE_ERROR_CODES = {
+  /** The submitted version number is no longer the current published version. */
+  updated: "proposal_updated",
+  /** The version already carries an acceptance — terminal for every action. */
+  versionAccepted: "proposal_version_accepted",
+  /** Changes were requested against this version, so it can no longer be accepted. */
+  notAcceptable: "proposal_not_acceptable",
+} as const;
+
+/** The submitted version number is no longer the current published version. */
+export class ProposalUpdatedError extends PlatformError {
+  constructor(
+    message = "This proposal has been updated. Review the latest version, then respond again.",
+  ) {
+    super(PROPOSAL_RESPONSE_ERROR_CODES.updated, message, 409);
+  }
+}
+
+/** The version already carries an acceptance — terminal for every action. */
+export class ProposalVersionAcceptedError extends PlatformError {
+  constructor(
+    message = "This proposal version has already been accepted, so no further response can be recorded against it.",
+  ) {
+    super(PROPOSAL_RESPONSE_ERROR_CODES.versionAccepted, message, 409);
+  }
+}
+
+/** Changes were requested against this version, so it can no longer be accepted. */
+export class ProposalNotAcceptableError extends PlatformError {
+  constructor(
+    message = "This proposal version can no longer be accepted because changes were requested against it.",
+  ) {
+    super(PROPOSAL_RESPONSE_ERROR_CODES.notAcceptable, message, 409);
+  }
+}

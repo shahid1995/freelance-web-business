@@ -691,11 +691,20 @@ describe("customer proposal route and privacy", () => {
     assert.ok(view);
     assert.deepEqual(Object.keys(view).sort(), PROPOSAL_VIEW_KEYS);
 
-    // The page itself is a read-only server component: no form, no button, no
-    // POST handler, and it uses the customer read seam rather than the Founder
-    // authoring service. Mirrors the source-scan approach in security.test.ts;
-    // the repository has no route-rendering harness, so this is the narrowest
-    // route-level check consistent with the existing pattern.
+    // The page itself is a server component that handles no write: no POST
+    // handler of its own, the forms it renders post only to the dedicated
+    // response endpoint approved by the Customer Proposal Response ADR, and it
+    // uses the customer read seam rather than the Founder authoring service.
+    // Mirrors the source-scan approach in security.test.ts; the repository has
+    // no route-rendering harness, so this is the narrowest route-level check
+    // consistent with the existing pattern.
+    //
+    // The earlier "no form, no button" scan encoded Customer Proposal Review's
+    // own non-goal — request-changes and acceptance were deferred to a separate
+    // decision, which is now accepted (docs/decisions/2026-10-06-customer-proposal-response.md,
+    // section 14) and places exactly these two actions on this page. The
+    // invariant that reading writes nothing is asserted directly by both
+    // suites.
     const pagePath = join(
       __dirname,
       "..",
@@ -709,10 +718,16 @@ describe("customer proposal route and privacy", () => {
     );
     const source = readFileSync(pagePath, "utf8");
     assert.ok(source.includes("export default async function"));
-    assert.ok(!source.includes("<form"), "the proposal page must have no form");
-    assert.ok(!source.includes("<button"), "the proposal page must have no button");
-    assert.ok(!/method\s*=\s*["']post["']/i.test(source));
-    assert.ok(!/\bexport\s+(async\s+)?function\s+POST\b/.test(source));
+    assert.ok(
+      !/\bexport\s+(async\s+)?function\s+POST\b/.test(source),
+      "the page must not handle writes itself",
+    );
+    assert.ok(
+      source.includes("/proposal-response"),
+      "the page's forms must post to the dedicated response endpoint",
+    );
+    assert.ok(/name="intent"\s+value="request-changes"/.test(source));
+    assert.ok(/name="intent"\s+value="accept"/.test(source));
     assert.ok(!source.includes("platform.proposals"));
     assert.ok(source.includes("customerProposals"));
     // The page resolves and authorizes the reference once and passes the
