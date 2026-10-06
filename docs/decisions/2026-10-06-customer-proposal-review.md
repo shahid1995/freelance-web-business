@@ -154,6 +154,35 @@ Rules:
   not in the UI, so the page cannot disagree with the internal projection about
   which version is current.
 
+### Withdrawal and retraction are not part of this slice
+
+The Proposal Foundation defines exactly two version states — `draft` and
+`published` — and this slice adds no third. It introduces no withdrawal or
+retraction concept for a customer-visible proposal.
+
+The consequences are deliberate:
+
+- Once a version is published, it stays customer-visible for as long as it is
+  the highest-numbered published version. Publishing is a one-way act in the
+  current model.
+- A newer **published** version supersedes an older published version as the
+  current customer view; the older version simply stops being the current one,
+  and remains readable internally.
+- A newer **draft** does not withdraw or hide an existing published version. The
+  published version remains the customer's current view while the draft stays
+  Founder-only.
+- There is currently **no mechanism in this model to retract all customer
+  visibility** of a published proposal — neither a Founder action nor an
+  automatic effect of any other operation.
+
+This is an intentional limitation of the smallest slice, not an accidental
+omission. Any future requirement to withdraw or retract customer visibility
+requires its own separate Founder decision that explicitly defines the new state
+and semantics, its migration implications for already-published versions, its
+authorization, its audit behavior, and its customer-visibility rules. Until such
+a decision exists, `draft` and `published` remain the only valid proposal-version
+states.
+
 ## 6. Customer projection
 
 The slice adds an explicit, customer-safe projection, built field by field from
@@ -397,6 +426,8 @@ Not in this slice, and not authorized by it:
 - proposal editing by customers;
 - proposal comments/chat;
 - proposal templates/library;
+- withdrawal or retraction of a published proposal (including any new version
+  state, migration, or customer-visibility change);
 - pricing-model redesign;
 - analytics;
 - deployment/hosting/domain;
@@ -456,6 +487,13 @@ version number is the customer-meaningful identifier the requirements call for.
 ### Add request changes and acceptance now
 Rejected. Each is a separate capability with its own authorization, evidence,
 and legal/commercial questions, and neither is authorized by this document.
+
+### Add a `withdrawn`/`retracted` version state now
+Deferred. The accepted Proposal Foundation fixes `draft` and `published` as the
+only version states, and a third state would change proposal semantics, migration
+behavior, authorization, and audit rules. Retracting customer visibility is a
+real future need, but it is a separate Founder decision rather than part of the
+smallest read-only slice.
 
 ### Add a customer JSON read endpoint
 Rejected for this slice. Existing customer reads are server-rendered through the
