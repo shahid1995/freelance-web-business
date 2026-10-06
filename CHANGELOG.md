@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-10-06
+
+### Customer Proposal Response (design accepted)
+- Accepted the Customer Proposal Response design — Request Changes and Accept Proposal, each bound to one exact published proposal version — in docs/decisions/2026-10-06-customer-proposal-response.md (Status: Accepted; Founder approval: Approved 2026-10-06).
+- The design specifies append-only `proposal_responses` history as the source of truth; the customer submits the visible version number and the server re-derives the current published version under `status = 'published' AND published_at IS NOT NULL` inside the recording transaction, rejecting a stale version and writing nothing; Request Changes is open to any authorized customer with a required message capped at 5,000 characters; Accept Proposal is restricted to the organization Owner/Admin and is application-level evidence only, explicitly not a legal signature.
+- Also fixed: acceptance is disallowed once Request Changes exists for that version (the workflow is Request Changes → Founder publishes the next version → review → Request Changes again or Accept); acceptance is terminal per project + proposal + version; no project-level acceptance state is added; `customerStageFor` and the customer-facing *Proposal accepted* stage are unchanged.
+- **Design accepted; implementation not yet performed.** No application code, table, migration, customer route, or customer endpoint was added. This is not a production release, and no deployment, provider activation, or live customer-data operation occurred.
+
+### Customer Proposal Review (implementation)
+- Implemented and merged the accepted Customer Proposal Review design from docs/decisions/2026-10-06-customer-proposal-review.md (PR #43, merge commit c4bf074): an authorized customer can read the current published proposal version for their own project at /dashboard/projects/{reference}/proposal.
+- The slice is read-only: no form and no state-changing control, no customer JSON endpoint, no write and no audit event on reading, no customer project-stage change, and a field-by-field customer-safe projection that excludes internal proposal and version identifiers.
+- Discoverability is the existing `hasPublishedProposal` customer signal, false for no proposal and for drafts only, so a draft can never be inferred.
+- Nothing is deployed or activated for live customers and no live customer data is processed.
+
 ## 2026-10-05
 
 ### Proposal Foundation (implementation)
