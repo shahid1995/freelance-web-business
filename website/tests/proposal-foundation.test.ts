@@ -533,6 +533,145 @@ describe("proposal audit", () => {
   });
 });
 
+//
+// Transaction boundaries. The publication decision and the one-proposal-per-
+// project check now live inside the store transaction, so these tests assert the
+// observable consequences: a repeat publish adds no audit event and keeps the
+// original instant, and a duplicate creation returns the intended validation
+// error rather than a raw uniqueness failure. A true concurrent-interleaving test
+// is impractical against a single in-memory connection; what matters is that the
+// decision and its audit write happen in the same transaction, which is what the
+// idempotent repeat exercises.
+//
+describe("proposal transaction boundaries", () => {
+  function publishedEventCount(harness: TestPlatform, projectId: string): number {
+    return harness.platform.store
+      .listAuditEventsForProject(projectId, 50)
+      .filter((event) => event.type === "proposal_version.published").length;
+  }
+
+  it("rejects a second proposal for the same project with the intended validation error", async () => {
+    const harness = await proposalHarness();
+    const owner = await ownerWithSubmittedProject(harness);
+
+    harness.platform.proposals.createProposal({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      content: PROPOSAL_CONTENT,
+    });
+
+    assert.throws(
+      () =>
+        harness.platform.proposals.createProposal({
+          personId: owner.personId,
+          projectId: owner.projectId,
+          content: PROPOSAL_CONTENT,
+        }),
+      (error: unknown) =>
+        isPlatformError(error) &&
+        error.code === "invalid_input" &&
+        /already has a proposal/.test(error.message),
+    );
+
+    // The database unique constraint was never the path that fired: the
+    // transaction read the committed proposal and the service returned its own
+    // validation error. Exactly one proposal and one version remain.
+    const proposal = harness.platform.store.findProposalByProject(owner.projectId);
+    assert.ok(proposal);
+    assert.equal(harness.platform.store.listProposalVersions(proposal.id).length, 1);
+    harness.platform.close();
+  });
+
+  it("records exactly one publication audit event", async () => {
+    const harness = await proposalHarness();
+    const owner = await ownerWithSubmittedProject(harness);
+
+    harness.platform.proposals.createProposal({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      content: PROPOSAL_CONTENT,
+    });
+    assert.equal(publishedEventCount(harness, owner.projectId), 0);
+
+    harness.platform.proposals.publishVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 1,
+    });
+    assert.equal(publishedEventCount(harness, owner.projectId), 1);
+    harness.platform.close();
+  });
+
+  it("is idempotent and writes no audit event when the version is already published", async () => {
+    const harness = await proposalHarness();
+    const owner = await ownerWithSubmittedProject(harness);
+
+    harness.platform.proposals.createProposal({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      content: PROPOSAL_CONTENT,
+    });
+    harness.platform.proposals.publishVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 1,
+    });
+    assert.equal(publishedEventCount(harness, owner.projectId), 1);
+
+    // The decision now happens inside the transaction: a second publish reads the
+    // version as already published, publishes nothing, and records no second event.
+    harness.platform.proposals.publishVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 1,
+    });
+    assert.equal(publishedEventCount(harness, owner.projectId), 1);
+
+    // The read view still reports a single published version.
+    const view = harness.platform.proposals.read(owner.personId, owner.projectId);
+    assert.equal(view.publishedVersionNumber, 1);
+    harness.platform.close();
+  });
+
+  it("preserves the publish instant and historical content across a repeat publish", async () => {
+    const harness = await proposalHarness();
+    const owner = await ownerWithSubmittedProject(harness);
+
+    const created = harness.platform.proposals.createProposal({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      content: PROPOSAL_CONTENT,
+    });
+    const versionId = created.versions[0]!.id;
+
+    harness.platform.proposals.publishVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 1,
+    });
+    const firstPublish = harness.platform.store.findProposalVersionById(versionId);
+    assert.ok(firstPublish);
+    assert.ok(firstPublish.publishedAt !== null);
+
+    // Move the clock so a rewrite of the instant would be observable.
+    harness.clock.advance(60 * 60 * 1000);
+    harness.platform.proposals.publishVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 1,
+    });
+
+    const after = harness.platform.store.findProposalVersionById(versionId);
+    assert.ok(after);
+    assert.equal(after.publishedAt, firstPublish.publishedAt);
+    assert.equal(after.status, "published");
+    assert.equal(after.summary, PROPOSAL_CONTENT.summary);
+    assert.equal(after.scopeIncluded, PROPOSAL_CONTENT.scopeIncluded);
+    assert.equal(after.commercialTerms, PROPOSAL_CONTENT.commercialTerms);
+    harness.platform.close();
+  });
+});
+
 describe("proposal data integrity", () => {
   it("treats only draft and published as valid version status values", () => {
     assert.equal(isProposalVersionStatus("draft"), true);

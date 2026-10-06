@@ -139,9 +139,12 @@ export class ProposalService {
   /**
    * Opens the proposal for a project and writes its first version.
    *
-   * One proposal per project, enforced by the database rather than by a
-   * read-then-write here. Creating a second proposal is a caller error, not a
-   * silent second record.
+   * One proposal per project. The "already has a proposal" check lives inside
+   * the transaction, so two concurrent creations cannot both observe an empty
+   * project: the first to acquire the write lock writes the proposal, and the
+   * second reads it back and returns the intended validation error rather than a
+   * raw uniqueness failure. The database `UNIQUE(project_id)` constraint remains
+   * the final integrity guard.
    *
    * This is not derived from the Founder decision or qualification state: a
    * proposal is authored, and authoring it is the Founder's call.
@@ -152,15 +155,15 @@ export class ProposalService {
     content: Record<string, unknown>;
   }): InternalProposalView {
     const project = this.requireFounderProject(input.personId, input.projectId);
-    if (this.options.store.findProposalByProject(project.id)) {
-      throw new ValidationError(
-        "This project already has a proposal. Create the next version instead.",
-      );
-    }
     const content = parseProposalContent(input.content);
     const now = this.options.clock.now();
 
     this.options.store.transaction(() => {
+      if (this.options.store.findProposalByProject(project.id)) {
+        throw new ValidationError(
+          "This project already has a proposal. Create the next version instead.",
+        );
+      }
       const proposal = this.options.store.createProposal({
         id: this.options.newId(),
         projectId: project.id,
@@ -230,6 +233,15 @@ export class ProposalService {
    * Founder-only, audited, and idempotent. Publishing is not acceptance: the
    * customer has still done nothing, and the customer-facing project stage does
    * not move.
+   *
+   * The transaction is the authoritative publication decision. The version
+   * lookup and the "not yet published" check happen inside it, after the write
+   * lock is held, so two concurrent publishes cannot both observe an unpublished
+   * version and both record `proposal_version.published`. The first commits the
+   * update and one audit event; the second reads the now-published version, does
+   * nothing, and writes no second event. The store's `published_at IS NULL`
+   * guard remains in place as the final integrity check, and an already-published
+   * version keeps its original instant.
    */
   publishVersion(input: {
     personId: string;
@@ -242,29 +254,32 @@ export class ProposalService {
     if (!Number.isInteger(versionNumber) || versionNumber < 1) {
       throw new ValidationError("That proposal version is not recognised.");
     }
-    const version = this.options.store
-      .listProposalVersions(proposal.id)
-      .find(
-        (candidate) => candidate.versionNumber === versionNumber,
-      );
-
-    if (!version) {
-      throw new NotFoundError("That proposal version does not exist.");
-    }
-
     const now = this.options.clock.now();
-    if (version.publishedAt === null) {
-      this.options.store.transaction(() => {
-        this.options.store.publishProposalVersion({ id: version.id, now });
-        this.recordEvent({
-          type: "proposal_version.published",
-          personId: input.personId,
-          project,
-          occurredAt: now,
-          metadata: { proposalId: proposal.id, versionNumber },
-        });
+
+    this.options.store.transaction(() => {
+      const version = this.options.store
+        .listProposalVersions(proposal.id)
+        .find((candidate) => candidate.versionNumber === versionNumber);
+
+      if (!version) {
+        throw new NotFoundError("That proposal version does not exist.");
+      }
+
+      // Already published: nothing to do, and no second audit event, so the
+      // transaction is the decision point rather than an advisory pre-check.
+      if (version.publishedAt !== null) {
+        return;
+      }
+
+      this.options.store.publishProposalVersion({ id: version.id, now });
+      this.recordEvent({
+        type: "proposal_version.published",
+        personId: input.personId,
+        project,
+        occurredAt: now,
+        metadata: { proposalId: proposal.id, versionNumber },
       });
-    }
+    });
 
     return this.read(input.personId, project.id);
   }
