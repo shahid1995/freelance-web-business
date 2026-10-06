@@ -902,6 +902,22 @@ export class SqlitePlatformStore implements PlatformStore {
     return row ? this.toProposalVersion(row) : null;
   }
 
+  /**
+   * Existence check for the customer dashboard's `hasPublishedProposal` signal.
+   *
+   * One indexed lookup joined through `proposals`, so the customer listing does
+   * not have to load proposal content to answer a boolean question.
+   */
+  hasPublishedProposalVersion(projectId: ProjectId): boolean {
+    const row = this.get(
+      "SELECT 1 AS present FROM proposal_versions v " +
+        "JOIN proposals p ON p.id = v.proposal_id " +
+        "WHERE p.project_id = ? AND v.status = 'published' LIMIT 1",
+      projectId,
+    );
+    return row !== undefined;
+  }
+
   createProposal(input: {
     id: string;
     projectId: ProjectId;

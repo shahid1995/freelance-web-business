@@ -291,6 +291,7 @@ export class ProjectService {
     return toCustomerProjectSummary(
       project,
       this.options.store.findProjectIntakeByProject(project.id),
+      this.options.store.hasPublishedProposalVersion(project.id),
     );
   }
 
@@ -298,6 +299,7 @@ export class ProjectService {
     return toCustomerProjectDetail(
       project,
       this.options.store.findProjectIntakeByProject(project.id),
+      this.options.store.hasPublishedProposalVersion(project.id),
     );
   }
 

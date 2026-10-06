@@ -195,6 +195,15 @@ export interface PlatformStore {
   findProposalByProject(projectId: ProjectId): ProposalInternal | null;
   findProposalById(id: ProposalId): ProposalInternal | null;
   listProposalVersions(proposalId: ProposalId): ProposalVersionInternal[];
+  /**
+   * Whether the project has at least one published proposal version.
+   *
+   * A narrow existence check rather than a proposal-content read: the customer
+   * dashboard needs only the boolean, and loading version content to compute it
+   * would read commercial text the caller does not need. Returns false when the
+   * project has no proposal or every version is still a draft.
+   */
+  hasPublishedProposalVersion(projectId: ProjectId): boolean;
   findProposalVersionById(id: ProposalVersionId): ProposalVersionInternal | null;
   createProposal(input: {
     id: string;

@@ -455,7 +455,7 @@ describe("proposal latest draft projection", () => {
 });
 
 describe("proposal customer boundary", () => {
-  it("leaves the customer projection and stage unchanged", async () => {
+  it("adds only the published-proposal signal and keeps the stage unchanged", async () => {
     const harness = await proposalHarness();
     const owner = await ownerWithSubmittedProject(harness);
 
@@ -484,16 +484,27 @@ describe("proposal customer boundary", () => {
       owner.personId,
       owner.projectId,
     );
-    // The customer projection is byte-for-byte what it was before any proposal
-    // work: stage, fields, and ordering all unchanged.
-    assert.deepEqual(after, before);
+    // The Customer Proposal Review decision adds exactly one proposal fact to the
+    // customer projection: the published-proposal signal. Publishing version 1
+    // flips it to true, and it is the only thing proposal work changes — the
+    // stage, every other field, and their ordering stay exactly as before.
+    assert.equal(before.project.hasPublishedProposal, false);
+    assert.equal(after.project.hasPublishedProposal, true);
+    assert.deepEqual(after.project, {
+      ...before.project,
+      hasPublishedProposal: true,
+    });
+    assert.deepEqual(after.intake, before.intake);
 
-    // Nothing a customer can read carries proposal state or proposal text.
+    // Nothing a customer can read carries proposal content or internal state.
     const serialized = JSON.stringify(after);
-    assert.equal(serialized.includes("proposal"), false);
     assert.equal(serialized.includes("Synthetic summary"), false);
     assert.equal(serialized.includes("A revised summary"), false);
     assert.equal(serialized.includes("Commercial terms here"), false);
+    assert.deepEqual(
+      Object.keys(after.project).filter((key) => key.toLowerCase().includes("proposal")),
+      ["hasPublishedProposal"],
+    );
     harness.platform.close();
   });
 

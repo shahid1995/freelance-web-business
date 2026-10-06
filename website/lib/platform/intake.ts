@@ -20,7 +20,9 @@
 import {
   PROJECT_INTAKE_FIELDS,
   type ProjectId,
+  type ProjectIntake,
   type ProjectIntakePatch,
+  type ProjectInternal,
 } from "./domain";
 import type { Clock } from "./clock";
 import { requireProjectAccess } from "./authorization";
@@ -109,7 +111,7 @@ export class IntakeService {
     if (!intake) {
       throw new NotFoundError("Project Intake was not found for this project.");
     }
-    return toCustomerProjectDetail(project, intake);
+    return this.toCustomerDetail(project, intake);
   }
 
   /**
@@ -169,7 +171,7 @@ export class IntakeService {
       return updated;
     });
 
-    return toCustomerProjectDetail(project, saved);
+    return this.toCustomerDetail(project, saved);
   }
 
   /**
@@ -190,7 +192,7 @@ export class IntakeService {
       throw new NotFoundError("Project Intake was not found for this project.");
     }
     if (intake.status === "submitted") {
-      return toCustomerProjectDetail(project, intake);
+      return this.toCustomerDetail(project, intake);
     }
 
     const now = this.options.clock.now();
@@ -213,6 +215,24 @@ export class IntakeService {
       return result;
     });
 
-    return toCustomerProjectDetail(project, updated);
+    return this.toCustomerDetail(project, updated);
+  }
+
+  /**
+   * Customer detail projection, carrying the current proposal signal.
+   *
+   * The published-proposal flag is read here so every customer project detail
+   * reports the same value regardless of which surface produced it; intake
+   * behavior itself is unchanged.
+   */
+  private toCustomerDetail(
+    project: ProjectInternal,
+    intake: ProjectIntake,
+  ): CustomerProjectDetail {
+    return toCustomerProjectDetail(
+      project,
+      intake,
+      this.options.store.hasPublishedProposalVersion(project.id),
+    );
   }
 }

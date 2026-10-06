@@ -108,6 +108,13 @@ export default async function DashboardPage() {
                         {project.reference}
                       </span>
                       <span className="portal__meta">{project.stageLabel}</span>
+                      {project.hasPublishedProposal ? (
+                        <Link
+                          href={`/dashboard/projects/${encodeURIComponent(project.reference)}/proposal`}
+                        >
+                          View proposal
+                        </Link>
+                      ) : null}
                     </div>
                     <div className="progress">
                       <div

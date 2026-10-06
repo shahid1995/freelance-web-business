@@ -112,6 +112,7 @@ separate from the public content model in `lib/content.ts` and `lib/services.ts`
 | Customer projections | `lib/platform/views.ts` | Builds customer objects field by field |
 | Founder workspace | `lib/platform/internal.ts` | Founder-only: read-only review plus the explicit Start Review action |
 | Proposal foundation | `lib/platform/proposals.ts` | Founder-only: one proposal per project, append-only numbered versions, explicit publication |
+| Customer proposal review | `lib/platform/customer-proposals.ts` | Customer-facing read-only: the current published version only, never a draft |
 | Internal projections | `lib/platform/internal-views.ts` | Internal views built field by field; drops audit metadata and never spreads a stored record |
 | Request guard | `lib/platform/http.ts` | Origin check plus session requirement |
 | Next.js adapter | `lib/platform/server.ts` | Reads headers, redirects; no authorization logic |
@@ -123,6 +124,7 @@ Customer routes:
 - /onboarding/organization
 - /dashboard
 - /dashboard/projects/{reference}/intake
+- /dashboard/projects/{reference}/proposal
 
 Endpoints (all state-changing requests are same-origin POSTs):
 
@@ -196,12 +198,35 @@ customer has seen or accepted anything, and creating or publishing a version doe
 with no amount or currency column, because pricing is a separate, unapproved
 Founder decision; `commercialTerms` records the terms the Founder has approved.
 
-Nothing here is customer-facing. No customer route, endpoint, or projection reads
-a proposal, and drafts never reach a customer view. Audit metadata records the
+The proposal authoring surface itself is Founder-only. Audit metadata records the
 actor, project, proposal, and version number and never copies proposal content,
 so the audit trail cannot become a second copy of the commercial document.
 Authorization reuses the same `founder` capability as the rest of the internal
 workspace rather than introducing a second permission concept.
+
+### Customer proposal review
+
+The customer-facing proposal view is governed by
+`docs/decisions/2026-10-06-customer-proposal-review.md` and is strictly
+read-only. It shows the **current published version** — the highest-numbered
+version whose status is `published` — for a project the customer may already
+access. Drafts never reach a customer, and a newer draft does not displace or
+hide the published version.
+
+The page at `/dashboard/projects/{reference}/proposal` is server-rendered and has
+no form and no state-changing control: there is no acceptance, request-change,
+agreement, or payment action. It renders a field-by-field customer-safe
+projection (`lib/platform/views.ts`) carrying only the project reference, the
+version number, the publication instant, and the approved proposal text; internal
+ids, audit metadata, and Founder/internal state are absent by construction. The
+dashboard shows the link only when the customer project summary reports
+`hasPublishedProposal`.
+
+Authorization reuses the existing customer project model — organization
+Owner/Admin organization-wide, ordinary members by explicit assignment — never
+the `founder` internal capability. The read performs no write, creates no audit
+event, and does not change the customer-facing project stage. There is no
+customer JSON endpoint for it.
 
 ### Data store
 
