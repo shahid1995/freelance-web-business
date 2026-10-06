@@ -907,12 +907,19 @@ export class SqlitePlatformStore implements PlatformStore {
    *
    * One indexed lookup joined through `proposals`, so the customer listing does
    * not have to load proposal content to answer a boolean question.
+   *
+   * Requires both the published status and a recorded publication instant, which
+   * is the same invariant `selectCurrentPublishedVersion` applies before a
+   * version is shown to a customer. A row marked published without an instant is
+   * therefore reported as not published here too, so the dashboard signal and the
+   * customer read cannot disagree.
    */
   hasPublishedProposalVersion(projectId: ProjectId): boolean {
     const row = this.get(
       "SELECT 1 AS present FROM proposal_versions v " +
         "JOIN proposals p ON p.id = v.proposal_id " +
-        "WHERE p.project_id = ? AND v.status = 'published' LIMIT 1",
+        "WHERE p.project_id = ? AND v.status = 'published' AND v.published_at IS NOT NULL " +
+        "LIMIT 1",
       projectId,
     );
     return row !== undefined;

@@ -450,6 +450,46 @@ describe("dashboard published-proposal signal", () => {
     harness.platform.close();
   });
 
+  it("reports a published version without a publication instant as not published on both surfaces", async () => {
+    const harness = await reviewHarness();
+    const owner = await ownerWithProject(harness);
+
+    // Only the store port can produce this row: `publishVersion` stamps the
+    // status and the publication instant together, and the store's own publish
+    // UPDATE is guarded on `published_at IS NULL`, so the normal service can
+    // never reach this state. Writing through `createProposalVersion` — the same
+    // store seam the harness already uses for memberships and access grants —
+    // constructs the one inconsistent row the two visibility decisions must
+    // nevertheless agree on.
+    const proposal = harness.platform.store.createProposal({
+      id: "proposal-inconsistent",
+      projectId: owner.projectId,
+      createdByPersonId: owner.personId,
+      createdAt: harness.clock.now(),
+      updatedAt: harness.clock.now(),
+    });
+    const version = harness.platform.store.createProposalVersion({
+      id: "version-published-without-instant",
+      proposalId: proposal.id,
+      versionNumber: 1,
+      status: "published",
+      ...content("published-without-instant"),
+      validUntil: null,
+      createdByPersonId: owner.personId,
+      createdAt: harness.clock.now(),
+      publishedAt: null,
+    });
+    assert.equal(version.status, "published");
+    assert.equal(version.publishedAt, null);
+
+    // The dashboard existence query and the customer read selector must apply the
+    // same invariant: a published status without a publication instant is not a
+    // customer-visible published proposal.
+    assert.equal(hasPublished(harness, owner.personId, owner.projectId), false);
+    assert.equal(readProposal(harness, owner.personId, owner.reference), null);
+    harness.platform.close();
+  });
+
   it("exposes no proposal internals through the dashboard projection", async () => {
     const harness = await reviewHarness();
     const owner = await ownerWithProject(harness);
