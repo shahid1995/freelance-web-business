@@ -38,16 +38,15 @@ async function reviewHarness(): Promise<TestPlatform> {
 }
 
 /**
- * A real SQLite store that records how often the resolution- and
- * authorization-sensitive reads happen, so tests can prove the project listing
- * uses the bulk proposal query and the customer proposal read performs no
- * reference resolution or access check of its own.
+ * A real SQLite store that records how often the resolution and listing reads
+ * happen, so tests can prove the project listing uses the bulk proposal query
+ * and the customer proposal read does not resolve the customer-facing reference
+ * a second time.
  */
 class CountingSqliteStore extends SqlitePlatformStore {
   hasPublishedProposalCalls = 0;
   bulkListCalls = 0;
   findProjectByReferenceCalls = 0;
-  findProjectAccessCalls = 0;
 
   override findProjectByReference(
     organizationId: string,
@@ -55,14 +54,6 @@ class CountingSqliteStore extends SqlitePlatformStore {
   ): ReturnType<SqlitePlatformStore["findProjectByReference"]> {
     this.findProjectByReferenceCalls += 1;
     return super.findProjectByReference(organizationId, reference);
-  }
-
-  override findProjectAccess(
-    projectId: string,
-    personId: string,
-  ): ReturnType<SqlitePlatformStore["findProjectAccess"]> {
-    this.findProjectAccessCalls += 1;
-    return super.findProjectAccess(projectId, personId);
   }
 
   override hasPublishedProposalVersion(projectId: string): boolean {
@@ -180,7 +171,7 @@ function readProposal(
     personId,
     reference,
   );
-  return harness.platform.customerProposals.readByProjectId(projectId);
+  return harness.platform.customerProposals.readByProjectId(personId, projectId);
 }
 
 function hasPublished(harness: TestPlatform, personId: string, projectId: string): boolean {
@@ -655,7 +646,7 @@ describe("customer proposal route and privacy", () => {
     harness.platform.close();
   });
 
-  it("reads the proposal by an authorized project id without resolving or authorizing again", async () => {
+  it("reads by project id without resolving the reference again, and still enforces access", async () => {
     const store = new CountingSqliteStore(":memory:");
     const harness = await createTestPlatform({
       config: { founderEmailHashes: [FOUNDER_HASH] },
@@ -667,26 +658,27 @@ describe("customer proposal route and privacy", () => {
       owner.reference,
     );
 
-    // The reference was resolved and authorized exactly once, above. The proposal
-    // read that follows must be a pure proposal read: no reference resolution and
-    // no repeated access check.
-    const before = {
-      resolve: store.findProjectByReferenceCalls,
-      access: store.findProjectAccessCalls,
-    };
-    const view = harness.platform.customerProposals.readByProjectId(projectId);
-
+    // The reference is resolved once, above. The proposal read that follows must
+    // not resolve it again — that duplication is what the review flagged.
+    const before = store.findProjectByReferenceCalls;
+    const view = harness.platform.customerProposals.readByProjectId(
+      owner.personId,
+      projectId,
+    );
     assert.equal(view?.projectReference, owner.reference);
     assert.equal(view?.versionNumber, 1);
     assert.equal(
       store.findProjectByReferenceCalls,
-      before.resolve,
-      "the proposal read must not resolve the reference again",
+      before,
+      "the proposal read must not resolve the customer reference again",
     );
-    assert.equal(
-      store.findProjectAccessCalls,
-      before.access,
-      "the proposal read must not repeat the access check",
+
+    // Access is still enforced by the service itself, so a caller cannot read a
+    // project's proposal by passing an id it was never granted.
+    const member = await addOrdinaryMember(harness, owner.organizationId, MEMBER_EMAIL);
+    assert.throws(
+      () => harness.platform.customerProposals.readByProjectId(member.personId, projectId),
+      (error: unknown) => expectCode(error, "forbidden"),
     );
     store.close();
   });

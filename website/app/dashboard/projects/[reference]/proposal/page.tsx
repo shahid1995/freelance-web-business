@@ -35,14 +35,14 @@ export default async function CustomerProposalPage({
   let detail;
   let proposal;
   try {
-    // Resolve and authorize the customer-facing reference exactly once, so an
-    // inaccessible or unrelated project is reported as missing rather than
-    // disclosed. The authorized project id is then reused for both the detail
-    // and the proposal read, instead of resolving and authorizing the same
-    // reference again for each surface.
+    // Resolve the customer-facing reference exactly once, so an inaccessible or
+    // unrelated project is reported as missing rather than disclosed, and reuse
+    // the resolved project id for both the detail and the proposal read instead
+    // of resolving the same reference again for each surface. Each read still
+    // enforces project access on that id.
     const projectId = platform.projects.resolveProjectIdByReference(personId, reference);
     detail = platform.projects.getCustomerProject(personId, projectId);
-    proposal = platform.customerProposals.readByProjectId(projectId);
+    proposal = platform.customerProposals.readByProjectId(personId, projectId);
   } catch (error) {
     if (isMissing(error)) {
       notFound();
