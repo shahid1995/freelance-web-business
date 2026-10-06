@@ -66,15 +66,27 @@ Current:
 - Website visual/design foundation — established
 - Customer platform direction — approved
 - Customer platform requirements — established
-- Customer identity, organization, project, and saved-onboarding foundation — implemented and merged as a first vertical slice (passwordless sign-in → organization creation → customer dashboard → project creation → saved Project Intake draft); not deployed or activated against live customers
-- Sales and proposal workflow integration — planned
-- Commercial acceptance, agreement, payments — planned
+
+### Implemented and merged
+
+- Customer platform foundation — the first vertical slice: passwordless sign-in → organization creation → customer dashboard → project creation → saved Project Intake draft
+- Founder/internal operating workspace and Project Intake review — Founder-only review of a submitted intake, including Start Review and internal-only qualification state, notes, decision, and next action
+- Founder Project Queue — a read-only, cross-organization internal inbox of submitted intakes at /internal/projects
+- Proposal Foundation — Founder-only authoring of one proposal per project with immutable numbered versions and an explicit, audited publication act
+
+These are implemented and merged into main, but nothing is deployed or activated for live customers and no live customer data is processed.
+
+### Approved but not yet implemented
+
+- The customer-facing commercial workflow beyond the Proposal Foundation. The approved requirements call for proposal review, request changes, and customer acceptance, followed by agreement/e-signature, payments, and automatic project activation, and then delivery onboarding, milestones, QA, handover, closure, documents, messaging, and notifications. Each of these requires its own future design and implementation decision; none is approved or implemented yet.
+
+### Planned or deferred
+
 - Delivery workspace, milestones, QA, handover, closure integration — planned
-- Founder/internal operating workspace and Project Intake review — design proposed, pending Founder approval
 - Domain/hosting — deferred
 - Analytics — deferred
 
-The customer platform requirements are defined in docs/website/customer-platform-requirements.md. Product direction is recorded in docs/decisions/2026-10-04-customer-platform-direction.md. The implementation architecture is described in website/README.md. The first vertical slice is implemented and merged, but nothing is deployed or activated for live customers. The next design gate, the Founder/internal workspace and Project Intake review, is proposed in docs/decisions/2026-10-05-customer-platform-founder-workspace.md and is pending Founder approval.
+The customer platform requirements are defined in docs/website/customer-platform-requirements.md. Product direction is recorded in docs/decisions/2026-10-04-customer-platform-direction.md. The implementation architecture is described in website/README.md. The implemented slices are governed by the accepted decisions docs/decisions/2026-10-04-customer-platform-foundation.md, docs/decisions/2026-10-05-customer-platform-founder-workspace.md, docs/decisions/2026-10-05-founder-project-queue.md, and docs/decisions/2026-10-05-proposal-foundation.md. Nothing is deployed or activated for live customers. The next customer-facing commercial capability (proposal review, request changes, and acceptance) has not been approved or implemented, and no proposal-review decision record exists.
 
 The first slice uses a local SQLite data store and a local email sink behind provider-neutral ports. Selecting a managed database and activating a live email provider remain separate decisions.
 

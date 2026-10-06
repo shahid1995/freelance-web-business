@@ -2,7 +2,7 @@
 
 **Status:** Phase 4 working foundation  
 **Owner:** Founder  
-**Last updated:** 2026-10-04
+**Last updated:** 2026-10-06
 
 ## 1. Purpose
 
@@ -341,6 +341,14 @@ The first secure customer-platform vertical path is implemented and merged:
 
 Its data boundary, authentication, authorization, privacy, and verification requirements were designed in advance and recorded in docs/decisions/2026-10-04-customer-platform-foundation.md.
 
-The slice is not deployed or activated for live customers. The next design gate is the Founder/internal workspace and Project Intake review, proposed in docs/decisions/2026-10-05-customer-platform-founder-workspace.md (Status Proposed; Founder approval pending).
+Three further Founder-only slices are implemented and merged on top of it:
+
+- Founder/internal workspace and Project Intake review — docs/decisions/2026-10-05-customer-platform-founder-workspace.md (Status Accepted);
+- Founder Project Queue, a read-only internal intake inbox — docs/decisions/2026-10-05-founder-project-queue.md (Status Accepted);
+- Proposal Foundation, Founder-only proposal authoring with immutable numbered versions and explicit publication — docs/decisions/2026-10-05-proposal-foundation.md (Status Accepted).
+
+Nothing is deployed or activated for live customers, and no live customer data is processed. The internal slices are Founder-only and are not linked from any customer page; there is still no customer-facing proposal review, request-changes, or acceptance, and no customer projection reads a proposal.
+
+The next customer-facing commercial capability (proposal review, request changes, and acceptance) is a future/proposed design area. It has not been approved or implemented, and no proposal-review decision record exists yet.
 
 No production deployment, live payment processing, live e-signature, AI/LLM integration, or public customer-data operation is included in this step.
