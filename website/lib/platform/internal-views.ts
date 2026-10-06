@@ -231,7 +231,12 @@ export interface InternalProposalView {
   publishedVersionPublishedAt: number | null;
   /** Versions in creation order. */
   versions: InternalProposalVersionView[];
-  /** The most recent draft, if any. Null when the latest version is published. */
+  /**
+   * The highest-numbered version whose status is `draft`, if any; null when the
+   * proposal has no draft version. A newer published version does not hide an
+   * older draft, so a `draft, published, published` history still reports its
+   * first version. This is the ADR's "current draft" distinction.
+   */
   latestDraft: InternalProposalVersionView | null;
 }
 
@@ -281,12 +286,15 @@ export function buildInternalProposalView(input: {
         publishedVersionPublishedAt = version.publishedAt;
       }
     }
-    // The most recent draft, if any: the latest version when it is a draft,
-    // otherwise the version immediately before it.
-    latestDraft = latest?.status === "draft" ? latest : null;
-    if (latestDraft === null && latest !== null) {
-      const previous = versions[versions.length - 2];
-      latestDraft = previous?.status === "draft" ? previous : null;
+    // The most recent draft, if any. A reverse search over the ascending list
+    // finds the highest-numbered draft even when newer versions are published,
+    // so `v1 draft, v2 published, v3 published` reports v1 rather than null.
+    for (let index = versions.length - 1; index >= 0; index -= 1) {
+      const version = versions[index]!;
+      if (version.status === "draft") {
+        latestDraft = version;
+        break;
+      }
     }
   }
 

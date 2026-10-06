@@ -346,6 +346,134 @@ describe("proposal versioning", () => {
   });
 });
 
+//
+// `latestDraft` is the ADR's "current draft" distinction (§3): the highest-
+// numbered draft version, independent of whether newer versions have been
+// published. A newer published version must not hide an older draft, so this is
+// the case the previous latest-or-previous implementation got wrong.
+//
+describe("proposal latest draft projection", () => {
+  it("reports an older draft when newer versions are published", async () => {
+    const harness = await proposalHarness();
+    const owner = await ownerWithSubmittedProject(harness);
+
+    harness.platform.proposals.createProposal({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      content: PROPOSAL_CONTENT,
+    }); // v1 draft
+    harness.platform.proposals.createVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      content: PROPOSAL_CONTENT,
+    }); // v2 draft
+    harness.platform.proposals.publishVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 2,
+    });
+    harness.platform.proposals.createVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      content: PROPOSAL_CONTENT,
+    }); // v3 draft
+    harness.platform.proposals.publishVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 3,
+    });
+
+    const view = harness.platform.proposals.read(owner.personId, owner.projectId);
+    assert.deepEqual(
+      view.versions.map((version) => `${version.versionNumber}:${version.status}`),
+      ["1:draft", "2:published", "3:published"],
+    );
+    // v1 is still a draft; the two later published versions must not hide it.
+    assert.ok(view.latestDraft, "v1 should be reported as the current draft");
+    assert.equal(view.latestDraft.versionNumber, 1);
+    assert.equal(view.latestDraft.status, "draft");
+    // Published-version selection is unaffected: newest published wins.
+    assert.equal(view.publishedVersionNumber, 3);
+    harness.platform.close();
+  });
+
+  it("reports the only draft as the latest draft", async () => {
+    const harness = await proposalHarness();
+    const owner = await ownerWithSubmittedProject(harness);
+
+    harness.platform.proposals.createProposal({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      content: PROPOSAL_CONTENT,
+    }); // v1 draft
+
+    const view = harness.platform.proposals.read(owner.personId, owner.projectId);
+    assert.ok(view.latestDraft);
+    assert.equal(view.latestDraft.versionNumber, 1);
+    assert.equal(view.publishedVersionNumber, null);
+    harness.platform.close();
+  });
+
+  it("reports a newer draft over an older published version", async () => {
+    const harness = await proposalHarness();
+    const owner = await ownerWithSubmittedProject(harness);
+
+    harness.platform.proposals.createProposal({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      content: PROPOSAL_CONTENT,
+    }); // v1 draft
+    harness.platform.proposals.publishVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 1,
+    });
+    harness.platform.proposals.createVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      content: PROPOSAL_CONTENT,
+    }); // v2 draft
+
+    const view = harness.platform.proposals.read(owner.personId, owner.projectId);
+    assert.ok(view.latestDraft);
+    assert.equal(view.latestDraft.versionNumber, 2);
+    assert.equal(view.latestDraft.status, "draft");
+    assert.equal(view.publishedVersionNumber, 1);
+    harness.platform.close();
+  });
+
+  it("reports no draft when every version is published", async () => {
+    const harness = await proposalHarness();
+    const owner = await ownerWithSubmittedProject(harness);
+
+    harness.platform.proposals.createProposal({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      content: PROPOSAL_CONTENT,
+    }); // v1 draft
+    harness.platform.proposals.publishVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 1,
+    });
+    harness.platform.proposals.createVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      content: PROPOSAL_CONTENT,
+    }); // v2 draft
+    harness.platform.proposals.publishVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 2,
+    });
+
+    const view = harness.platform.proposals.read(owner.personId, owner.projectId);
+    assert.equal(view.latestDraft, null);
+    assert.equal(view.publishedVersionNumber, 2);
+    harness.platform.close();
+  });
+});
+
 describe("proposal customer boundary", () => {
   it("leaves the customer projection and stage unchanged", async () => {
     const harness = await proposalHarness();
