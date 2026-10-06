@@ -8,45 +8,22 @@
  * endpoints: it resolves the project through the internal capability rather than
  * through organization membership, so a customer session cannot reach it by
  * changing the URL, a query parameter, or the body.
+ *
+ * Form parsing lives in `lib/platform/proposal-form.ts` so the boundary rules can
+ * be tested without a running request; the service remains the authority on
+ * everything it is given.
  */
 
 import { ValidationError } from "@/lib/platform/errors";
+import {
+  readProposalContent,
+  readVersionNumber,
+} from "@/lib/platform/proposal-form";
 import {
   redirectAfterError,
   redirectWith,
   requireSessionForAction,
 } from "@/lib/platform/server";
-
-const MAX_CONTENT_LENGTH = 20000;
-
-function trimRequired(
-  form: FormData,
-  field: string,
-): string {
-  const value = String(form.get(field) ?? "").trim();
-  if (value.length === 0) {
-    throw new ValidationError(`${field} is required for a proposal version.`);
-  }
-  if (value.length > MAX_CONTENT_LENGTH) {
-    throw new ValidationError(`Keep ${field} under ${MAX_CONTENT_LENGTH} characters.`);
-  }
-  return value;
-}
-
-function optionalInt(
-  form: FormData,
-  field: string,
-): number | null {
-  const raw = form.get(field);
-  if (raw === null || raw === "") {
-    return null;
-  }
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
-    throw new ValidationError(`${field} must be a valid date the Founder has chosen.`);
-  }
-  return parsed;
-}
 
 export async function POST(
   request: Request,
@@ -62,32 +39,20 @@ export async function POST(
     const intent = form.get("intent");
 
     if (intent === "create") {
-      const content: Record<string, unknown> = {
-        summary: trimRequired(form, "summary"),
-        scopeIncluded: trimRequired(form, "scopeIncluded"),
-        scopeExcluded: trimRequired(form, "scopeExcluded"),
-        deliverables: trimRequired(form, "deliverables"),
-        timeline: trimRequired(form, "timeline"),
-        assumptions: trimRequired(form, "assumptions"),
-        commercialTerms: trimRequired(form, "commercialTerms"),
-        validUntil: optionalInt(form, "validUntil"),
-      };
-      platform.proposals.createProposal({ personId, projectId, content });
+      platform.proposals.createProposal({
+        personId,
+        projectId,
+        content: readProposalContent(form),
+      });
       return redirectWith(request, returnTo, { internal: "proposal-created" });
     }
 
     if (intent === "create-version") {
-      const content: Record<string, unknown> = {
-        summary: trimRequired(form, "summary"),
-        scopeIncluded: trimRequired(form, "scopeIncluded"),
-        scopeExcluded: trimRequired(form, "scopeExcluded"),
-        deliverables: trimRequired(form, "deliverables"),
-        timeline: trimRequired(form, "timeline"),
-        assumptions: trimRequired(form, "assumptions"),
-        commercialTerms: trimRequired(form, "commercialTerms"),
-        validUntil: optionalInt(form, "validUntil"),
-      };
-      platform.proposals.createVersion({ personId, projectId, content });
+      platform.proposals.createVersion({
+        personId,
+        projectId,
+        content: readProposalContent(form),
+      });
       return redirectWith(
         request,
         returnTo,
@@ -96,20 +61,10 @@ export async function POST(
     }
 
     if (intent === "publish") {
-      const rawVersionNumber = form.get("versionNumber");
-      if (
-        rawVersionNumber === null ||
-        rawVersionNumber === "" ||
-        !/^\\d+$/.test(String(rawVersionNumber))
-      ) {
-        throw new ValidationError(
-          "That proposal version is not recognised.",
-        );
-      }
       platform.proposals.publishVersion({
         personId,
         projectId,
-        versionNumber: Number(rawVersionNumber),
+        versionNumber: readVersionNumber(form),
       });
       return redirectWith(
         request,

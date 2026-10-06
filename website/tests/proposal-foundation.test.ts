@@ -19,6 +19,11 @@ import { describe, it } from "node:test";
 
 import { isProposalVersionStatus } from "../lib/platform/domain";
 import { isPlatformError } from "../lib/platform/errors";
+import {
+  readOptionalValidUntil,
+  readProposalContent,
+  readVersionNumber,
+} from "../lib/platform/proposal-form";
 import { emailHash } from "../lib/platform/secrets";
 import {
   MEMBER_EMAIL,
@@ -563,6 +568,98 @@ describe("proposal data integrity", () => {
       }),
     );
     harness.platform.close();
+  });
+});
+
+//
+// The route boundary. This is the layer a browser form actually reaches, and the
+// two defects that motivated these tests lived here rather than in the service:
+// a version-number regex with the wrong escaping, and a `validUntil` value parsed
+// as a number when `datetime-local` submits a date string. The service tests
+// stayed green through both, which is exactly why the boundary needs its own.
+//
+describe("proposal form parsing", () => {
+  const CONTENT = {
+    summary: "Synthetic summary",
+    scopeIncluded: "Included in scope",
+    scopeExcluded: "Excluded from scope",
+    deliverables: "Deliverables list",
+    timeline: "Timeline here",
+    assumptions: "Assumptions here",
+    commercialTerms: "Commercial terms here",
+  };
+
+  function form(values: Record<string, string>): FormData {
+    const data = new FormData();
+    for (const [key, value] of Object.entries(values)) {
+      data.append(key, value);
+    }
+    return data;
+  }
+
+  it("accepts a decimal version number such as \"1\"", () => {
+    assert.equal(readVersionNumber(form({ versionNumber: "1" })), 1);
+    assert.equal(readVersionNumber(form({ versionNumber: "12" })), 12);
+    assert.equal(readVersionNumber(form({ versionNumber: " 3 " })), 3);
+  });
+
+  it("rejects a version number that is not a decimal integer", () => {
+    for (const invalid of ["", "abc", "-1", "1.5", "1e2", "0x2", "1 2"]) {
+      assert.throws(
+        () => readVersionNumber(form({ versionNumber: invalid })),
+        (error: unknown) => isPlatformError(error) && error.code === "invalid_input",
+        `expected \"${invalid}\" to be rejected`,
+      );
+    }
+    // A missing field is refused too, rather than coerced to a number.
+    assert.throws(() => readVersionNumber(form({})));
+  });
+
+  it("converts a datetime-local value to the expected timestamp", () => {
+    // What the input actually submits: no timezone, therefore local time.
+    assert.equal(
+      readOptionalValidUntil(form({ validUntil: "2026-10-06T14:30" })),
+      new Date(2026, 9, 6, 14, 30, 0, 0).getTime(),
+    );
+  });
+
+  it("treats an empty or missing validity date as no expiry", () => {
+    assert.equal(readOptionalValidUntil(form({ validUntil: "" })), null);
+    assert.equal(readOptionalValidUntil(form({ validUntil: "   " })), null);
+    assert.equal(readOptionalValidUntil(form({})), null);
+  });
+
+  it("rejects an unparseable validity date", () => {
+    assert.throws(
+      () => readOptionalValidUntil(form({ validUntil: "not-a-date" })),
+      (error: unknown) => isPlatformError(error) && error.code === "invalid_input",
+    );
+  });
+
+  it("reads the full content block for a version, trimmed", () => {
+    const content = readProposalContent(
+      form({ ...CONTENT, summary: "  Synthetic summary  ", validUntil: "2026-10-06T14:30" }),
+    );
+    assert.equal(content.summary, CONTENT.summary);
+    assert.equal(content.scopeIncluded, CONTENT.scopeIncluded);
+    assert.equal(content.scopeExcluded, CONTENT.scopeExcluded);
+    assert.equal(content.deliverables, CONTENT.deliverables);
+    assert.equal(content.timeline, CONTENT.timeline);
+    assert.equal(content.assumptions, CONTENT.assumptions);
+    assert.equal(content.commercialTerms, CONTENT.commercialTerms);
+    assert.equal(content.validUntil, new Date(2026, 9, 6, 14, 30, 0, 0).getTime());
+  });
+
+  it("rejects a missing or whitespace-only required content field", () => {
+    assert.throws(
+      () => readProposalContent(form({ ...CONTENT, summary: "   " })),
+      (error: unknown) => isPlatformError(error) && error.code === "invalid_input",
+    );
+    const { timeline: _omitted, ...withoutTimeline } = CONTENT;
+    assert.throws(
+      () => readProposalContent(form(withoutTimeline)),
+      (error: unknown) => isPlatformError(error) && error.code === "invalid_input",
+    );
   });
 });
 

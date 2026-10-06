@@ -273,7 +273,7 @@ export class ProposalService {
   private writeVersion(input: {
     personId: string;
     project: ProjectInternal;
-    proposalId: PersonId;
+    proposalId: ProposalId;
     versionNumber: number;
     content: ProposalContent;
     now: number;
