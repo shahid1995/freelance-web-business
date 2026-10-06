@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 import { systemClock, type Clock } from "./clock";
 import { loadPlatformConfig, type PlatformConfig, type EnvironmentLike } from "./config";
 import { AuthService } from "./auth";
+import { CustomerProposalService } from "./customer-proposals";
 import { FounderWorkspaceService } from "./internal";
 import { IntakeService } from "./intake";
 import { LocalEmailSink } from "./local-email";
@@ -39,6 +40,12 @@ export interface Platform {
   internal: FounderWorkspaceService;
   /** Founder-only proposal authoring. Never mounted into the customer workspace. */
   proposals: ProposalService;
+  /**
+   * Customer-facing, read-only proposal view. Separate from the Founder authoring
+   * service and authorized by the customer project model, never by the internal
+   * capability.
+   */
+  customerProposals: CustomerProposalService;
   close(): void;
 }
 
@@ -84,6 +91,8 @@ export async function createPlatform(
 
   const signInPath = options.signInPath ?? "/api/auth/verify";
 
+  const projects = new ProjectService({ store: resolvedStore, clock, newId });
+
   return {
     config,
     clock,
@@ -107,7 +116,7 @@ export async function createPlatform(
       sessions,
       newId,
     }),
-    projects: new ProjectService({ store: resolvedStore, clock, newId }),
+    projects,
     intake: new IntakeService({ store: resolvedStore, clock, newId }),
     internal: new FounderWorkspaceService({
       store: resolvedStore,
@@ -120,6 +129,9 @@ export async function createPlatform(
       clock,
       newId,
       founderEmailHashes: config.founderEmailHashes,
+    }),
+    customerProposals: new CustomerProposalService({
+      store: resolvedStore,
     }),
     close() {
       if (ownsStore) {

@@ -16,7 +16,9 @@ import {
   PROJECT_INTAKE_FIELDS,
   type ProjectIntake,
   type ProjectInternal,
+  type ProposalVersionInternal,
 } from "./domain";
+import { type ProposalContentField } from "./proposal-form";
 
 /**
  * Customer-facing lifecycle stages, using only the approved customer labels
@@ -83,6 +85,14 @@ export interface CustomerProjectSummary {
   totalFieldCount: number;
   lastSavedAt: number;
   createdAt: number;
+  /**
+   * Whether the project has at least one published proposal version.
+   *
+   * The only proposal fact a customer sees beyond the published proposal itself:
+   * it drives the dashboard link. It is `false` when there is no proposal and
+   * when every version is still a draft, so it cannot reveal that a draft exists.
+   */
+  hasPublishedProposal: boolean;
 }
 
 export interface CustomerIntake {
@@ -137,6 +147,7 @@ export function customerStageFor(
 export function toCustomerProjectSummary(
   project: ProjectInternal,
   intake: ProjectIntake | null,
+  hasPublishedProposal: boolean,
 ): CustomerProjectSummary {
   const stage = customerStageFor(intake, project.reviewStartedAt);
   return {
@@ -149,6 +160,7 @@ export function toCustomerProjectSummary(
     totalFieldCount: PROJECT_INTAKE_FIELDS.length,
     lastSavedAt: intake?.lastSavedAt ?? project.createdAt,
     createdAt: project.createdAt,
+    hasPublishedProposal,
   };
 }
 
@@ -171,9 +183,78 @@ export function toCustomerIntake(intake: ProjectIntake): CustomerIntake {
 export function toCustomerProjectDetail(
   project: ProjectInternal,
   intake: ProjectIntake | null,
+  hasPublishedProposal: boolean,
 ): CustomerProjectDetail {
   return {
-    project: toCustomerProjectSummary(project, intake),
+    project: toCustomerProjectSummary(project, intake, hasPublishedProposal),
     intake: intake ? toCustomerIntake(intake) : null,
+  };
+}
+
+/**
+ * Customer-facing projection of a published proposal version.
+ *
+ * Built field by field from an explicit allow-list, so a stored proposal or
+ * version column added later cannot reach a customer response by accident. It
+ * carries only the content the Customer Proposal Review ADR approves for
+ * customer visibility: the project reference, the version number, the
+ * publication instant, and the free-text commercial baseline. Internal ids,
+ * audit metadata, drafts, and any Founder/internal state are absent by
+ * construction.
+ */
+export interface CustomerProposalView {
+  projectReference: string;
+  versionNumber: number;
+  publishedAt: number;
+  summary: string;
+  scopeIncluded: string;
+  scopeExcluded: string;
+  deliverables: string;
+  timeline: string;
+  assumptions: string;
+  commercialTerms: string;
+  validUntil: number | null;
+}
+
+/**
+ * The approved proposal content fields, in display order, with their labels.
+ *
+ * One definition shared by the customer proposal view and the Founder proposal
+ * view, so the two surfaces cannot drift apart in which fields they render or in
+ * what order. `name` is typed against the fields the proposal form actually
+ * writes, so a displayed field cannot exist without being parseable.
+ */
+export interface ProposalDisplayField {
+  name: ProposalContentField;
+  label: string;
+}
+
+export const PROPOSAL_DISPLAY_FIELDS: readonly ProposalDisplayField[] = [
+  { name: "summary", label: "Summary" },
+  { name: "scopeIncluded", label: "In scope" },
+  { name: "scopeExcluded", label: "Out of scope" },
+  { name: "deliverables", label: "Deliverables" },
+  { name: "timeline", label: "Timeline" },
+  { name: "assumptions", label: "Assumptions" },
+  { name: "commercialTerms", label: "Commercial terms" },
+];
+
+export function toCustomerProposal(
+  projectReference: string,
+  version: ProposalVersionInternal,
+  publishedAt: number,
+): CustomerProposalView {
+  return {
+    projectReference,
+    versionNumber: version.versionNumber,
+    publishedAt,
+    summary: version.summary,
+    scopeIncluded: version.scopeIncluded,
+    scopeExcluded: version.scopeExcluded,
+    deliverables: version.deliverables,
+    timeline: version.timeline,
+    assumptions: version.assumptions,
+    commercialTerms: version.commercialTerms,
+    validUntil: version.validUntil,
   };
 }

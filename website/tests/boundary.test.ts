@@ -18,6 +18,7 @@ import {
   toCustomerProjectSummary,
 } from "../lib/platform/views";
 import { OWNER_EMAIL, createTestPlatform, signUpAsOwner } from "./support/harness";
+import { collectKeys } from "./support/projection";
 
 const INTERNAL_VALUES = {
   qualificationState: "not_a_fit" as const,
@@ -47,19 +48,6 @@ const INTERNAL_KEYS = [
   "audit_events",
 ];
 
-function collectKeys(value: unknown, keys = new Set<string>()): Set<string> {
-  if (Array.isArray(value)) {
-    for (const item of value) collectKeys(item, keys);
-    return keys;
-  }
-  if (value !== null && typeof value === "object") {
-    for (const [key, nested] of Object.entries(value)) {
-      keys.add(key);
-      collectKeys(nested, keys);
-    }
-  }
-  return keys;
-}
 
 function internalProject(overrides: Partial<ProjectInternal> = {}): ProjectInternal {
   return {
@@ -78,7 +66,7 @@ function internalProject(overrides: Partial<ProjectInternal> = {}): ProjectInter
 
 describe("customer projection of internal project state", () => {
   it("omits internal keys from the customer project summary", () => {
-    const summary = toCustomerProjectSummary(internalProject(), null);
+    const summary = toCustomerProjectSummary(internalProject(), null, false);
     const keys = collectKeys(summary);
 
     for (const forbidden of INTERNAL_KEYS) {
@@ -87,7 +75,7 @@ describe("customer projection of internal project state", () => {
   });
 
   it("omits internal values from the customer project detail", () => {
-    const detail = toCustomerProjectDetail(internalProject(), null);
+    const detail = toCustomerProjectDetail(internalProject(), null, false);
     const serialized = JSON.stringify(detail);
 
     for (const forbidden of INTERNAL_KEYS) {
@@ -120,10 +108,12 @@ describe("customer projection of internal project state", () => {
     const asNotAFit = toCustomerProjectSummary(
       internalProject({ qualificationState: "not_a_fit" }),
       null,
+      false,
     );
     const asQualified = toCustomerProjectSummary(
       internalProject({ qualificationState: "qualified" }),
       null,
+      false,
     );
 
     assert.equal(asNotAFit.stage, asQualified.stage);
@@ -158,6 +148,7 @@ describe("customer projection of internal project state", () => {
         lastSavedAt: 2,
         submittedAt: null,
       },
+      false,
     );
     const serialized = JSON.stringify(detail);
 
@@ -214,6 +205,7 @@ describe("customer-facing service output", () => {
       [
         "answeredFieldCount",
         "createdAt",
+        "hasPublishedProposal",
         "intakeStatus",
         "lastSavedAt",
         "reference",

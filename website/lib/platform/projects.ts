@@ -144,16 +144,21 @@ export class ProjectService {
    */
   listAccessibleProjects(personId: string): CustomerProjectSummary[] {
     const context = requireOrganizationContext(this.options.store, personId);
-    const organizationProjects = this.options.store.listProjectsByOrganization(
+    // One query answers "which projects, and does each have a customer-visible
+    // published proposal" for the whole organization, so the listing does not
+    // grow a proposal lookup per project.
+    const withSignal = this.options.store.listProjectsByOrganizationWithProposalSignal(
       context.actor.organization.id,
     );
     const candidates = context.isAdministrator
-      ? organizationProjects
-      : organizationProjects.filter((project) => {
-          const access = this.options.store.findProjectAccess(project.id, personId);
+      ? withSignal
+      : withSignal.filter((entry) => {
+          const access = this.options.store.findProjectAccess(entry.project.id, personId);
           return access !== null && access.revokedAt === null;
         });
-    return candidates.map((project) => this.toCustomerSummary(project));
+    return candidates.map((entry) =>
+      this.toCustomerSummary(entry.project, entry.hasPublishedProposal),
+    );
   }
 
   /** Reads one project as a customer, after an authorization check. */
@@ -287,10 +292,14 @@ export class ProjectService {
    * customer via the shaping in `views.ts` rather than by any caller's own field
    * selection.
    */
-  private toCustomerSummary(project: ProjectInternal): CustomerProjectSummary {
+  private toCustomerSummary(
+    project: ProjectInternal,
+    hasPublishedProposal: boolean,
+  ): CustomerProjectSummary {
     return toCustomerProjectSummary(
       project,
       this.options.store.findProjectIntakeByProject(project.id),
+      hasPublishedProposal,
     );
   }
 
@@ -298,6 +307,7 @@ export class ProjectService {
     return toCustomerProjectDetail(
       project,
       this.options.store.findProjectIntakeByProject(project.id),
+      this.options.store.hasPublishedProposalVersion(project.id),
     );
   }
 
