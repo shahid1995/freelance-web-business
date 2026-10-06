@@ -29,11 +29,16 @@ import {
   type Membership,
   type Organization,
   type Person,
+  type PersonId,
   type ProjectAccess,
   type ProjectId,
   type ProjectIntake,
   type ProjectIntakeField,
   type ProjectInternal,
+  type ProposalId,
+  type ProposalInternal,
+  type ProposalVersionId,
+  type ProposalVersionInternal,
   type Session,
 } from "./domain";
 import type {
@@ -217,6 +222,35 @@ CREATE TABLE IF NOT EXISTS audit_events (
   metadata TEXT
 );
 CREATE INDEX IF NOT EXISTS audit_events_by_project ON audit_events (project_id, occurred_at);
+
+CREATE TABLE IF NOT EXISTS proposals (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL UNIQUE REFERENCES projects(id),
+  created_by_person_id TEXT NOT NULL REFERENCES people(id),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS proposals_by_project ON proposals (project_id);
+
+CREATE TABLE IF NOT EXISTS proposal_versions (
+  id TEXT PRIMARY KEY,
+  proposal_id TEXT NOT NULL REFERENCES proposals(id),
+  version_number INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('draft', 'published')),
+  summary TEXT NOT NULL,
+  scope_included TEXT NOT NULL,
+  scope_excluded TEXT NOT NULL,
+  deliverables TEXT NOT NULL,
+  timeline TEXT NOT NULL,
+  assumptions TEXT NOT NULL,
+  commercial_terms TEXT NOT NULL,
+  valid_until INTEGER,
+  created_by_person_id TEXT NOT NULL REFERENCES people(id),
+  created_at INTEGER NOT NULL,
+  published_at INTEGER,
+  UNIQUE (proposal_id, version_number)
+);
+CREATE INDEX IF NOT EXISTS proposal_versions_by_proposal ON proposal_versions (proposal_id, version_number);
 
 CREATE TABLE IF NOT EXISTS rate_limits (
   bucket TEXT PRIMARY KEY,
@@ -805,6 +839,153 @@ export class SqlitePlatformStore implements PlatformStore {
       organizationName: text(row, "organization_name"),
       submittedAt: int(row, "intake_submitted_at"),
     }));
+  }
+
+  // --- proposals -----------------------------------------------------------
+
+  private toProposal(row: Row): ProposalInternal {
+    return {
+      id: text(row, "id"),
+      projectId: text(row, "project_id"),
+      createdByPersonId: text(row, "created_by_person_id"),
+      createdAt: int(row, "created_at"),
+      updatedAt: int(row, "updated_at"),
+    };
+  }
+
+  private toProposalVersion(row: Row): ProposalVersionInternal {
+    return {
+      id: text(row, "id"),
+      proposalId: text(row, "proposal_id"),
+      versionNumber: int(row, "version_number"),
+      status: text(row, "status") as ProposalVersionInternal["status"],
+      summary: text(row, "summary"),
+      scopeIncluded: text(row, "scope_included"),
+      scopeExcluded: text(row, "scope_excluded"),
+      deliverables: text(row, "deliverables"),
+      timeline: text(row, "timeline"),
+      assumptions: text(row, "assumptions"),
+      commercialTerms: text(row, "commercial_terms"),
+      validUntil: nullableInt(row, "valid_until"),
+      createdByPersonId: text(row, "created_by_person_id"),
+      createdAt: int(row, "created_at"),
+      publishedAt: nullableInt(row, "published_at"),
+    };
+  }
+
+  findProposalByProject(projectId: ProjectId): ProposalInternal | null {
+    const row = this.get("SELECT * FROM proposals WHERE project_id = ?", projectId);
+    return row ? this.toProposal(row) : null;
+  }
+
+  findProposalById(id: ProposalId): ProposalInternal | null {
+    const row = this.get("SELECT * FROM proposals WHERE id = ?", id);
+    return row ? this.toProposal(row) : null;
+  }
+
+  /**
+   * Versions in creation order, oldest first.
+   *
+   * The ordering is fixed here rather than in the caller so every reader agrees
+   * on what "the proposal's history" is. `version_number` is unique per proposal,
+   * which is what makes the ordering total.
+   */
+  listProposalVersions(proposalId: ProposalId): ProposalVersionInternal[] {
+    return this.all(
+      "SELECT * FROM proposal_versions WHERE proposal_id = ? ORDER BY version_number ASC",
+      proposalId,
+    ).map((row) => this.toProposalVersion(row));
+  }
+
+  findProposalVersionById(id: ProposalVersionId): ProposalVersionInternal | null {
+    const row = this.get("SELECT * FROM proposal_versions WHERE id = ?", id);
+    return row ? this.toProposalVersion(row) : null;
+  }
+
+  createProposal(input: {
+    id: string;
+    projectId: ProjectId;
+    createdByPersonId: PersonId;
+    createdAt: number;
+    updatedAt: number;
+  }): ProposalInternal {
+    this.run(
+      "INSERT INTO proposals (id, project_id, created_by_person_id, created_at, updated_at) " +
+        "VALUES (?, ?, ?, ?, ?)",
+      input.id,
+      input.projectId,
+      input.createdByPersonId,
+      input.createdAt,
+      input.updatedAt,
+    );
+    const stored = this.findProposalById(input.id);
+    if (!stored) {
+      throw new Error("Proposal was not readable immediately after creation.");
+    }
+    return stored;
+  }
+
+  createProposalVersion(input: {
+    id: string;
+    proposalId: ProposalId;
+    versionNumber: number;
+    status: ProposalVersionInternal["status"];
+    summary: string;
+    scopeIncluded: string;
+    scopeExcluded: string;
+    deliverables: string;
+    timeline: string;
+    assumptions: string;
+    commercialTerms: string;
+    validUntil: number | null;
+    createdByPersonId: PersonId;
+    createdAt: number;
+    publishedAt: number | null;
+  }): ProposalVersionInternal {
+    this.run(
+      "INSERT INTO proposal_versions " +
+        "(id, proposal_id, version_number, status, summary, scope_included, scope_excluded, " +
+        "deliverables, timeline, assumptions, commercial_terms, valid_until, " +
+        "created_by_person_id, created_at, published_at) " +
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      input.id,
+      input.proposalId,
+      input.versionNumber,
+      input.status,
+      input.summary,
+      input.scopeIncluded,
+      input.scopeExcluded,
+      input.deliverables,
+      input.timeline,
+      input.assumptions,
+      input.commercialTerms,
+      input.validUntil,
+      input.createdByPersonId,
+      input.createdAt,
+      input.publishedAt,
+    );
+    const stored = this.findProposalVersionById(input.id);
+    if (!stored) {
+      throw new Error("Proposal version was not readable immediately after creation.");
+    }
+    return stored;
+  }
+
+  /**
+   * Marks an unpublished version as published.
+   *
+   * The `published_at IS NULL` condition lives in the UPDATE, so publishing is
+   * idempotent and two concurrent publishes cannot both stamp the row: the second
+   * one changes nothing. A version that is already published keeps its original
+   * instant rather than being rewritten.
+   */
+  publishProposalVersion(input: { id: ProposalVersionId; now: number }): void {
+    this.run(
+      "UPDATE proposal_versions SET published_at = ?, status = 'published' " +
+        "WHERE id = ? AND published_at IS NULL",
+      input.now,
+      input.id,
+    );
   }
 
   // --- internal capabilities ------------------------------------------------

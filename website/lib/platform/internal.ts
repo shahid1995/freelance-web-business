@@ -32,7 +32,7 @@ import {
   type ProjectInternal,
 } from "./domain";
 import type { Clock } from "./clock";
-import { requireFounderCapability } from "./authorization";
+import { requireFounderWithBootstrap } from "./authorization";
 import { NotFoundError, ValidationError } from "./errors";
 import type { PlatformStore } from "./ports";
 import type { FounderQueueRow, InternalCustomerIdentity, InternalProjectReview } from "./internal-views";
@@ -82,45 +82,17 @@ export class FounderWorkspaceService {
   /**
    * Grants the configured `founder` capability when it is due, then checks it.
    *
-   * Lifecycle, as the approved ADR defines it (section 2.1, “Assigned only through
-   * controlled server-side bootstrap/configuration”, approved as the mechanism
-   * “by which the **initial** `founder` capability is assigned”):
-   *
-   * - **Configuration is initial assignment, not a live allow-list.** Once a grant
-   *   row exists it is authoritative, and removing the address hash from
-   *   configuration does not revoke it. Revocation has to be an explicit
-   *   server-side operation against the stored grant. Treating configuration as
-   *   the ongoing source of truth would contradict the approved design and would
-   *   make the persisted capability meaningless.
-   * - **The bootstrap only ever adds.** It never grants a capability the
-   *   deployment did not configure, never grants to a customer role, and is never
-   *   reachable from a request.
-   * - **It runs here rather than at startup** so the capability works for a
-   *   Founder whose person record does not exist until they first authenticate.
-   *
-   * Known limitation, recorded rather than worked around: because the bootstrap
-   * re-grants when a stored grant is revoked, a revocation made while the address
-   * hash is still configured would be undone on the next internal call. Nothing in
-   * this slice revokes — there is no administration surface, by design — so the
-   * path is unreachable today. Durable revocation needs its own decision before any
-   * administration surface exists.
+   * The bootstrap and its documented lifecycle live in
+   * `requireFounderWithBootstrap`, which this shares with the proposal service so
+   * the rule is implemented once.
    */
   requireFounder(personId: string): Person {
-    if (this.options.founderEmailHashes.length > 0) {
-      const person = this.options.store.findPersonById(personId);
-      if (person && this.options.founderEmailHashes.includes(person.emailHash)) {
-        const existing = this.options.store.findInternalCapability(personId, "founder");
-        if (!existing || existing.revokedAt !== null) {
-          this.options.store.grantInternalCapability({
-            personId,
-            capability: "founder",
-            grantedAt: this.options.clock.now(),
-            revokedAt: null,
-          });
-        }
-      }
-    }
-    return requireFounderCapability(this.options.store, personId);
+    return requireFounderWithBootstrap(
+      this.options.store,
+      this.options.clock,
+      this.options.founderEmailHashes,
+      personId,
+    );
   }
 
   /**

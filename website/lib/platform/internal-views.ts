@@ -19,15 +19,18 @@
 import {
   PROJECT_INTAKE_FIELDS,
   type AuditEvent,
+  type FounderDecision,
   type InternalQualificationState,
   type Membership,
   type Organization,
+  type OrganizationRole,
   type Person,
   type ProjectIntake,
   type ProjectInternal,
-  type OrganizationRole,
+  type ProposalInternal,
+  type ProposalVersionInternal,
+  type ProposalVersionStatus,
 } from "./domain";
-import type { FounderDecision } from "./domain";
 import type { CustomerProjectStage } from "./views";
 import { CUSTOMER_STAGE_LABELS, customerStageFor } from "./views";
 
@@ -193,6 +196,121 @@ export function buildInternalReview(input: {
       occurredAt: event.occurredAt,
       personId: event.personId,
     })),
+  };
+}
+
+/** One immutable version row for the Founder proposal view. */
+export interface InternalProposalVersionView {
+  id: string;
+  versionNumber: number;
+  status: ProposalVersionStatus;
+  summary: string;
+  scopeIncluded: string;
+  scopeExcluded: string;
+  deliverables: string;
+  timeline: string;
+  assumptions: string;
+  commercialTerms: string;
+  validUntil: number | null;
+  createdByPersonId: string;
+  createdAt: number;
+  publishedAt: number | null;
+}
+
+export interface InternalProposalView {
+  /** Stable project reference; also the link key into the proposal surface. */
+  projectReference: string;
+  proposalId: string | null;
+  createdByPersonId: string | null;
+  createdAt: number | null;
+  latestVersionNumber: number | null;
+  latestVersionId: string | null;
+  latestVersionStatus: ProposalVersionStatus | null;
+  publishedVersionNumber: number | null;
+  publishedVersionId: string | null;
+  publishedVersionPublishedAt: number | null;
+  /** Versions in creation order. */
+  versions: InternalProposalVersionView[];
+  /**
+   * The highest-numbered version whose status is `draft`, if any; null when the
+   * proposal has no draft version. A newer published version does not hide an
+   * older draft, so a `draft, published, published` history still reports its
+   * first version. This is the ADR's "current draft" distinction.
+   */
+  latestDraft: InternalProposalVersionView | null;
+}
+
+export function buildInternalProposalView(input: {
+  projectReference: string;
+  proposal: ProposalInternal | null;
+  versions: ProposalVersionInternal[];
+}): InternalProposalView {
+  const proposalId = input.proposal?.id ?? null;
+  const createdByPersonId = input.proposal?.createdByPersonId ?? null;
+  const createdAt = input.proposal?.createdAt ?? null;
+
+  const versions = input.versions.map((version) => ({
+    id: version.id,
+    versionNumber: version.versionNumber,
+    status: version.status,
+    summary: version.summary,
+    scopeIncluded: version.scopeIncluded,
+    scopeExcluded: version.scopeExcluded,
+    deliverables: version.deliverables,
+    timeline: version.timeline,
+    assumptions: version.assumptions,
+    commercialTerms: version.commercialTerms,
+    validUntil: version.validUntil,
+    createdByPersonId: version.createdByPersonId,
+    createdAt: version.createdAt,
+    publishedAt: version.publishedAt,
+  }));
+
+  const latest = versions[versions.length - 1];
+  const latestVersionNumber = latest?.versionNumber ?? null;
+  const latestVersionId = latest?.id ?? null;
+  const latestVersionStatus = latest?.status ?? null;
+
+  let publishedVersionNumber: number | null = null;
+  let publishedVersionId: string | null = null;
+  let publishedVersionPublishedAt: number | null = null;
+  let latestDraft: InternalProposalVersionView | null = null;
+
+  if (versions.length > 0) {
+    // The most recently published version, if any. Iteration is in ascending
+    // order, so the last published version encountered is the newest one.
+    for (const version of versions) {
+      if (version.status === "published") {
+        publishedVersionNumber = version.versionNumber;
+        publishedVersionId = version.id;
+        publishedVersionPublishedAt = version.publishedAt;
+      }
+    }
+    // The most recent draft, if any. A reverse search over the ascending list
+    // finds the highest-numbered draft even when newer versions are published,
+    // so `v1 draft, v2 published, v3 published` reports v1 rather than null.
+    for (let index = versions.length - 1; index >= 0; index -= 1) {
+      const version = versions[index]!;
+      if (version.status === "draft") {
+        latestDraft = version;
+        break;
+      }
+    }
+  }
+
+  return {
+    projectReference: input.projectReference,
+    proposalId,
+    createdByPersonId,
+    createdAt,
+    latestVersionNumber,
+    latestVersionId,
+    latestVersionStatus,
+    publishedVersionNumber,
+    publishedVersionId,
+    publishedVersionPublishedAt,
+    versions,
+    latestDraft,
   };
 }
 
