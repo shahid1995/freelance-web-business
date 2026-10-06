@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { isMissing, requireSessionForPage } from "@/lib/platform/server";
-import { PORTAL_DATE_FORMAT } from "@/lib/platform/views";
+import { PORTAL_DATE_FORMAT, PROPOSAL_DISPLAY_FIELDS } from "@/lib/platform/views";
 
 export const dynamic = "force-dynamic";
 
@@ -11,17 +11,6 @@ export const metadata: Metadata = {
   title: "Proposal",
   description: "The current published proposal for your project.",
 };
-
-/** The approved customer-visible proposal sections, in display order. */
-const CONTENT_FIELDS = [
-  { name: "summary", label: "Summary" },
-  { name: "scopeIncluded", label: "In scope" },
-  { name: "scopeExcluded", label: "Out of scope" },
-  { name: "deliverables", label: "Deliverables" },
-  { name: "timeline", label: "Timeline" },
-  { name: "assumptions", label: "Assumptions" },
-  { name: "commercialTerms", label: "Commercial terms" },
-] as const;
 
 /**
  * Customer proposal view.
@@ -85,7 +74,7 @@ export default async function CustomerProposalPage({
                 Published {PORTAL_DATE_FORMAT.format(new Date(proposal.publishedAt))}
               </p>
             </div>
-            {CONTENT_FIELDS.map((field) => (
+            {PROPOSAL_DISPLAY_FIELDS.map((field) => (
               <div className="field" key={field.name}>
                 <p className="field__label">{field.label}</p>
                 <p className="lede">{proposal[field.name]}</p>

@@ -18,6 +18,7 @@ import {
   type ProjectInternal,
   type ProposalVersionInternal,
 } from "./domain";
+import { type ProposalContentField } from "./proposal-form";
 
 /**
  * Customer-facing lifecycle stages, using only the approved customer labels
@@ -214,6 +215,29 @@ export interface CustomerProposalView {
   commercialTerms: string;
   validUntil: number | null;
 }
+
+/**
+ * The approved proposal content fields, in display order, with their labels.
+ *
+ * One definition shared by the customer proposal view and the Founder proposal
+ * view, so the two surfaces cannot drift apart in which fields they render or in
+ * what order. `name` is typed against the fields the proposal form actually
+ * writes, so a displayed field cannot exist without being parseable.
+ */
+export interface ProposalDisplayField {
+  name: ProposalContentField;
+  label: string;
+}
+
+export const PROPOSAL_DISPLAY_FIELDS: readonly ProposalDisplayField[] = [
+  { name: "summary", label: "Summary" },
+  { name: "scopeIncluded", label: "In scope" },
+  { name: "scopeExcluded", label: "Out of scope" },
+  { name: "deliverables", label: "Deliverables" },
+  { name: "timeline", label: "Timeline" },
+  { name: "assumptions", label: "Assumptions" },
+  { name: "commercialTerms", label: "Commercial terms" },
+];
 
 export function toCustomerProposal(
   projectReference: string,

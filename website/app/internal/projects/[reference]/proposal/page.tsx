@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 
 import { internalNoticeFor } from "@/lib/platform/internal-notices";
 import { isMissing, requireSessionForPage } from "@/lib/platform/server";
-import { PORTAL_DATE_FORMAT } from "@/lib/platform/views";
+import { PORTAL_DATE_FORMAT, PROPOSAL_DISPLAY_FIELDS } from "@/lib/platform/views";
 
 export const dynamic = "force-dynamic";
 
@@ -12,17 +12,6 @@ export const metadata: Metadata = {
   title: "Proposal",
   robots: { index: false, follow: false },
 };
-
-/** The content fields every proposal version must carry, in display order. */
-const CONTENT_FIELDS = [
-  { name: "summary", label: "Summary" },
-  { name: "scopeIncluded", label: "In scope" },
-  { name: "scopeExcluded", label: "Out of scope" },
-  { name: "deliverables", label: "Deliverables" },
-  { name: "timeline", label: "Timeline" },
-  { name: "assumptions", label: "Assumptions" },
-  { name: "commercialTerms", label: "Commercial terms" },
-] as const;
 
 /**
  * Founder proposal authoring surface for one project.
@@ -132,7 +121,7 @@ export default async function InternalProposalPage({
               Version {latest.versionNumber} ·{" "}
               {latest.status === "published" ? "published" : "draft"}
             </h2>
-            {CONTENT_FIELDS.map((field) => (
+            {PROPOSAL_DISPLAY_FIELDS.map((field) => (
               <div className="field" key={field.name}>
                 <p className="field__label">{field.label}</p>
                 <p className="lede">{latest[field.name]}</p>
@@ -162,7 +151,7 @@ export default async function InternalProposalPage({
               name="intent"
               value={hasProposal ? "create-version" : "create"}
             />
-            {CONTENT_FIELDS.map((field) => (
+            {PROPOSAL_DISPLAY_FIELDS.map((field) => (
               <div className="field" key={field.name}>
                 <label className="field__label" htmlFor={field.name}>
                   {field.label}
