@@ -305,7 +305,11 @@ creates no commercial commitment.
 - the message maximum is **5,000 characters after validation** (trimmed);
 - the message is stored as part of the **immutable response record**;
 - input that is not a string, is empty or whitespace-only after trimming, or
-  exceeds the limit is rejected **before persistence** — no partial record.
+  exceeds the limit is rejected **before persistence** — no partial record;
+- the same four conditions — non-null, non-empty after trim, and at most 5,000
+  characters for `changes_requested`, and `NULL` for `accepted` — are also
+  enforced by the `proposal_responses` CHECK constraint, so the invariant does
+  not depend on application validation alone.
 
 ### What a request for changes does
 
@@ -646,9 +650,23 @@ CREATE TABLE IF NOT EXISTS proposal_responses (
   message TEXT,
   action_key TEXT NOT NULL UNIQUE,
   created_at INTEGER NOT NULL,
+  -- The message invariant is restated at the database level so it does not
+  -- rest on application validation alone: a changes-requested row must carry a
+  -- message that is present, non-empty once whitespace is removed, and within
+  -- the 5,000 character limit; an accepted row must carry none.
+  --
+  -- SQLite's trim(X) with no character set strips spaces only, so a message of
+  -- tabs or newlines would survive it. The explicit character set (tab, LF, VT,
+  -- FF, CR, space) is what makes "whitespace-only" mean here what the
+  -- application validator means by it.
   CHECK (
     (action = 'accepted' AND message IS NULL)
-    OR (action = 'changes_requested' AND message IS NOT NULL)
+    OR (
+      action = 'changes_requested'
+      AND message IS NOT NULL
+      AND length(trim(message, char(9) || char(10) || char(11) || char(12) || char(13) || char(32))) > 0
+      AND length(message) <= 5000
+    )
   )
 );
 CREATE INDEX IF NOT EXISTS proposal_responses_by_project
@@ -679,7 +697,7 @@ conventions (`*_id`, `created_at`, `action`, nullable `message`).
 | `proposal_version_id` | the exact proposal version — the binding this whole design exists to guarantee. Because proposal versions are globally unique and immutable, this is the exact version identity. |
 | `version_number` | the customer-meaningful version identifier established by the accepted Customer Proposal Review decision, so "which version" is answerable without a join. Denormalized from an immutable, append-only, per-proposal-unique value, so it cannot drift. |
 | `action` | `changes_requested` or `accepted`. |
-| `message` | required and non-null for `changes_requested`; null for `accepted`, enforced by the CHECK. Holds the customer's request text at the 5,000-character cap. |
+| `message` | required, non-null, non-empty once whitespace is removed, and at most 5,000 characters for `changes_requested`; `NULL` for `accepted`. All four conditions are enforced by the table's CHECK constraint, not only by application validation. Holds the customer's request text at the 5,000-character cap. |
 | `action_key` | idempotency key. |
 | `created_at` | submitted/occurred timestamp. |
 
@@ -697,7 +715,15 @@ project-level acceptance flag.
   the already-recorded result rather than a second record, and writes no second
   audit event.
 - Malformed input and excessive message length are rejected **before
-  persistence**, so no partial or oversized record is ever written.
+  persistence**, so no partial or oversized record is ever written. The
+  `proposal_responses` CHECK constraint is the second line of defence: it
+  rejects a `changes_requested` row whose message is null, empty or
+  whitespace-only, or longer than 5,000 characters, and an `accepted` row that
+  carries a message at all. Application validation remains the primary gate — it
+  trims with JavaScript semantics, which also cover Unicode whitespace such as
+  non-breaking spaces that the SQL expression does not reach, and it reports the
+  customer-facing notice — while the constraint is what makes the rule hold for
+  a write that reaches the store by any other path.
 - **No numeric rate limit is defined by this ADR.** The implementation retains
   the ability to add platform-level rate limiting or abuse protection
   independently, using the existing `consumeRateLimit` seam, without changing
