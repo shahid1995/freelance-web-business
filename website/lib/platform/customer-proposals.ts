@@ -13,7 +13,6 @@
  * they are genuinely an authorized customer of the project.
  */
 
-import type { ProposalVersionInternal } from "./domain";
 import type { PlatformStore } from "./ports";
 import type { ProjectService } from "./projects";
 import { toCustomerProposal, type CustomerProposalView } from "./views";
@@ -21,33 +20,6 @@ import { toCustomerProposal, type CustomerProposalView } from "./views";
 export interface CustomerProposalServiceOptions {
   store: PlatformStore;
   projects: ProjectService;
-}
-
-/** The current published version: the highest-numbered version that is published. */
-export interface CurrentPublishedVersion {
-  version: ProposalVersionInternal;
-  publishedAt: number;
-}
-
-/**
- * Selects the current published version from a proposal's versions.
- *
- * Versions arrive oldest first, so the last published one encountered is the
- * newest: a newer draft never displaces it, and an older published version is
- * never presented as the current one. A version marked published without a
- * publication instant is treated as not published rather than shown with a
- * fabricated date.
- */
-export function selectCurrentPublishedVersion(
-  versions: readonly ProposalVersionInternal[],
-): CurrentPublishedVersion | null {
-  let current: CurrentPublishedVersion | null = null;
-  for (const version of versions) {
-    if (version.status === "published" && version.publishedAt !== null) {
-      current = { version, publishedAt: version.publishedAt };
-    }
-  }
-  return current;
 }
 
 export class CustomerProposalService {
@@ -61,6 +33,12 @@ export class CustomerProposalService {
    * indistinguishable to the customer. Authorizes through the existing customer
    * project reference resolution first, so an inaccessible or unrelated project
    * is reported as missing rather than disclosed.
+   *
+   * The current published version — published status, a recorded publication
+   * instant, and the highest version number — is resolved by the store in one
+   * query, so the publication invariant lives in one place instead of being
+   * re-derived here. A version marked published without an instant is treated as
+   * not published rather than shown with a fabricated date.
    */
   readByProjectReference(
     personId: string,
@@ -70,20 +48,12 @@ export class CustomerProposalService {
       personId,
       reference,
     );
-    const project = this.options.store.findProject(projectId);
-    if (!project) {
+    const version = this.options.store.findCurrentPublishedProposalVersion(projectId);
+    if (!version || version.publishedAt === null) {
       return null;
     }
-    const proposal = this.options.store.findProposalByProject(project.id);
-    if (!proposal) {
-      return null;
-    }
-    const current = selectCurrentPublishedVersion(
-      this.options.store.listProposalVersions(proposal.id),
-    );
-    if (!current) {
-      return null;
-    }
-    return toCustomerProposal(project.reference, current.version, current.publishedAt);
+    // The reference is globally unique and was resolved to exactly one project,
+    // so it is that project's own customer-facing reference.
+    return toCustomerProposal(reference, version, version.publishedAt);
   }
 }
