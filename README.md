@@ -71,8 +71,9 @@ Phase 4 current direction:
 - Founder/internal workspace and Project Intake review — implemented and merged
 - Founder Project Queue (internal intake inbox) — implemented and merged
 - Proposal Foundation (Founder-only proposal authoring, immutable versions, explicit publication) — implemented and merged
+- Customer Proposal Review (read-only customer view of the current published proposal for an authorized customer) — implemented and merged
 - No customer-platform slice is deployed or activated for live customers
-- Customer-facing commercial workflow beyond the Proposal Foundation (proposal review, request changes, acceptance) — future work
+- Customer-facing commercial workflow beyond the Customer Proposal Review (request changes, acceptance) — design accepted; implementation not yet performed: docs/decisions/2026-10-06-customer-proposal-response.md (Status: Accepted; Founder approval: Approved 2026-10-06). Not available in production.
 - Delivery workspace and lifecycle integration — planned
 - Domain/hosting — deferred
 - Analytics — deferred
