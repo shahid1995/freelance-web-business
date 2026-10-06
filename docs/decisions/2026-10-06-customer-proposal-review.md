@@ -1,13 +1,13 @@
 # Customer Proposal Review
 
-**Status:** Proposed  
+**Status:** Accepted  
 **Date:** 2026-10-06  
-**Founder approval:** Pending  
+**Founder approval:** Approved 2026-10-06  
 **Scope:** Smallest customer-facing read slice for a published proposal — visibility only, no review actions  
 **Related:** Customer Platform Direction, Customer Platform Requirements, Customer Platform Foundation, Founder/Internal Workspace and Project Intake Review, Founder Project Queue, Proposal Foundation
 
-> **Status note.** This decision is **Proposed**. It is not in force until the
-> Founder explicitly approves it, and no implementation may begin before then. It
+> **Status note.** The Founder approved this decision on 2026-10-06. It is now
+> the governing design for the read-only Customer Proposal Review slice. It
 > defines only a read boundary through which an authorized customer can view the
 > current published proposal for their own project. It does not authorize
 > proposal review actions, request changes, acceptance, agreement/e-signature,
@@ -511,9 +511,9 @@ handled by the dashboard signal instead.
 
 ## 17. Approval
 
-**Status: Proposed. Founder approval: Pending.**
+**Status: Accepted. Founder approval: Approved 2026-10-06.**
 
-This decision is not in force until the Founder explicitly approves it. Approval
-of this design would not authorize production deployment, live customer-data
-operation, provider activation, or any capability listed in section 13, each of
-which requires its own later decision.
+The Founder approved this decision on 2026-10-06. Approval of this design does
+not authorize production deployment, live customer-data operation, provider
+activation, or any capability listed in section 13, each of which requires its
+own later decision.
