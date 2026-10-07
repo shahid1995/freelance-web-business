@@ -322,7 +322,8 @@ There is deliberately **no** stored `pending`, `awaiting_signature`,
 `expired`, `declined`, `cancelled`, `superseded`, `stale`, or `void` state.
 Both supersession and staleness are **derived** (§8.2), not stored: an unsigned
 `published` version stops being the current signable version once a later
-`published` version exists, and any version stops being signable once its
+`published` version exists, and any version — `published` or `signed` — stops
+being the current agreement version (and so stops being signable) once its
 accepted proposal baseline is no longer the project's current accepted version.
 Notifications, reminders, and expiry are out of scope (section 19).
 
@@ -332,27 +333,37 @@ Three distinct concepts are derived from the immutable version and signature
 rows. None of them is stored, and none of them changes the status of a version.
 
 - **Current agreement version.** The highest-numbered agreement version that is
-  *applicable to a customer* — that is, the highest-numbered version whose status
-  is `published` or `signed`. A `draft` is an internal, unpublished working
-  version; it is not the current agreement version until it is published. The
-  current agreement version is therefore either `published` (awaiting signature)
-  or `signed` (completed for that version), and there is no current agreement
-  version at all until a first version is published.
-- **Current signable version.** The highest-numbered `published` version that
-  is **eligible for signing**. A `published` version is eligible only when both
-  (a) it is the highest-numbered `published` version and (b) its accepted
-  proposal baseline is still the project's **currently accepted proposal
-  version** (§7.3). When the current agreement version is `published` *and* its
-  baseline is current, the current signable version is that version and the
-  agreement is awaiting signature. A `draft` is never signable, a `signed`
-  version is never signable again, and a version whose proposal baseline has
-  changed is **stale** and never signable. When the current agreement version is
-  `signed`, or when its baseline is stale, there is no current signable version:
-  nothing can be signed until a new agreement version based on the current
-  accepted proposal version is published.
+  *applicable to a customer* **and based on the project's current commercial
+  baseline** — that is, the highest-numbered version whose status is `published`
+  or `signed` **and** whose accepted proposal baseline matches the project's
+  currently accepted proposal version (§7.3). A `draft` is an internal,
+  unpublished working version; it is not the current agreement version until it
+  is published. A `published` or `signed` version whose baseline is no longer
+  the current accepted proposal version is **stale**: it remains signed history
+  or an unpublished-candidate version as the case may be, but it is **not** the
+  current agreement version. The current agreement version is therefore either
+  `published` (awaiting signature) or `signed` (completed for that version), and
+  there is no current agreement version until a version based on the current
+  accepted proposal version is published. This keeps **signed history** and the
+  **current commercial agreement** distinct: a stale signed version is not the
+  current agreement version, though it is never edited or deleted.
+- **Current signable version.** The highest-numbered `published` agreement
+  version whose accepted proposal baseline matches the project's **currently
+  accepted proposal version** (§7.3). It must also satisfy the existing
+  signability rules: a `draft` is never signable, a `signed` version is never
+  signable again, and a version whose baseline has changed is **stale** and never
+  signable. When the current agreement version is `published`, the current
+  signable version is that same version and the agreement is awaiting signature.
+  When the current agreement version is `signed`, or there is no current
+  agreement version (no version is based on the current accepted proposal
+  version), there is no current signable version: nothing can be signed until a
+  new agreement version based on the current accepted proposal version is
+  published.
 - **Signed history.** Every `signed` version remains `signed` forever, whether
-  or not later versions exist, and remains readable and auditable. Signing one
-  version never changes the status or content of any other version.
+  or not later versions exist and whether or not its baseline is still current,
+  and remains readable and auditable. A stale signed version is still signed
+  history: it must never be edited or deleted, and signing one version never
+  changes the status or content of any other version.
 
 Consequences of the three states, stated explicitly:
 
@@ -376,6 +387,13 @@ Consequences of the three states, stated explicitly:
     version's `proposal_version_id` is no longer the current accepted baseline.
   Both are **derived, not stored**; both leave the version's status and content
   untouched; and neither ever edits or re-derives historical signed evidence.
+- A newer accepted proposal version can make the current agreement version
+  stale. If the project's accepted proposal version changes, any agreement
+  version bound to the older accepted version — including a `signed` one —
+  ceases to be the current agreement version, so there is no current agreement
+  version until a new version based on the current accepted proposal version is
+  published. The stale signed version remains signed history and immutable;
+  nothing about it is mutated, deactivated, or rolled back.
 - An earlier `signed` version never changes state.
 - A newer `draft` does not pretend to be signable, does not change the current
   signable version, and does not modify historical signed evidence.
@@ -593,9 +611,12 @@ overwrite prior signed history.
   still bound to the older accepted proposal version becomes **stale** and stops
   being signable (§7.3, §8.2). A signing attempt against it is rejected and
   writes nothing — there is no silent rebinding to the new proposal version —
-  and the stale version remains immutable historical data. The Founder publishes
-  a new agreement version based on the current accepted proposal version, which
-  becomes the current signable version.
+  and the stale version remains immutable historical data. If the stale version
+  was already `signed`, it remains signed history but is no longer the current
+  agreement version, so "agreement completed" is false until a new version based
+  on the current accepted proposal version is published and signed. The Founder
+  publishes that new agreement version, which becomes the current signable
+  version.
 - **A new agreement version is created.** It is a new numbered, immutable
   version. All earlier versions and signatures remain readable and auditable,
   unchanged.
@@ -614,20 +635,19 @@ overwrite prior signed history.
   silently rewrite historical agreement evidence.
 
 The platform's **current agreement standing** is derived from the immutable
-rows, never stored. Over the **current agreement version** (§8.2 — the
-highest-numbered version whose status is `published` or `signed`):
+rows, never stored. It is computed over the **current agreement version**
+(§8.2 — the highest-numbered `published` or `signed` version whose accepted
+proposal baseline matches the project's current accepted proposal version):
 
 - if the current agreement version is `signed`, the agreement has completed
   signing **for that version**;
-- if the current agreement version is `published` and its proposal baseline is
-  current, that version is the current signable version and the agreement is
-  awaiting signature;
-- if the current agreement version is `published` but its proposal baseline is
-  **stale** (a newer proposal version has been accepted), the agreement is not
-  signable and awaits a new agreement version based on the current accepted
-  proposal version; the stale version is never rebound;
-- if no version has been published, there is no current agreement version and
-  nothing is signable.
+- if the current agreement version is `published`, that version is the current
+  signable version and the agreement is awaiting signature;
+- if there is no current agreement version — because no version has been
+  published, or because every `published`/`signed` version is bound to an older
+  accepted proposal baseline — the agreement is not completed and nothing is
+  signable; a new version based on the current accepted proposal version is
+  required, and any stale version is never rebound or mutated.
 
 A `signed` version is never described as "published and signed": its status is
 `signed`, and it remains signed history. What "the current agreement" means for
@@ -775,33 +795,43 @@ This design defines **only the agreement boundary** inside that chain. It does
 customer-facing project stage.
 
 - **What this slice may expose to downstream systems later.** A derived,
-  read-only signal that the project's **current agreement version is signed**
-  (§8.2) — an "agreement completed" boolean plus the identifying version number
-  and timestamp — computed from the append-only rows, never stored as a mutable
-  project field. The signal is derived from a version whose own status is
-  `signed`; it never queries for a version that is simultaneously `published`
-  and `signed`, which the state model forbids.
+  read-only signal that the project has a **current agreement version** whose
+  status is `signed` (§8.2) — an "agreement completed" boolean plus the
+  identifying version number and timestamp — computed from the append-only rows,
+  never stored as a mutable project field. The signal is true only when a
+  current agreement version exists **and** that version is `signed`; it never
+  queries for a version that is simultaneously `published` and `signed`, which
+  the state model forbids. Because "current agreement version" requires the
+  version's accepted proposal baseline to match the project's current accepted
+  proposal version, a signed version with a stale baseline does **not** satisfy
+  the signal.
 - **What downstream may rely on.** A later activation design may consult that
-  derived signal as the "Agreement completed" condition. "Completed" means the
-  current agreement version (§8.2) carries a signature. It must not treat
-  proposal acceptance alone as completed, and it must not treat a `draft` (not
-  applicable to a customer) or an unsigned version as completed. A `signed`
-  version that is no longer the current agreement version stays signed history
-  and is never reported as unsigned.
-- **What a completion signal becoming false does and does not mean.** A newly
-  published agreement version requires its own signature (§8.2, §12), so the
-  derived completion signal for the *current* version may become false after a
-  new version is published — for example signed Agreement v1, then published
-  Agreement v2, gives a current version that is not yet signed. That is expected
-  and correct: the earlier signed version stays immutable signed history, and
-  the signal simply reports that the *current* version is not yet signed.
+  derived signal as the "Agreement completed" condition. "Completed" means there
+  is a current agreement version (§8.2) and it carries a signature. It must not
+  treat proposal acceptance alone as completed, and it must not treat a `draft`
+  (not applicable to a customer), an unsigned version, or a **stale** version as
+  completed. A signed version that is no longer the current agreement version —
+  for example because a newer accepted proposal version made its baseline
+  stale — stays signed history and is never reported as unsigned, but it does
+  not make the agreement-completed signal true.
+- **What a completion signal becoming false does and does not mean.** The signal
+  can become false in two ways, both expected and correct:
+  - **A newly published agreement version.** A new version requires its own
+    signature (§8.2, §12), so signed Agreement v1 then published Agreement v2
+    gives a current version that is not yet signed.
+  - **A newly accepted proposal version that makes the signed version stale.**
+    If Proposal v2 is accepted after Agreement v1 (based on Proposal v1) was
+    signed, Agreement v1 becomes **stale** and is no longer the current
+    agreement version, so "agreement completed" is false until a new version
+    based on Proposal v2 is published and signed.
+  In both cases the earlier signed version stays immutable signed history and
+  the signal simply reports that no *current* version is signed.
   - The completion signal is a **read-only commercial gate/condition**, never a
     command. Nothing consumes it as an instruction to change state.
-  - Publishing a new agreement version must **not**, by itself, deactivate,
-    suspend, roll back, or otherwise revoke an already activated project, and
-    must not change `customerStageFor`.
-  - Any post-activation amendment, re-signing, suspension, or deactivation
-    behavior requires a **separate Founder-approved activation/commercial
+  - A newer accepted proposal version, or publishing a new agreement version,
+    must **not**, by itself, deactivate, suspend, roll back, or otherwise revoke
+    an already activated project, and must not change `customerStageFor`. Any
+    such behavior requires a **separate Founder-approved activation/commercial
     decision**. This design defines none of it.
 - **What this slice does not do.** No payment record, no payment status, no
   payment provider, no activation, no deactivation, no suspension, no rollback,
@@ -853,10 +883,11 @@ tests must cover, against the real services and store:
 - no version is ever simultaneously `published` and `signed`: the current
   agreement version is either `published` (awaiting signature) or `signed`
   (completed for that version), never both;
-- the derived "agreement completed" signal (§18) is true exactly when the
-  current agreement version is `signed`, and is false when the current agreement
-  version is `published` (including when its proposal baseline is stale) or
-  does not exist;
+- the derived "agreement completed" signal (§18) is true exactly when a current
+  agreement version exists and is `signed`, and is false when there is no current
+  agreement version or the current agreement version is `published`;
+- a `signed` version whose accepted proposal baseline is stale is not the
+  current agreement version and does not satisfy the agreement-completed signal;
 - a newer `draft` version does not change the current signable version, does not
   invalidate historical signed evidence, and does not itself become signable;
 - an agreement version whose accepted proposal baseline is no longer the
@@ -865,6 +896,11 @@ tests must cover, against the real services and store:
   Agreement v1 is rejected and writes nothing, with no rebinding;
 - a later accepted proposal version makes the older agreement version stale
   without changing its status or content;
+- regression: Agreement v1 based on accepted Proposal v1 is **signed**; Proposal
+  v2 is subsequently accepted; Agreement v1 remains signed historical evidence
+  but is no longer the current agreement version; "agreement completed" is
+  false; no proposal or agreement row is mutated; `customerStageFor` is
+  unchanged; and no deactivation is authorized;
 - the accepted proposal baseline is required: a draft or unaccepted proposal
   version cannot be a baseline;
 - `customerStageFor` and the customer-facing project stages are unchanged.
@@ -1027,6 +1063,9 @@ are **not required** by this design and are intentionally left unchanged:
 - An agreement cannot be signed from a stale commercial baseline: if a newer
   proposal version is accepted, an agreement version bound to the older accepted
   version stops being signable and is never silently rebound.
+- A signed agreement whose accepted baseline becomes stale stops being the
+  current agreement version, so the agreement-completed signal becomes false,
+  without mutating, deactivating, suspending, or rolling back anything.
 - The commercial gate becomes implementable in steps: acceptance exists today; a
   completed-agreement signal becomes available when this slice is implemented;
   payment and activation remain later, separate decisions whose ordering §15
@@ -1094,8 +1133,9 @@ Approval covers the design as proposed, including:
 - an agreement version that references an exact accepted proposal version as an
   immutable baseline and never mutates the proposal (§7.3);
 - the derived current-agreement-version / current-signable-version / signed-
-  history model, with signed versions immutable and terminal and no stored
-  `superseded`/`stale` state (§8);
+  history model, where the current agreement version must match the project's
+  current accepted proposal baseline, a stale signed version stays signed history
+  but is not current, and no `superseded`/`stale` state is stored (§8);
 - an append-only signature record carrying person, organization, project,
   agreement version, accepted proposal baseline, authority exercised, action,
   timestamp, and idempotency key, and no signature image or identity artifact
