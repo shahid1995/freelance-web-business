@@ -287,11 +287,11 @@ An agreement version has exactly one status:
 | --- | --- |
 | `draft` | Created by the Founder/internal authority; not visible to any customer; not signable. |
 | `published` | Made visible to authorized customers for the project; eligible to be the current signable version (§8.2). A version stops being the current signable version once a later `published` version exists. |
-| `signed` | The agreement version's **Q1-defined signature completion condition** has been satisfied. Under **Q1-A** (one authorized signer), that condition is a single signature record. Under **Q1-B** (countersignature required), that condition is the completed multi-signature set and is not met merely because the first signature exists. A `signed` version is never `published` again, is never a current signable version, and is terminal and immutable once the Q1-defined completion condition is met. |
+| `signed` | The Founder-approved Q1-A completion condition has been satisfied: one authorized customer signature has been recorded against this exact agreement version. A `signed` version is never `published` again, is never a current signable version, and is terminal and immutable. |
 
 Publication is a separate, explicit, Founder-only act, exactly as it is for a
-proposal. Creating a `draft` version does not make it signable, and publishing a
-version does not mean anyone has signed it.
+proposal. Creating a `draft` version does not make it signable, and publishing
+a version does not mean anyone has signed it.
 
 A version has **exactly one** status at a time. A version that has been signed
 has status `signed`; it is **never** simultaneously `published` and `signed`,
@@ -565,32 +565,14 @@ This section defines what must happen over time. It must never silently
 overwrite prior signed history.
 
 - **A customer signs.** The signature is recorded against the exact current
-  signable version (§8.2). Whether the version then becomes `signed` depends on
-  Q1: **Q1-A** — one authorized signer, one signature, version becomes `signed`;
-  **Q1-B** — countersignature required, the version does **not** become `signed`
-  merely because the first signature exists, and a Q1-defined completion
-  condition must be met. Until Q1 is resolved neither cardinality is
-  implemented.
+  signable version (§8.2). Under the Founder-approved Q1-A model, one authorized
+  customer signature completes that version and changes its status to `signed`.
 - **A replayed submission.** The idempotency key is resolved **before** any
   state check. A retry of an already-successful signing operation returns the
   recorded result — one row, one audit event, the same deterministic outcome —
   even though the version is now `signed`. A *fresh* submission (a new key)
-  against an already-`signed` version is rejected and writes nothing.
-
-  The post-replay version state is **conditional on Q1**:
-
-  - **Q1-A:** the previously recorded signature satisfied the completion
-    condition, so the version is already `signed`.
-  - **Q1-B:** the replayed signature was a completion event requiring a
-    multi-signature set, so the version may still be `published` (or another
-    intermediate state) until the Q1-defined completion condition is met;
-    replay returns the recorded deterministic result without changing state.
-
-  The idempotency-and-cardinality interaction is **conditional on Q1**: this
-  item states that replay returns the recorded result, not that exactly one
-  signature must exist. After Q1 is resolved, the implementation applies the
-  relevant Q1-A or Q1-B completion rule; Q1-B's completion rule may change what
-  a recorded signature means without changing the idempotency guarantee.
+  against an already-`signed` version is rejected and writes nothing. Replay
+  never creates a second signature row.
 - **An agreement version stops being the current signable version.** A later
   `published` version becomes the current signable version (derived, §8.2), and
   the earlier version is either already `signed` (terminal, part of signed
@@ -615,13 +597,9 @@ overwrite prior signed history.
   earlier version is never edited; history shows exactly what was signed, when,
   and by whom.
 - **A customer needs to sign a later agreement.** They sign the **current
-  signable version** (§8.2). Whether additional signatures are required depends
-  on Q1: **Q1-A** — one signature per version, so this is a second signature
-  against the new version and the earlier `signed` version keeps status `signed`;
-  **Q1-B** — the countersignature model applies, and a version can be signed by
-  more than one signature without becoming `signed` until the Q1-defined
-  completion condition is met. A signed version can never be re-signed or
-  re-opened.
+  signable version** (§8.2). Under Q1-A, that later version has its own single
+  signature; the earlier `signed` version keeps status `signed`, and no signed
+  version can be re-signed or re-opened.
 - **The accepted proposal baseline changes.** A new agreement version binds to
   the newly accepted proposal version. Prior agreement versions remain bound to
   the exact proposal versions they referenced, so later proposal changes cannot
