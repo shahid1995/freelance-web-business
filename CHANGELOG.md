@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-07
+
+### Agreement and e-signature (design gate opened)
+- Opened the Agreement / E-signature design gate in docs/decisions/2026-10-07-agreement-e-signature.md (Status: Proposed; Founder approval pending). The design defines a small, provider-neutral, append-only agreement model that is separate from the proposal: one agreement per project with immutable numbered versions (`draft` / `published` / `signed`), each agreement version bound to an exact accepted proposal version as an immutable baseline, and an append-only signature record carrying identifiers only — the signatory, the authority exercised, the action, and a timestamp.
+- Preserves the accepted distinction that Accept Proposal is application-level commercial evidence and explicitly not a legal signature. No contract or signature is claimed to exist, and no legal validity is asserted.
+- No e-signature provider is selected or integrated (provider selection remains a later decision); no payment or project activation is implemented, and no customer project stage or `customerStageFor` is changed.
+- Unresolved business and legal questions are recorded explicitly as Founder decision required: signer authority, whether the agreement restates or references the accepted terms, multiple-agreement support, legal framework, provider selection, signatory identity proofing, document retention, jurisdiction-specific requirements, decline/expiry behavior, and customer download access.
+- Design only. No application code, schema, route, endpoint, UI, or test was added; nothing is deployed, no provider is activated, and no live customer data is processed.
+
 ## 2026-10-06
 
 ### Customer Proposal Response (implementation)
