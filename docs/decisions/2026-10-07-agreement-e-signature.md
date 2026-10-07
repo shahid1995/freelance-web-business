@@ -1,34 +1,22 @@
 # Agreement and E-Signature — Design Gate
 
-**Status:** Proposed — Founder approval pending  
+**Status:** Approved — Founder approval recorded 2026-10-07  
 **Date:** 2026-10-07  
-**Founder approval:** Pending  
+**Founder approval:** Approved — 2026-10-07  
 **Scope:** Smallest durable agreement and e-signature model and workflow — agreement identity, agreement versioning, signatory identity, signature evidence and immutability, and the boundary to payment and activation — with no provider selected and no legal-validity claim  
 **Related:** Customer Platform Direction, Customer Platform Requirements (§10, §13, §15, §24, §26, §27, §28), Customer Platform Foundation, Proposal Foundation, Customer Proposal Review, Customer Proposal Response
 
-> **Status note.** This is a **design gate, not an accepted decision**. It is
-> Proposed and requires the Founder's approval before any implementation,
-> provider selection, or production activation. It defines the smallest durable
-> agreement/e-signature model the platform needs, preserves the accepted
-> separation between **Accept Proposal** (application-level commercial evidence)
-> and **Sign Agreement**, and marks every unresolved business, legal, and
-> provider question as **Founder decision required** rather than assuming an
-> answer. Nothing described here is implemented, deployed, activated, or
-> legally certified, and no live customer data is processed.
+> **Status note.** This is an **approved design gate**. Founder approval was recorded on 2026-10-07. It authorizes the design as the basis for later implementation planning, but it does **not** authorize implementation before Q1, Q2, and Q3 are resolved, does not authorize provider selection or production activation, and does not resolve any legal question. It defines the smallest durable agreement/e-signature model the platform needs, preserves the accepted separation between **Accept Proposal** (application-level commercial evidence) and **Sign Agreement**, and marks every unresolved business, legal, and provider question as **Founder decision required** rather than assuming an answer. Nothing described here is implemented, deployed, activated, or legally certified, and no live customer data is processed.
 
 ## 1. Status
 
 **Status: Proposed — Founder approval pending.**
 
-This document is a proposed design for the Agreement and E-signature slice. It
-is not an accepted decision, it authorizes no implementation, and it creates,
-deploys, and activates nothing.
+This document is the Founder-approved design for the Agreement and E-signature slice. It authorizes no implementation by itself, creates, deploys, and activates nothing, and implementation remains blocked until the required pre-implementation decisions Q1, Q2, and Q3 are resolved and recorded.
 
 Three facts must be kept separate, and none implies the next:
 
-- **The design is proposed.** This document opens the Agreement / E-signature
-  design gate. Implementation may proceed only after the Founder approves this
-  design, and only as a separate, later task.
+- **The design is approved.** Founder approval was recorded on 2026-10-07. The implementation remains a separate, later task and may proceed only after the pre-implementation decisions Q1, Q2, and Q3 are resolved and recorded.
 - **Nothing is implemented.** No agreement model, table, route, endpoint,
   service, or UI exists, and this design does not create one. A proposed or even
   accepted design is not a capability.
@@ -1253,9 +1241,7 @@ duplicate the accepted stage model; `customerStageFor` stays unchanged (I7).
 
 **Status: Proposed — Founder approval pending.**
 
-This document opens the Agreement / E-signature design gate for the Phase 4
-commercial workflow. It is a design decision, not an implementation, and it
-records the unresolved business and legal questions openly in section 21.
+This document records the Founder-approved Agreement / E-signature design gate for the Phase 4 commercial workflow. It is a design decision, not an implementation, and it records the unresolved business and legal questions openly in section 21.
 
 Approval covers the design as proposed, including:
 
@@ -1304,7 +1290,4 @@ customer-data operation, provider activation, payment implementation, automatic
 project activation, or legal certification, and it does not resolve Q1–Q10. Each
 of those requires its own later decision.
 
-Once approved, implementation of this design is a separate, later task that must
-satisfy the verification contract in §20.1, must not begin before the design is
-approved, and must not begin before the pre-implementation decisions Q1, Q2, and
-Q3 are resolved and recorded (§20.2).
+Following approval, implementation of this design remains a separate, later task that must satisfy the verification contract in §20.1 and must not begin before the pre-implementation decisions Q1, Q2, and Q3 are resolved and recorded (§20.2).
