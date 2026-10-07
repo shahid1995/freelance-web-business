@@ -307,7 +307,7 @@ An agreement version has exactly one status:
 | --- | --- |
 | `draft` | Created by the Founder/internal authority; not visible to any customer; not signable. |
 | `published` | Made visible to authorized customers for the project; eligible to be the current signable version (§8.2). A version stops being the current signable version once a later `published` version exists. |
-| `signed` | A signature has been recorded against this exact version; terminal and immutable. A `signed` version is never `published` again and is never signable again. |
+| `signed` | The agreement version's **Q1-defined signature completion condition** has been satisfied. Under **Q1-A** (one authorized signer), that condition is a single signature record. Under **Q1-B** (countersignature required), that condition is the completed multi-signature set and is not met merely because the first signature exists. A `signed` version is never `published` again, is never a current signable version, and is terminal and immutable once the Q1-defined completion condition is met. |
 
 Publication is a separate, explicit, Founder-only act, exactly as it is for a
 proposal. Creating a `draft` version does not make it signable, and publishing a
@@ -471,12 +471,10 @@ Until Q1 is resolved, neither outcome is assumed, and no fixed uniqueness rule,
 terminal-cardinality, or `signed`-status semantics may be treated as
 implementation-ready.
 
-The record deliberately does **not** contain a signature image, a document scan,
 biometric data, an identity document, or any provider artifact. Those — and any
 stronger identity verification — are provider and legal decisions
 (section 16, section 17, section 21).
 
-The record deliberately does **not** contain a signature image, a document scan,
 biometric data, an identity document, or any provider artifact. Those — and any
 stronger identity verification — are provider and legal decisions
 (section 16, section 17, section 21).
@@ -659,6 +657,15 @@ overwrite prior signed history.
   recorded result — one row, one audit event, the same deterministic outcome —
   even though the version is now `signed`. A *fresh* submission (a new key)
   against an already-`signed` version is rejected and writes nothing.
+
+  The post-replay version state is **conditional on Q1**:
+
+  - **Q1-A:** the previously recorded signature satisfied the completion
+    condition, so the version is already `signed`.
+  - **Q1-B:** the replayed signature was a completion event requiring a
+    multi-signature set, so the version may still be `published` (or another
+    intermediate state) until the Q1-defined completion condition is met;
+    replay returns the recorded deterministic result without changing state.
 
   The idempotency-and-cardinality interaction is **conditional on Q1**: this
   item states that replay returns the recorded result, not that exactly one
@@ -949,10 +956,29 @@ tests must cover, against the real services and store:
   signable again;
 - no version is ever simultaneously `published` and `signed`: the current
   agreement version is either `published` (awaiting signature) or `signed`
-  (completed for that version), never both;
-- the derived "agreement completed" signal (§18) is true exactly when a current
-  agreement version exists and is `signed`, and is false when there is no current
-  agreement version or the current agreement version is `published`;
+  (completed for that version), never both.
+
+  The immutability/evidence guarantees below are stated without reference to a
+  fixed signature cardinality. Until Q1 is resolved there is no fixed rule: Q1-A
+  allows one signature per version (enforced by a partial unique index) and
+  Q1-B requires multiple signature records per version (modeled explicitly, with
+  signer purpose/order and a completion condition that is not merely the first
+  signature). No fixed database uniqueness rule and no fixed
+  terminal-cardinality are final until Q1 is resolved.
+- **Q1-A only:** if the design resolves to one authorized signer, the partial
+  unique index is the last-resort guard against a second row; under Q1-B the
+  partial unique index is not applied, and no fixed database uniqueness rule is
+  final. The derived "agreement completed" signal (§18) is true exactly when a
+  current agreement version exists and is `signed`, and is false when there is no
+  current agreement version or the current agreement version is `published`.
+- **Signature-record write vs. the signed transition are separate atomic
+  steps, and both depend on the resolved Q1 model:** Q1-A records one signature
+  row and its audit evidence atomically alongside the version's `signed`
+  transition; Q1-B records each signature row and its audit evidence atomically,
+  and the version's `signed` transition is atomic only when the Q1-defined
+  completion condition is satisfied (the partial unique index is the
+  last-resort guard against a second row in Q1-A only, and it is not
+  final until Q1 is resolved).
 - a `signed` version whose accepted proposal baseline is stale is not the
   current agreement version and does not satisfy the agreement-completed signal;
 - a newer `draft` version does not change the current signable version, does not
@@ -980,8 +1006,15 @@ tests must cover, against the real services and store:
   (modeled explicitly, with signer purpose/order and a completion condition that
   is not merely the first signature). No fixed database uniqueness rule and no
   fixed terminal-cardinality are final until Q1 is resolved.
-- a second signature on the same version is refused by the database, not only by
-  the service;
+- **signature cardinality — conditional on Q1.** Until Q1 is resolved there is
+  no fixed cardinality: Q1-A allows one signature per version (enforced by a
+  partial unique index) and Q1-B requires multiple signature records per
+  version (modeled explicitly, with signer purpose/order and a completion
+  condition that is not merely the first signature). No fixed database uniqueness
+  rule and no fixed terminal-cardinality are final until Q1 is resolved.
+- **Q1-A only:** if the design resolves to one authorized signer and the
+  surrounding model treats two submissions to the same version as a mistake,
+  the partial unique index is the last-resort guard against a second row.
 - a replayed idempotency key records exactly one signature and one audit event;
 - a duplicate idempotency key cannot create a second row;
 - the idempotency key is resolved **before** the terminal-state check: a replay
