@@ -471,13 +471,10 @@ Until Q1 is resolved, neither outcome is assumed, and no fixed uniqueness rule,
 terminal-cardinality, or `signed`-status semantics may be treated as
 implementation-ready.
 
-biometric data, an identity document, or any provider artifact. Those — and any
-stronger identity verification — are provider and legal decisions
-(section 16, section 17, section 21).
-
-biometric data, an identity document, or any provider artifact. Those — and any
-stronger identity verification — are provider and legal decisions
-(section 16, section 17, section 21).
+- The record deliberately does **not** contain a signature image, a document scan,
+  biometric data, an identity document, or any provider artifact. Those — and any
+  stronger identity verification — are provider and legal decisions
+  (section 16, section 17, section 21).
 
 Identity here means the **platform's authenticated identity**: the person who
 holds the session and is authorized for the project at the moment of signing.
@@ -1000,12 +997,6 @@ tests must cover, against the real services and store:
 
 **Immutability and evidence**
 
-- **signature cardinality — conditional on Q1.** Until Q1 is resolved there is
-  no fixed cardinality: Q1-A allows one signature per version (enforced by a
-  partial unique index) and Q1-B allows multiple signature records per version
-  (modeled explicitly, with signer purpose/order and a completion condition that
-  is not merely the first signature). No fixed database uniqueness rule and no
-  fixed terminal-cardinality are final until Q1 is resolved.
 - **signature cardinality — conditional on Q1.** Until Q1 is resolved there is
   no fixed cardinality: Q1-A allows one signature per version (enforced by a
   partial unique index) and Q1-B requires multiple signature records per
