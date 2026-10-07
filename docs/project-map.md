@@ -74,6 +74,7 @@ Current:
 - Founder Project Queue — a read-only, cross-organization internal inbox of submitted intakes at /internal/projects
 - Proposal Foundation — Founder-only authoring of one proposal per project with immutable numbered versions and an explicit, audited publication act
 - Customer Proposal Review — an authorized customer reads the current published proposal version for their own project at /dashboard/projects/{reference}/proposal; strictly read-only, with no response action
+- Customer Proposal Response — two explicit, version-bound customer actions on the current published proposal version at /dashboard/projects/{reference}/proposal: Request Changes (any authorized customer with project access, required message up to 5,000 characters) and Accept Proposal (organization Owner/Admin only), recorded in append-only `proposal_responses` history and audited with identifiers only
 
 These are implemented and merged into main, but nothing is deployed or activated for live customers and no live customer data is processed.
 
@@ -81,10 +82,6 @@ These are implemented and merged into main, but nothing is deployed or activated
 
 The approved product requirements describe the rest of the customer and delivery journey. These capabilities are present in the approved requirements, but appearing there does not authorize them: each still requires an approved design and a separate implementation task.
 
-Customer Proposal Response — design accepted; implementation pending. The accepted design is `docs/decisions/2026-10-06-customer-proposal-response.md` (Status: Accepted; Founder approval: Approved 2026-10-06). Accepting a design is not implementing it: no application code, table, route, or endpoint for request changes or acceptance exists yet.
-
-- request changes
-- customer acceptance
 - agreement/e-signature
 - payments
 - automatic project activation
@@ -105,7 +102,7 @@ Each of these remains a future design and implementation step until its own impl
 - Domain/hosting — deferred
 - Analytics — deferred
 
-The customer platform requirements are defined in docs/website/customer-platform-requirements.md. Product direction is recorded in docs/decisions/2026-10-04-customer-platform-direction.md. The implementation architecture is described in website/README.md. The implemented slices are governed by the accepted decisions docs/decisions/2026-10-04-customer-platform-foundation.md, docs/decisions/2026-10-05-customer-platform-founder-workspace.md, docs/decisions/2026-10-05-founder-project-queue.md, docs/decisions/2026-10-05-proposal-foundation.md, and docs/decisions/2026-10-06-customer-proposal-review.md.
+The customer platform requirements are defined in docs/website/customer-platform-requirements.md. Product direction is recorded in docs/decisions/2026-10-04-customer-platform-direction.md. The implementation architecture is described in website/README.md. The implemented slices are governed by the accepted decisions docs/decisions/2026-10-04-customer-platform-foundation.md, docs/decisions/2026-10-05-customer-platform-founder-workspace.md, docs/decisions/2026-10-05-founder-project-queue.md, docs/decisions/2026-10-05-proposal-foundation.md, docs/decisions/2026-10-06-customer-proposal-review.md, and docs/decisions/2026-10-06-customer-proposal-response.md.
 
 The first slice uses a local SQLite data store and a local email sink behind provider-neutral ports. Selecting a managed database and activating a live email provider remain separate decisions.
 

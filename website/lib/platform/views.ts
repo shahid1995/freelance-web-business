@@ -258,3 +258,51 @@ export function toCustomerProposal(
     validUntil: version.validUntil,
   };
 }
+
+/**
+ * The customer-visible standing of the current published proposal version,
+ * derived from the immutable response history.
+ *
+ * There is deliberately no stored "response status" column on the proposal, the
+ * version, or the project: this value is computed from `proposal_responses`
+ * every time it is read, so the two can never disagree.
+ *
+ * Built field by field from an explicit allow-list. It carries no other
+ * person's identity, no message text, no internal id, and no capability or
+ * authorization detail beyond whether *this* viewer holds the accept action.
+ */
+export type CustomerProposalResponseState = "open" | "changes_requested" | "accepted";
+
+export interface CustomerProposalResponseStanding {
+  /** The customer-visible version number the standing belongs to. */
+  versionNumber: number;
+  state: CustomerProposalResponseState;
+  /**
+   * Whether this viewer may submit an Accept for this version right now:
+   * organization Owner/Admin, and the version still open. False otherwise, so
+   * the page never renders an accept control the viewer cannot use — and it
+   * reveals nothing about any other person or about internal state.
+   */
+  canAccept: boolean;
+}
+
+export const PROPOSAL_RESPONSE_STATE_LABELS: Record<
+  CustomerProposalResponseState,
+  string
+> = {
+  open: "Open for a response",
+  changes_requested: "Changes requested",
+  accepted: "Accepted",
+};
+
+export function toCustomerProposalResponseStanding(input: {
+  versionNumber: number;
+  state: CustomerProposalResponseState;
+  canAccept: boolean;
+}): CustomerProposalResponseStanding {
+  return {
+    versionNumber: input.versionNumber,
+    state: input.state,
+    canAccept: input.canAccept,
+  };
+}

@@ -37,6 +37,7 @@ import {
   type ProjectInternal,
   type ProposalId,
   type ProposalInternal,
+  type ProposalResponseInternal,
   type ProposalVersionId,
   type ProposalVersionInternal,
   type Session,
@@ -264,6 +265,48 @@ CREATE TABLE IF NOT EXISTS proposal_versions (
   UNIQUE (proposal_id, version_number)
 );
 CREATE INDEX IF NOT EXISTS proposal_versions_by_proposal ON proposal_versions (proposal_id, version_number);
+
+-- Append-only customer responses to a published proposal version. There is no
+-- update and no delete path for a written row, mirroring proposal versions.
+-- The message invariant is restated at the database level so it does not rest
+-- on application validation alone: a changes-requested row must carry a message
+-- that is present, non-empty once whitespace is removed, and within the 5,000
+-- character limit; an accepted row must carry none.
+--
+-- SQLite's trim(X) with no character set strips spaces only, so a message of
+-- tabs or newlines would survive it. The explicit character set (tab, LF, VT,
+-- FF, CR, space) is what makes "whitespace-only" mean here what the application
+-- validator means by it.
+CREATE TABLE IF NOT EXISTS proposal_responses (
+  id TEXT PRIMARY KEY,
+  person_id TEXT NOT NULL REFERENCES people(id),
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  proposal_id TEXT NOT NULL REFERENCES proposals(id),
+  proposal_version_id TEXT NOT NULL REFERENCES proposal_versions(id),
+  version_number INTEGER NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('changes_requested', 'accepted')),
+  message TEXT,
+  action_key TEXT NOT NULL UNIQUE,
+  created_at INTEGER NOT NULL,
+  CHECK (
+    (action = 'accepted' AND message IS NULL)
+    OR (
+      action = 'changes_requested'
+      AND message IS NOT NULL
+      AND length(trim(message, char(9) || char(10) || char(11) || char(12) || char(13) || char(32))) > 0
+      AND length(message) <= 5000
+    )
+  )
+);
+CREATE INDEX IF NOT EXISTS proposal_responses_by_project
+  ON proposal_responses (project_id, created_at);
+CREATE INDEX IF NOT EXISTS proposal_responses_by_version
+  ON proposal_responses (proposal_version_id);
+-- At most one acceptance per proposal version: terminality as a data-integrity
+-- guarantee, not merely an application check.
+CREATE UNIQUE INDEX IF NOT EXISTS proposal_responses_accepted_once
+  ON proposal_responses (proposal_version_id) WHERE action = 'accepted';
 
 CREATE TABLE IF NOT EXISTS rate_limits (
   bucket TEXT PRIMARY KEY,
@@ -1070,6 +1113,111 @@ export class SqlitePlatformStore implements PlatformStore {
       input.now,
       input.id,
     );
+  }
+
+  // --- proposal responses ---------------------------------------------------
+
+  private toProposalResponse(row: Row): ProposalResponseInternal {
+    return {
+      id: text(row, "id"),
+      personId: text(row, "person_id"),
+      organizationId: text(row, "organization_id"),
+      projectId: text(row, "project_id"),
+      proposalId: text(row, "proposal_id"),
+      proposalVersionId: text(row, "proposal_version_id"),
+      versionNumber: int(row, "version_number"),
+      action: text(row, "action") as ProposalResponseInternal["action"],
+      message: nullableText(row, "message"),
+      actionKey: text(row, "action_key"),
+      createdAt: int(row, "created_at"),
+    };
+  }
+
+  /**
+   * Appends one immutable response row. Insert only — the adapter exposes no
+   * update and no delete path for a written response, mirroring proposal
+   * versions. The table's CHECK constraints and the partial unique index on
+   * `proposal_version_id WHERE action = 'accepted'` are the final integrity
+   * guards, so a write that reaches the store by any path still cannot record a
+   * second acceptance for one version.
+   */
+  createProposalResponse(input: ProposalResponseInternal): ProposalResponseInternal {
+    this.run(
+      `INSERT INTO proposal_responses
+         (id, person_id, organization_id, project_id, proposal_id, proposal_version_id,
+          version_number, action, message, action_key, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      input.id,
+      input.personId,
+      input.organizationId,
+      input.projectId,
+      input.proposalId,
+      input.proposalVersionId,
+      input.versionNumber,
+      input.action,
+      input.message,
+      input.actionKey,
+      input.createdAt,
+    );
+    const stored = this.findProposalResponseByKey(input.actionKey);
+    if (!stored) {
+      throw new Error("A proposal response was not readable immediately after being written.");
+    }
+    return stored;
+  }
+
+  /**
+   * All responses recorded for one project, oldest first.
+   *
+   * Ordering is fixed here rather than in the caller so every reader agrees on
+   * what the project's response history is; `id` breaks ties between rows
+   * written in the same millisecond, which makes the order total.
+   */
+  listProposalResponses(projectId: ProjectId): ProposalResponseInternal[] {
+    return this.all(
+      "SELECT * FROM proposal_responses WHERE project_id = ? ORDER BY created_at ASC, id ASC",
+      projectId,
+    ).map((row) => this.toProposalResponse(row));
+  }
+
+  /**
+   * The responses recorded against one exact proposal version, oldest first.
+   *
+   * Reads by `proposal_version_id`, which the `proposal_responses_by_version`
+   * index covers, so one version's history is fetched without scanning the
+   * whole project. Ordering matches `listProposalResponses`.
+   */
+  listProposalResponsesByVersion(
+    proposalVersionId: ProposalVersionId,
+  ): ProposalResponseInternal[] {
+    return this.all(
+      "SELECT * FROM proposal_responses WHERE proposal_version_id = ? ORDER BY created_at ASC, id ASC",
+      proposalVersionId,
+    ).map((row) => this.toProposalResponse(row));
+  }
+
+  findProposalResponseByKey(actionKey: string): ProposalResponseInternal | null {
+    const row = this.get(
+      "SELECT * FROM proposal_responses WHERE action_key = ?",
+      actionKey,
+    );
+    return row ? this.toProposalResponse(row) : null;
+  }
+
+  /**
+   * The acceptance recorded for a proposal version, if any.
+   *
+   * At most one row can exist — the partial unique index guarantees it — so this
+   * is the terminality check for a version rather than a search over history.
+   */
+  findAcceptedProposalVersion(
+    proposalVersionId: ProposalVersionId,
+  ): ProposalResponseInternal | null {
+    const row = this.get(
+      "SELECT * FROM proposal_responses WHERE proposal_version_id = ? AND action = 'accepted'",
+      proposalVersionId,
+    );
+    return row ? this.toProposalResponse(row) : null;
   }
 
   // --- internal capabilities ------------------------------------------------

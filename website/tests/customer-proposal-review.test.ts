@@ -16,26 +16,34 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import { isPlatformError } from "../lib/platform/errors";
-import type { CustomerProposalView } from "../lib/platform/views";
-import { emailHash } from "../lib/platform/secrets";
 import type { ProjectWithProposalSignal } from "../lib/platform/ports";
 import { SqlitePlatformStore } from "../lib/platform/sqlite-store";
 import {
   MEMBER_EMAIL,
   OTHER_EMAIL,
-  OWNER_EMAIL,
   addOrdinaryMember,
   createTestPlatform,
-  signUpAsOwnerWithProject,
   type TestPlatform,
 } from "./support/harness";
 import { collectKeys } from "./support/projection";
+import {
+  FOUNDER_HASH,
+  addVersion,
+  content,
+  createProposalHarness,
+  grantAccess,
+  ownerWithProject,
+  publish,
+  publishFirstVersion,
+  publishedOwner,
+  readProposal,
+  revokeAccess,
+  startProposal,
+  type Author,
+} from "./support/proposals";
 
-const FOUNDER_HASH = emailHash(OWNER_EMAIL);
-
-async function reviewHarness(): Promise<TestPlatform> {
-  return createTestPlatform({ config: { founderEmailHashes: [FOUNDER_HASH] } });
-}
+/** The suite's harness: a real platform with the Founder bootstrap configured. */
+const reviewHarness = createProposalHarness;
 
 /**
  * A real SQLite store that records how often the resolution and listing reads
@@ -69,111 +77,6 @@ class CountingSqliteStore extends SqlitePlatformStore {
   }
 }
 
-type Owner = {
-  personId: string;
-  organizationId: string;
-  projectId: string;
-  reference: string;
-};
-
-async function ownerWithProject(
-  harness: TestPlatform,
-  email = OWNER_EMAIL,
-  organizationName = "First Synthetic Org",
-): Promise<Owner> {
-  const owner = await signUpAsOwnerWithProject(harness, email, organizationName);
-  const project = harness.platform.store.findProject(owner.projectId);
-  assert.ok(project);
-  return {
-    personId: owner.personId,
-    organizationId: owner.organizationId,
-    projectId: owner.projectId,
-    reference: project.reference,
-  };
-}
-
-/** A proposal author: a Founder-capable person acting on one project. */
-type Author = { personId: string; projectId: string };
-
-/** Distinct content per label, so tests prove which version was selected. */
-function content(label: string) {
-  return {
-    summary: `Summary ${label}`,
-    scopeIncluded: `Included ${label}`,
-    scopeExcluded: `Excluded ${label}`,
-    deliverables: `Deliverables ${label}`,
-    timeline: `Timeline ${label}`,
-    assumptions: `Assumptions ${label}`,
-    commercialTerms: `Terms ${label}`,
-  };
-}
-
-function startProposal(harness: TestPlatform, author: Author, label: string): void {
-  harness.platform.proposals.createProposal({
-    personId: author.personId,
-    projectId: author.projectId,
-    content: content(label),
-  });
-}
-
-function addVersion(harness: TestPlatform, author: Author, label: string): void {
-  harness.platform.proposals.createVersion({
-    personId: author.personId,
-    projectId: author.projectId,
-    content: content(label),
-  });
-}
-
-function publish(harness: TestPlatform, author: Author, versionNumber: number): void {
-  harness.platform.proposals.publishVersion({
-    personId: author.personId,
-    projectId: author.projectId,
-    versionNumber,
-  });
-}
-
-/** Opens the proposal and publishes its first version. */
-function publishFirstVersion(harness: TestPlatform, author: Author): void {
-  startProposal(harness, author, "v1");
-  publish(harness, author, 1);
-}
-
-function grantAccess(harness: TestPlatform, owner: Owner, memberPersonId: string): void {
-  harness.platform.projects.grantProjectAccess({
-    personId: owner.personId,
-    organizationId: owner.organizationId,
-    projectId: owner.projectId,
-    memberPersonId,
-  });
-}
-
-function revokeAccess(harness: TestPlatform, owner: Owner, memberPersonId: string): void {
-  harness.platform.projects.revokeProjectAccess({
-    personId: owner.personId,
-    organizationId: owner.organizationId,
-    projectId: owner.projectId,
-    memberPersonId,
-  });
-}
-
-/**
- * Mirrors the proposal page: resolve and authorize the customer-facing
- * reference exactly once through the customer project service, then read the
- * proposal by that authorized project id. Authorization therefore still runs on
- * every read, in the same layer as every other customer read.
- */
-function readProposal(
-  harness: TestPlatform,
-  personId: string,
-  reference: string,
-): CustomerProposalView | null {
-  const projectId = harness.platform.projects.resolveProjectIdByReference(
-    personId,
-    reference,
-  );
-  return harness.platform.customerProposals.readByProjectId(personId, projectId);
-}
-
 function hasPublished(harness: TestPlatform, personId: string, projectId: string): boolean {
   return harness.platform.projects.getCustomerProject(personId, projectId).project
     .hasPublishedProposal;
@@ -194,17 +97,6 @@ function expectReadError(
     () => readProposal(harness, personId, reference),
     (error: unknown) => expectCode(error, code),
   );
-}
-
-/** An owner whose project has a published proposal. */
-async function publishedOwner(
-  harness: TestPlatform,
-  email = OWNER_EMAIL,
-  organizationName = "First Synthetic Org",
-): Promise<Owner> {
-  const owner = await ownerWithProject(harness, email, organizationName);
-  publishFirstVersion(harness, owner);
-  return owner;
 }
 
 /** An owner with a published proposal plus an ordinary member. */
@@ -691,11 +583,20 @@ describe("customer proposal route and privacy", () => {
     assert.ok(view);
     assert.deepEqual(Object.keys(view).sort(), PROPOSAL_VIEW_KEYS);
 
-    // The page itself is a read-only server component: no form, no button, no
-    // POST handler, and it uses the customer read seam rather than the Founder
-    // authoring service. Mirrors the source-scan approach in security.test.ts;
-    // the repository has no route-rendering harness, so this is the narrowest
-    // route-level check consistent with the existing pattern.
+    // The page itself is a server component that handles no write: no POST
+    // handler of its own, the forms it renders post only to the dedicated
+    // response endpoint approved by the Customer Proposal Response ADR, and it
+    // uses the customer read seam rather than the Founder authoring service.
+    // Mirrors the source-scan approach in security.test.ts; the repository has
+    // no route-rendering harness, so this is the narrowest route-level check
+    // consistent with the existing pattern.
+    //
+    // The earlier "no form, no button" scan encoded Customer Proposal Review's
+    // own non-goal — request-changes and acceptance were deferred to a separate
+    // decision, which is now accepted (docs/decisions/2026-10-06-customer-proposal-response.md,
+    // section 14) and places exactly these two actions on this page. The
+    // invariant that reading writes nothing is asserted directly by both
+    // suites.
     const pagePath = join(
       __dirname,
       "..",
@@ -709,10 +610,16 @@ describe("customer proposal route and privacy", () => {
     );
     const source = readFileSync(pagePath, "utf8");
     assert.ok(source.includes("export default async function"));
-    assert.ok(!source.includes("<form"), "the proposal page must have no form");
-    assert.ok(!source.includes("<button"), "the proposal page must have no button");
-    assert.ok(!/method\s*=\s*["']post["']/i.test(source));
-    assert.ok(!/\bexport\s+(async\s+)?function\s+POST\b/.test(source));
+    assert.ok(
+      !/\bexport\s+(async\s+)?function\s+POST\b/.test(source),
+      "the page must not handle writes itself",
+    );
+    assert.ok(
+      source.includes("/proposal-response"),
+      "the page's forms must post to the dedicated response endpoint",
+    );
+    assert.ok(/name="intent"\s+value="request-changes"/.test(source));
+    assert.ok(/name="intent"\s+value="accept"/.test(source));
     assert.ok(!source.includes("platform.proposals"));
     assert.ok(source.includes("customerProposals"));
     // The page resolves and authorizes the reference once and passes the

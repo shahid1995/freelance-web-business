@@ -148,6 +148,7 @@ export interface InternalCapabilityGrant {
 
 export type ProposalId = string;
 export type ProposalVersionId = string;
+export type ProposalResponseId = string;
 
 /**
  * Version state.
@@ -218,6 +219,55 @@ export interface ProposalVersionInternal extends ProposalContent {
   createdAt: number;
   /** Null while the version is a draft. Set once, when the Founder publishes it. */
   publishedAt: number | null;
+}
+
+/**
+ * The two — and only two — customer actions on a published proposal version.
+ *
+ * From the accepted Customer Proposal Response ADR: no reject, no decline, no
+ * counter-offer, no comment-only action, and no implicit action. The stored
+ * values match the `proposal_responses.action` CHECK constraint.
+ */
+export const PROPOSAL_RESPONSE_ACTIONS = ["changes_requested", "accepted"] as const;
+
+export type ProposalResponseAction = (typeof PROPOSAL_RESPONSE_ACTIONS)[number];
+
+export function isProposalResponseAction(
+  value: unknown,
+): value is ProposalResponseAction {
+  return (
+    typeof value === "string" &&
+    (PROPOSAL_RESPONSE_ACTIONS as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * One immutable customer response to exactly one proposal version.
+ *
+ * Append-only: there is no update or delete path, mirroring how proposal
+ * versions are handled. The row is the primary evidence for "who responded, to
+ * which version, when" — and, for a request for changes, what they asked for.
+ * `message` is the only place a customer's request text is stored; it never
+ * travels into audit metadata.
+ *
+ * The current standing of a version (open / changes requested / accepted) is
+ * always derived from these rows, never stored separately.
+ */
+export interface ProposalResponseInternal {
+  id: ProposalResponseId;
+  personId: PersonId;
+  organizationId: OrganizationId;
+  projectId: ProjectId;
+  proposalId: ProposalId;
+  proposalVersionId: ProposalVersionId;
+  /** Customer-visible version number, denormalized from the immutable version. */
+  versionNumber: number;
+  action: ProposalResponseAction;
+  /** Required and non-empty for `changes_requested`; null for `accepted`. */
+  message: string | null;
+  /** Idempotency key. UNIQUE in the database, so a replay records no second row. */
+  actionKey: string;
+  createdAt: number;
 }
 
 /**
@@ -383,4 +433,8 @@ export type AuditEventType =
   // Proposal foundation. Internal metadata only — never proposal content.
   | "proposal.created"
   | "proposal_version.created"
-  | "proposal_version.published";
+  | "proposal_version.published"
+  // Customer proposal response. Metadata carries identifiers only — never the
+  // customer's request-for-changes message and never proposal content.
+  | "proposal_response.accepted"
+  | "proposal_response.changes_requested";
