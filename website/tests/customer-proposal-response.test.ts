@@ -17,127 +17,39 @@ import { describe, it } from "node:test";
 
 import { isPlatformError } from "../lib/platform/errors";
 import type { AuditEvent, ProposalResponseInternal } from "../lib/platform/domain";
-import { generateActionKey, emailHash } from "../lib/platform/secrets";
+import { generateActionKey } from "../lib/platform/secrets";
 import { SqlitePlatformStore } from "../lib/platform/sqlite-store";
 import { customerStageFor } from "../lib/platform/views";
 import {
   MEMBER_EMAIL,
   OTHER_EMAIL,
-  OWNER_EMAIL,
   addOrdinaryMember,
   createTestPlatform,
   signIn,
-  signUpAsOwnerWithProject,
   type TestPlatform,
 } from "./support/harness";
 import { collectKeys } from "./support/projection";
-
-const FOUNDER_HASH = emailHash(OWNER_EMAIL);
+import {
+  FOUNDER_HASH,
+  createProposalHarness,
+  grantAccess,
+  ownerWithProject,
+  publishFirstVersion,
+  publishNextVersion,
+  publishedOwner,
+  readProposal,
+  revokeAccess,
+  startProposal,
+} from "./support/proposals";
 
 /** A marker that must never appear in audit metadata or any projection. */
 const MESSAGE_NEEDLE = "secret-customer-wording-XYZZY";
 
-async function responseHarness(): Promise<TestPlatform> {
-  return createTestPlatform({ config: { founderEmailHashes: [FOUNDER_HASH] } });
-}
+/** The suite's harness: a real platform with the Founder bootstrap configured. */
+const responseHarness = createProposalHarness;
 
-type Owner = {
-  personId: string;
-  organizationId: string;
-  projectId: string;
-  reference: string;
-};
-
-async function ownerWithProject(
-  harness: TestPlatform,
-  email = OWNER_EMAIL,
-  organizationName = "First Synthetic Org",
-): Promise<Owner> {
-  const owner = await signUpAsOwnerWithProject(harness, email, organizationName);
-  const project = harness.platform.store.findProject(owner.projectId);
-  assert.ok(project);
-  return {
-    personId: owner.personId,
-    organizationId: owner.organizationId,
-    projectId: owner.projectId,
-    reference: project.reference,
-  };
-}
-
-/** A proposal author: a Founder-capable person acting on one project. */
-type Author = { personId: string; projectId: string };
-
-/** Distinct content per label, so tests prove which version was selected. */
-function content(label: string) {
-  return {
-    summary: `Summary ${label}`,
-    scopeIncluded: `Included ${label}`,
-    scopeExcluded: `Excluded ${label}`,
-    deliverables: `Deliverables ${label}`,
-    timeline: `Timeline ${label}`,
-    assumptions: `Assumptions ${label}`,
-    commercialTerms: `Terms ${label}`,
-  };
-}
-
-function startProposal(harness: TestPlatform, author: Author, label: string): void {
-  harness.platform.proposals.createProposal({
-    personId: author.personId,
-    projectId: author.projectId,
-    content: content(label),
-  });
-}
-
-function addVersion(harness: TestPlatform, author: Author, label: string): void {
-  harness.platform.proposals.createVersion({
-    personId: author.personId,
-    projectId: author.projectId,
-    content: content(label),
-  });
-}
-
-function publish(harness: TestPlatform, author: Author, versionNumber: number): void {
-  harness.platform.proposals.publishVersion({
-    personId: author.personId,
-    projectId: author.projectId,
-    versionNumber,
-  });
-}
-
-/** Opens the proposal and publishes its first version. */
-function publishFirstVersion(harness: TestPlatform, author: Author): void {
-  startProposal(harness, author, "v1");
-  publish(harness, author, 1);
-}
-
-function grantAccess(harness: TestPlatform, owner: Owner, memberPersonId: string): void {
-  harness.platform.projects.grantProjectAccess({
-    personId: owner.personId,
-    organizationId: owner.organizationId,
-    projectId: owner.projectId,
-    memberPersonId,
-  });
-}
-
-function revokeAccess(harness: TestPlatform, owner: Owner, memberPersonId: string): void {
-  harness.platform.projects.revokeProjectAccess({
-    personId: owner.personId,
-    organizationId: owner.organizationId,
-    projectId: owner.projectId,
-    memberPersonId,
-  });
-}
-
-/** An owner whose project has a published proposal. */
-async function publishedOwner(
-  harness: TestPlatform,
-  email = OWNER_EMAIL,
-  organizationName = "First Synthetic Org",
-): Promise<Owner> {
-  const owner = await ownerWithProject(harness, email, organizationName);
-  publishFirstVersion(harness, owner);
-  return owner;
-}
+/** Whoever submits a response: the person and the project they respond to. */
+type Actor = { personId: string; projectId: string };
 
 interface RespondInput {
   action: "changes_requested" | "accepted";
@@ -195,13 +107,52 @@ function readStanding(harness: TestPlatform, personId: string, projectId: string
   );
 }
 
-/** The customer proposal read, exactly as the page performs it. */
-function readProposal(harness: TestPlatform, personId: string, reference: string) {
-  const projectId = harness.platform.projects.resolveProjectIdByReference(
-    personId,
-    reference,
-  );
-  return harness.platform.customerProposals.readByProjectId(personId, projectId);
+/** Submits one response as `actor`, against the project they respond to. */
+function respondAs(harness: TestPlatform, actor: Actor, input: RespondInput) {
+  return respond(harness, actor.personId, actor.projectId, input);
+}
+
+/** Asserts `actor`'s submission of `input` is refused with `code`. */
+function expectRefused(
+  harness: TestPlatform,
+  actor: Actor,
+  input: RespondInput,
+  code: string,
+): void {
+  expectFailure(() => respondAs(harness, actor, input), code);
+}
+
+/**
+ * Records an acceptance, then asserts a fresh keyed submission of `action` is
+ * refused with `code` — the rule-table refusals that follow an acceptance.
+ */
+function expectRefusedAfterAcceptance(
+  harness: TestPlatform,
+  owner: Actor,
+  action: RespondInput["action"],
+  code: string,
+): void {
+  respondAs(harness, owner, { action: "accepted" });
+  expectRefused(harness, owner, { action, actionKey: generateActionKey() }, code);
+}
+
+/** Submits one keyed response twice, running `between` after the first. */
+function submitTwice(
+  harness: TestPlatform,
+  actor: Actor,
+  input: RespondInput & { actionKey: string },
+  between?: () => void,
+) {
+  const first = respondAs(harness, actor, input);
+  between?.();
+  const replay = respondAs(harness, actor, input);
+  return { first, replay };
+}
+
+/** Asserts the stored response rows and response audit events for a project. */
+function assertRecorded(harness: TestPlatform, actor: Actor, rows: number, events: number): void {
+  assert.equal(responsesFor(harness, actor.projectId).length, rows);
+  assert.equal(responseEvents(harness, actor.projectId).length, events);
 }
 
 /** The exact customer-safe standing projection, and nothing else. */
@@ -285,7 +236,7 @@ describe("proposal response authorization", () => {
     const harness = await responseHarness();
     const owner = await publishedOwner(harness);
 
-    respond(harness, owner.personId, owner.projectId, { action: "changes_requested" });
+    respondAs(harness, owner, { action: "changes_requested" });
 
     // Acceptance on a version with a change request is rejected by the rule
     // table — so a second project in another organization for the acceptance
@@ -416,7 +367,7 @@ describe("proposal response version binding", () => {
     assert.ok(version);
     assert.ok(proposal);
 
-    const recorded = respond(harness, owner.personId, owner.projectId, {
+    const recorded = respondAs(harness, owner, {
       action: "changes_requested",
       actionKey: generateActionKey(),
     });
@@ -433,26 +384,21 @@ describe("proposal response version binding", () => {
   it("rejects a superseded version number for both actions and writes nothing", async () => {
     const harness = await responseHarness();
     const owner = await publishedOwner(harness);
-    const author: Author = { personId: owner.personId, projectId: owner.projectId };
-    addVersion(harness, author, "v2");
-    publish(harness, author, 2);
+    publishNextVersion(harness, owner, 2);
 
-    expectFailure(
-      () => respond(harness, owner.personId, owner.projectId, {
-        action: "changes_requested",
-        versionNumber: 1,
-      }),
+    expectRefused(
+      harness,
+      owner,
+      { action: "changes_requested", versionNumber: 1 },
       "proposal_updated",
     );
-    expectFailure(
-      () => respond(harness, owner.personId, owner.projectId, {
-        action: "accepted",
-        versionNumber: 1,
-      }),
+    expectRefused(
+      harness,
+      owner,
+      { action: "accepted", versionNumber: 1 },
       "proposal_updated",
     );
-    assert.equal(responsesFor(harness, owner.projectId).length, 0);
-    assert.equal(responseEvents(harness, owner.projectId).length, 0);
+    assertRecorded(harness, owner, 0, 0);
     harness.platform.close();
   });
 
@@ -460,11 +406,8 @@ describe("proposal response version binding", () => {
     // Order 1: the response commits first, then the Founder publishes v2.
     const harness = await responseHarness();
     const owner = await publishedOwner(harness);
-    const author: Author = { personId: owner.personId, projectId: owner.projectId };
-
-    respond(harness, owner.personId, owner.projectId, { action: "changes_requested" });
-    addVersion(harness, author, "v2");
-    publish(harness, author, 2);
+    respondAs(harness, owner, { action: "changes_requested" });
+    publishNextVersion(harness, owner, 2);
 
     const [row] = responsesFor(harness, owner.projectId);
     assert.ok(row);
@@ -477,19 +420,11 @@ describe("proposal response version binding", () => {
     // Order 2: the Founder publishes first, then the response commits.
     const harness = await responseHarness();
     const owner = await publishedOwner(harness);
-    const author: Author = { personId: owner.personId, projectId: owner.projectId };
-    addVersion(harness, author, "v2");
-    publish(harness, author, 2);
+    publishNextVersion(harness, owner, 2);
 
-    expectFailure(
-      () => respond(harness, owner.personId, owner.projectId, {
-        action: "accepted",
-        versionNumber: 1,
-      }),
-      "proposal_updated",
-    );
+    expectRefused(harness, owner, { action: "accepted", versionNumber: 1 }, "proposal_updated");
     // After a reload the customer responds against the current version.
-    const recorded = respond(harness, owner.personId, owner.projectId, {
+    const recorded = respondAs(harness, owner, {
       action: "accepted",
       versionNumber: 2,
     });
@@ -500,11 +435,8 @@ describe("proposal response version binding", () => {
   it("does not inherit an older version's responses into a newer version", async () => {
     const harness = await responseHarness();
     const owner = await publishedOwner(harness);
-    const author: Author = { personId: owner.personId, projectId: owner.projectId };
-
-    respond(harness, owner.personId, owner.projectId, { action: "changes_requested" });
-    addVersion(harness, author, "v2");
-    publish(harness, author, 2);
+    respondAs(harness, owner, { action: "changes_requested" });
+    publishNextVersion(harness, owner, 2);
 
     const version2 = harness.platform.store
       .listProposalVersions(
@@ -520,7 +452,7 @@ describe("proposal response version binding", () => {
 
     // Version 2 opens fresh: acceptance is allowed even though v1 was
     // responded to.
-    const accepted = respond(harness, owner.personId, owner.projectId, {
+    const accepted = respondAs(harness, owner, {
       action: "accepted",
       versionNumber: 2,
     });
@@ -531,15 +463,9 @@ describe("proposal response version binding", () => {
   it("never records against a draft: no published version reads as not found", async () => {
     const harness = await responseHarness();
     const owner = await ownerWithProject(harness);
-    const author: Author = { personId: owner.personId, projectId: owner.projectId };
-    startProposal(harness, author, "draft-only");
+    startProposal(harness, owner, "draft-only");
 
-    expectFailure(
-      () => respond(harness, owner.personId, owner.projectId, {
-        action: "changes_requested",
-      }),
-      "not_found",
-    );
+    expectRefused(harness, owner, { action: "changes_requested" }, "not_found");
     assert.equal(responsesFor(harness, owner.projectId).length, 0);
     harness.platform.close();
   });
@@ -549,13 +475,7 @@ describe("proposal response version binding", () => {
     const owner = await publishedOwner(harness);
 
     for (const versionNumber of ["abc", "0", "-1", "1.5", "", null, undefined]) {
-      expectFailure(
-        () => respond(harness, owner.personId, owner.projectId, {
-          action: "changes_requested",
-          versionNumber,
-        }),
-        "invalid_input",
-      );
+      expectRefused(harness, owner, { action: "changes_requested", versionNumber }, "invalid_input");
     }
     assert.equal(responsesFor(harness, owner.projectId).length, 0);
     harness.platform.close();
@@ -576,16 +496,9 @@ describe("proposal response request changes", () => {
       "   \t\n  ",
       "x".repeat(5001),
     ]) {
-      expectFailure(
-        () => respond(harness, owner.personId, owner.projectId, {
-          action: "changes_requested",
-          message,
-        }),
-        "invalid_input",
-      );
+      expectRefused(harness, owner, { action: "changes_requested", message }, "invalid_input");
     }
-    assert.equal(responsesFor(harness, owner.projectId).length, 0);
-    assert.equal(responseEvents(harness, owner.projectId).length, 0);
+    assertRecorded(harness, owner, 0, 0);
     harness.platform.close();
   });
 
@@ -594,13 +507,7 @@ describe("proposal response request changes", () => {
     const owner = await publishedOwner(harness);
 
     for (const actionKey of [undefined, null, "", "   ", 42]) {
-      expectFailure(
-        () => respond(harness, owner.personId, owner.projectId, {
-          action: "changes_requested",
-          actionKey,
-        }),
-        "invalid_input",
-      );
+      expectRefused(harness, owner, { action: "changes_requested", actionKey }, "invalid_input");
     }
     assert.equal(responsesFor(harness, owner.projectId).length, 0);
     harness.platform.close();
@@ -611,7 +518,7 @@ describe("proposal response request changes", () => {
     const owner = await publishedOwner(harness);
 
     const key = generateActionKey();
-    respond(harness, owner.personId, owner.projectId, {
+    respondAs(harness, owner, {
       action: "changes_requested",
       actionKey: key,
     });
@@ -652,7 +559,7 @@ describe("proposal response request changes", () => {
     const owner = await publishedOwner(harness);
 
     const firstKey = generateActionKey();
-    respond(harness, owner.personId, owner.projectId, {
+    respondAs(harness, owner, {
       action: "changes_requested",
       message: "First request",
       actionKey: firstKey,
@@ -660,7 +567,7 @@ describe("proposal response request changes", () => {
     const snapshot = JSON.stringify(responsesFor(harness, owner.projectId));
     harness.clock.advance(60_000);
 
-    respond(harness, owner.personId, owner.projectId, {
+    respondAs(harness, owner, {
       action: "changes_requested",
       message: "Second request",
       actionKey: generateActionKey(),
@@ -683,26 +590,21 @@ describe("proposal response request changes", () => {
     const owner = await publishedOwner(harness);
     const key = generateActionKey();
 
-    const first = respond(harness, owner.personId, owner.projectId, {
-      action: "changes_requested",
-      actionKey: key,
-    });
-    harness.clock.advance(5_000);
-    const replay = respond(harness, owner.personId, owner.projectId, {
-      action: "changes_requested",
-      actionKey: key,
-    });
+    const { first, replay } = submitTwice(
+      harness,
+      owner,
+      { action: "changes_requested", actionKey: key },
+      () => harness.clock.advance(5_000),
+    );
 
     assert.deepEqual(replay, first);
-    assert.equal(responsesFor(harness, owner.projectId).length, 1);
-    assert.equal(responseEvents(harness, owner.projectId).length, 1);
+    assertRecorded(harness, owner, 1, 1);
     harness.platform.close();
   });
 
   it("changes no proposal content, creates no version, and moves no stage", async () => {
     const harness = await responseHarness();
     const owner = await publishedOwner(harness);
-    const author: Author = { personId: owner.personId, projectId: owner.projectId };
 
     const before = harness.platform.projects.getCustomerProject(
       owner.personId,
@@ -717,7 +619,7 @@ describe("proposal response request changes", () => {
     );
     const publishedBefore = before.project.hasPublishedProposal;
 
-    respond(harness, owner.personId, owner.projectId, { action: "changes_requested" });
+    respondAs(harness, owner, { action: "changes_requested" });
 
     const after = harness.platform.projects.getCustomerProject(
       owner.personId,
@@ -749,7 +651,6 @@ describe("proposal response request changes", () => {
       ),
       null,
     );
-    void author;
     harness.platform.close();
   });
 
@@ -764,7 +665,7 @@ describe("proposal response request changes", () => {
       canAccept: true,
     });
 
-    respond(harness, owner.personId, owner.projectId, { action: "changes_requested" });
+    respondAs(harness, owner, { action: "changes_requested" });
 
     const standing = readStanding(harness, owner.personId, owner.projectId);
     assert.deepEqual(standing, {
@@ -780,7 +681,7 @@ describe("proposal response request changes", () => {
     const owner = await publishedOwner(harness);
 
     for (let index = 0; index < 3; index += 1) {
-      respond(harness, owner.personId, owner.projectId, {
+      respondAs(harness, owner, {
         action: "changes_requested",
         message: `Request number ${index + 1}`,
       });
@@ -804,7 +705,7 @@ describe("proposal response acceptance", () => {
 
     const key = generateActionKey();
     const now = harness.clock.now();
-    const recorded = respond(harness, owner.personId, owner.projectId, {
+    const recorded = respondAs(harness, owner, {
       action: "accepted",
       actionKey: key,
     });
@@ -845,18 +746,13 @@ describe("proposal response acceptance", () => {
     const owner = await publishedOwner(harness);
     const key = generateActionKey();
 
-    const first = respond(harness, owner.personId, owner.projectId, {
-      action: "accepted",
-      actionKey: key,
-    });
-    const replay = respond(harness, owner.personId, owner.projectId, {
+    const { first, replay } = submitTwice(harness, owner, {
       action: "accepted",
       actionKey: key,
     });
 
     assert.deepEqual(replay, first);
-    assert.equal(responsesFor(harness, owner.projectId).length, 1);
-    assert.equal(responseEvents(harness, owner.projectId).length, 1);
+    assertRecorded(harness, owner, 1, 1);
     harness.platform.close();
   });
 
@@ -864,16 +760,8 @@ describe("proposal response acceptance", () => {
     const harness = await responseHarness();
     const owner = await publishedOwner(harness);
 
-    respond(harness, owner.personId, owner.projectId, { action: "accepted" });
-    expectFailure(
-      () => respond(harness, owner.personId, owner.projectId, {
-        action: "accepted",
-        actionKey: generateActionKey(),
-      }),
-      "proposal_version_accepted",
-    );
-    assert.equal(responsesFor(harness, owner.projectId).length, 1);
-    assert.equal(responseEvents(harness, owner.projectId).length, 1);
+    expectRefusedAfterAcceptance(harness, owner, "accepted", "proposal_version_accepted");
+    assertRecorded(harness, owner, 1, 1);
     harness.platform.close();
   });
 
@@ -881,14 +769,8 @@ describe("proposal response acceptance", () => {
     const harness = await responseHarness();
     const owner = await publishedOwner(harness);
 
-    respond(harness, owner.personId, owner.projectId, { action: "changes_requested" });
-    expectFailure(
-      () => respond(harness, owner.personId, owner.projectId, {
-        action: "accepted",
-        actionKey: generateActionKey(),
-      }),
-      "proposal_not_acceptable",
-    );
+    respondAs(harness, owner, { action: "changes_requested" });
+    expectRefused(harness, owner, { action: "accepted" }, "proposal_not_acceptable");
     assert.equal(responsesFor(harness, owner.projectId).length, 1);
     assert.equal(
       responseEvents(harness, owner.projectId).filter(
@@ -903,14 +785,7 @@ describe("proposal response acceptance", () => {
     const harness = await responseHarness();
     const owner = await publishedOwner(harness);
 
-    respond(harness, owner.personId, owner.projectId, { action: "accepted" });
-    expectFailure(
-      () => respond(harness, owner.personId, owner.projectId, {
-        action: "changes_requested",
-        actionKey: generateActionKey(),
-      }),
-      "proposal_version_accepted",
-    );
+    expectRefusedAfterAcceptance(harness, owner, "changes_requested", "proposal_version_accepted");
     assert.equal(responsesFor(harness, owner.projectId).length, 1);
     harness.platform.close();
   });
@@ -918,13 +793,10 @@ describe("proposal response acceptance", () => {
   it("lets a newer published version be accepted independently", async () => {
     const harness = await responseHarness();
     const owner = await publishedOwner(harness);
-    const author: Author = { personId: owner.personId, projectId: owner.projectId };
-
-    respond(harness, owner.personId, owner.projectId, { action: "accepted" });
+    respondAs(harness, owner, { action: "accepted" });
 
     // The Founder publishes a further version regardless; it starts open.
-    addVersion(harness, author, "v2");
-    publish(harness, author, 2);
+    publishNextVersion(harness, owner, 2);
     const standing = readStanding(harness, owner.personId, owner.projectId);
     assert.deepEqual(standing, {
       versionNumber: 2,
@@ -932,7 +804,7 @@ describe("proposal response acceptance", () => {
       canAccept: true,
     });
 
-    const accepted = respond(harness, owner.personId, owner.projectId, {
+    const accepted = respondAs(harness, owner, {
       action: "accepted",
       versionNumber: 2,
     });
@@ -949,7 +821,7 @@ describe("proposal response acceptance", () => {
       owner.personId,
       owner.projectId,
     );
-    respond(harness, owner.personId, owner.projectId, { action: "accepted" });
+    respondAs(harness, owner, { action: "accepted" });
     const after = harness.platform.projects.getCustomerProject(
       owner.personId,
       owner.projectId,
@@ -974,7 +846,7 @@ describe("proposal response acceptance", () => {
     const harness = await responseHarness();
     const owner = await publishedOwner(harness);
 
-    respond(harness, owner.personId, owner.projectId, { action: "accepted" });
+    respondAs(harness, owner, { action: "accepted" });
 
     const standing = readStanding(harness, owner.personId, owner.projectId);
     assert.deepEqual(standing, {
@@ -1076,7 +948,7 @@ describe("proposal response storage invariants", () => {
     assert.ok(proposal);
     assert.ok(version);
 
-    respond(harness, owner.personId, owner.projectId, { action: "accepted" });
+    respondAs(harness, owner, { action: "accepted" });
 
     // A second acceptance reaching the store by any other path is refused by
     // the partial unique index, not merely by an application check.
@@ -1108,7 +980,7 @@ describe("proposal response storage invariants", () => {
     const owner = await publishedOwner(harness);
     const key = generateActionKey();
 
-    respond(harness, owner.personId, owner.projectId, {
+    respondAs(harness, owner, {
       action: "changes_requested",
       actionKey: key,
     });
@@ -1160,7 +1032,7 @@ describe("proposal response boundaries", () => {
     const harness = await responseHarness();
     const owner = await publishedOwner(harness);
 
-    respond(harness, owner.personId, owner.projectId, { action: "changes_requested" });
+    respondAs(harness, owner, { action: "changes_requested" });
     const standing = readStanding(harness, owner.personId, owner.projectId);
     assert.ok(standing);
     assert.deepEqual([...collectKeys(standing)].sort(), STANDING_KEYS);
@@ -1198,20 +1070,18 @@ describe("proposal response boundaries", () => {
 
     store.failAuditOnce = true;
     assert.throws(
-      () => respond(harness, owner.personId, owner.projectId, {
+      () => respondAs(harness, owner, {
         action: "changes_requested",
       }),
       /Simulated audit failure/,
     );
 
     // Neither layer exists without the other: no response row, no audit event.
-    assert.equal(responsesFor(harness, owner.projectId).length, 0);
-    assert.equal(responseEvents(harness, owner.projectId).length, 0);
+    assertRecorded(harness, owner, 0, 0);
 
     // The transaction recovered: the next submission records both layers.
-    respond(harness, owner.personId, owner.projectId, { action: "changes_requested" });
-    assert.equal(responsesFor(harness, owner.projectId).length, 1);
-    assert.equal(responseEvents(harness, owner.projectId).length, 1);
+    respondAs(harness, owner, { action: "changes_requested" });
+    assertRecorded(harness, owner, 1, 1);
     harness.platform.close();
   });
 

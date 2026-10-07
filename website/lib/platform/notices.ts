@@ -16,6 +16,9 @@ export interface Notice {
   message: string;
 }
 
+/** One shared wording for every rate-limited route's notice. */
+const RATE_LIMITED_MESSAGE = "Too many requests. Please wait a moment and try again.";
+
 const MESSAGES: Record<string, Notice> = {
   "link-sent": {
     kind: "success",
@@ -44,7 +47,7 @@ const MESSAGES: Record<string, Notice> = {
   },
   "organization-rate-limited": {
     kind: "error",
-    message: "Too many requests. Please wait a moment and try again.",
+    message: RATE_LIMITED_MESSAGE,
   },
   "project-denied": {
     kind: "error",
@@ -52,7 +55,7 @@ const MESSAGES: Record<string, Notice> = {
   },
   "project-rate-limited": {
     kind: "error",
-    message: "Too many requests. Please wait a moment and try again.",
+    message: RATE_LIMITED_MESSAGE,
   },
   "intake-denied": {
     kind: "error",
@@ -60,7 +63,7 @@ const MESSAGES: Record<string, Notice> = {
   },
   "intake-rate-limited": {
     kind: "error",
-    message: "Too many requests. Please wait a moment and try again.",
+    message: RATE_LIMITED_MESSAGE,
   },
   "origin-denied": {
     kind: "error",
@@ -88,7 +91,7 @@ const MESSAGES: Record<string, Notice> = {
   },
   "proposal-response-rate-limited": {
     kind: "error",
-    message: "Too many requests. Please wait a moment and try again.",
+    message: RATE_LIMITED_MESSAGE,
   },
   "proposal-updated": {
     kind: "error",
