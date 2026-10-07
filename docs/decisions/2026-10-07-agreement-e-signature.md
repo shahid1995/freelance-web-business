@@ -902,15 +902,8 @@ tests must cover, against the real services and store:
 
 **Immutability and evidence**
 
-- **signature cardinality — conditional on Q1.** Until Q1 is resolved there is
-  no fixed cardinality: Q1-A allows one signature per version (enforced by a
-  partial unique index) and Q1-B requires multiple signature records per
-  version (modeled explicitly, with signer purpose/order and a completion
-  condition that is not merely the first signature). No fixed database uniqueness
-  rule and no fixed terminal-cardinality are final until Q1 is resolved.
-- **Q1-A only:** if the design resolves to one authorized signer and the
-  surrounding model treats two submissions to the same version as a mistake,
-  the partial unique index is the last-resort guard against a second row.
+- - **signature cardinality — Q1-A settled.** One authorized customer signature completes each agreement version; a partial unique index is the last-resort guard against a second row.
+
 - a replayed idempotency key records exactly one signature and one audit event;
 - a duplicate idempotency key cannot create a second row;
 - the idempotency key is resolved **before** the terminal-state check: a replay
@@ -1001,40 +994,13 @@ and would not resolve any of Q1–Q10.
 
 ## 21. Open questions requiring Founder decision
 
-These are genuinely unresolved business and legal decisions. This design does
-**not** invent answers, and each is marked **Founder decision required**. Until
-they are resolved, the corresponding behavior must not be treated as decided.
+Q1–Q3 have been resolved by the Founder on 2026-10-07. The remaining open questions are Q4–Q10 and continue to be marked **Founder decision required**; the corresponding behavior must not be treated as decided until those later gates are resolved.
 
 | # | Question | Status | Notes |
 | --- | --- | --- | --- |
-| Q1 | **Who may sign, and does the agreement require a countersignature?**
-  Owner/Admin only (recommended default), or ordinary project members;
-  whether a named signatory is designated per agreement; and whether a
-  Founder/countersignature is required. | **Founder decision required** |
-  §9.2 recommends reusing the Owner/Admin acceptance authority; the specific
-  grant is a business decision that must not be assumed. |
-
-**Q1 determines signature cardinality and completion semantics — pre-
-implementation decision.** Until Q1 is resolved:
-
-- no implementation may begin;
-- no fixed database uniqueness rule (one or more signatures per version) is
-  final;
-- no fixed terminal-signature cardinality is treated as implementation-ready;
-- no fixed `signed`-after-first-signature behavior is treated as
-  implementation-ready;
-- the §20.1 acceptance tests are provisional.
-
-**Q1 outcome A — one authorized signer.** One signature record per agreement
-version is sufficient; the existing one-signature-per-version uniqueness rule
-may be used; the version becomes `signed` after that signature. **Q1 outcome B
-— countersignature required.** Multiple signature records per agreement version
-are required; the signer role/purpose/order and the completion condition are
-modeled explicitly; the version does not become `signed` merely because the
-first signature exists. The full countersignature workflow is not designed
-here; it becomes part of the implementation decision after Q1 is resolved.
-| Q2 | **Must the agreement restate/embed the accepted proposal terms, or may it reference the exact accepted version?** | **Founder / legal decision required** | §7.3 takes the smallest position (reference + optional Founder text) and does not claim reference alone satisfies any legal requirement. The stale-baseline rule (§7.3) enforces the exact baseline binding and does not decide Q2. |
-| Q3 | **Is one agreement per project sufficient, or are multiple concurrent agreement types needed?** | **Founder decision required** | §7.1 assumes one as the smallest model; a second type is additive. |
+| Q1 | **Who may sign, and does the agreement require a countersignature?** | **Resolved — Founder decision 2026-10-07** | One authorized customer signer is sufficient; Founder countersignature is not required by default. Q1-A applies: one signature record completes the agreement version. |
+| Q2 | **Must the agreement restate/embed the accepted proposal terms, or may it reference the exact accepted version?** | **Resolved — Founder decision 2026-10-07** | The agreement binds to the exact accepted Proposal version and may contain additional contractual terms. The exact baseline remains immutable and cannot be rebound. |
+| Q3 | **Is one agreement per project sufficient, or are multiple concurrent agreement types needed?** | **Resolved — Founder decision 2026-10-07** | One primary agreement per project initially; additional agreement types may be introduced later as related records if actually needed. |
 | Q4 | **What legal framework (if any) is targeted**, and is any specific signature standard required? | **Founder / legal decision required** | §17 makes no legal claim. |
 | Q5 | **Which e-signature provider (if any) is selected**, and what evidence does it add? | **Founder decision required** | §16 keeps the design provider-neutral; provider selection is separate and is required before a production signing flow depending on it. |
 | Q6 | **How strong must signatory identity proofing be?** | **Founder / legal decision required** | §9.1 records authenticated-session identity only and claims no legal sufficiency. |
@@ -1111,10 +1077,7 @@ immutable versions and signatures is required for auditability.
 allow silent rewriting of what was signed; a commercial change must produce a new
 numbered version instead.
 
-**Copy the accepted proposal content into each agreement version.** Rejected as
-the default. Two copies can diverge; an exact `proposal_version_id` reference is
-stable because proposal versions are immutable. Whether the agreement must
-reproduce the terms is left as Q2.
+**Copy the accepted proposal content into each agreement version.** Rejected as the default. The approved design binds each agreement version to the exact accepted proposal version and permits additional contractual terms in the agreement itself; proposal content is not duplicated merely to create another mutable copy.
 
 **Select an e-signature provider now.** Rejected. Provider selection is a
 separate decision, and §13 of the requirements says so; baking a vendor into the
@@ -1128,9 +1091,7 @@ slice. The state model stays at `draft` / `published` / `signed`; "supersession"
 (a later agreement version exists) and "stale" (the accepted proposal baseline
 changed) are only derived concepts, never a stored state (Q9).
 
-**Introduce a new signer role or identity system.** Rejected. It reuses the
-existing person, organization, and project-access model; only the signer-
-authority question (Q1) is left to the Founder.
+**Introduce a new signer role or identity system.** Rejected. The approved Q1 choice reuses the existing person, organization, and project-access model and requires one authorized customer signer without a default Founder countersignature.
 
 **Add a customer JSON endpoint or a new Founder UI.** Rejected for this design.
 The existing platform conventions and internal Activity history are sufficient;
