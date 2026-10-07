@@ -393,21 +393,7 @@ history" are used throughout this document with exactly these meanings.
   **new agreement version**, never an edit of an existing one. This mirrors the
   proposal rule that changing what a document says means writing the next
   version.
-- Whether the data model allows one or more signature records per agreement
-  version is **not final until Q1 is resolved**. Until Q1 is resolved:
-  - no implementation may begin;
-  - no fixed database uniqueness rule requiring one or more signatures per
-    version is final;
-  - no fixed terminal-signature cardinality is treated as implementation-ready;
-  - the version's `signed` status must not be treated as implementation-ready.
-
-  Once Q1 is resolved, the applicable card: **Q1 outcome A — one authorized
-  signer** (the existing one-signature-per-version uniqueness rule is sufficient;
-  the version becomes `signed` after that signature) **or** **Q1 outcome B —
-  countersignature required** (multiple signature records per version are
-  modeled explicitly, with signer role/purpose/order and a completion condition
-  that is not simply the first signature, so the version does not become
-  `signed` merely because the first signature exists).
+- - **Q1-A is now the settled model.** Exactly one authorized customer signature completes an agreement version. A one-signature-per-version uniqueness rule may be used as a last-resort integrity guard, and the version becomes `signed` when that signature is recorded. Founder countersignature is not required by default.
 
 ### 8.4 Version numbering
 
@@ -437,19 +423,7 @@ records, at minimum:
 - an idempotency key so a retried or replayed submission records exactly one
   signature.
 
-**Signature-cardinality rule — conditional on Q1.**
-
-- **Q1 outcome A — one authorized signer.** One signature record per agreement
-  version is sufficient. The version becomes `signed` after that signature. An
-  existing one-signature-per-version uniqueness rule may be used.
-- **Q1 outcome B — countersignature required.** Multiple signature records per
-  agreement version are required. The implementation must model the signer
-  role/purpose/order and the completion condition explicitly. A version does not
-  become `signed` merely because the first signature exists.
-
-Until Q1 is resolved, neither outcome is assumed, and no fixed uniqueness rule,
-terminal-cardinality, or `signed`-status semantics may be treated as
-implementation-ready.
+**Signature-cardinality rule — Founder decision Q1-A.** One authorized customer signer is sufficient. Exactly one signature record per agreement version completes the version; the version becomes `signed` after that signature, and a one-signature-per-version uniqueness rule may be used as a last-resort integrity guard. Founder countersignature is not required by default.
 
 - The record deliberately does **not** contain a signature image, a document scan,
   biometric data, an identity document, or any provider artifact. Those — and any
@@ -476,18 +450,7 @@ The existing role model is:
 - **Founder / internal capability** — the internal authoring path, never a
   customer path.
 
-**Recommended default (subject to Founder approval):** signing authority reuses
-the Customer Proposal Response acceptance authority — **organization
-Owner/Admin only**. An ordinary project member may be shown the agreement but
-may not sign it, exactly as they may not accept a proposal. This keeps one
-consistent "who can commit this organization commercially" rule across
-acceptance and signing, and it avoids inventing a second authority concept.
-
-**Signature-cardinality consequence of Q1.** The cardinality above is a Founder
-decision, not a design assumption. The recommendation (`Owner/Admin` signs,
-no countersignature) is the Q1-A-style outcome; a Founder countersignature or a
-second signer role would be a Q1-B-style outcome and is acknowledged as
-possible without being designed here.
+**Founder decision — signer model:** one authorized customer signer is permitted, using the existing server-side organization/project authorization model. **Founder countersignature is not required by default.** This decision does not create a new identity system or bypass the existing authorization checks.
 
 What is a **design/implementation rule** (settled by this design if approved):
 
@@ -497,17 +460,9 @@ What is a **design/implementation rule** (settled by this design if approved):
 - a customer can never sign an agreement for a project they cannot access
   (section 13).
 
-What is a **Founder decision required**:
+The Q1 decision is now recorded: one authorized customer signer is sufficient, and Founder countersignature is not required by default. The rule must be **server-enforced on every submission**, never inferred from the presence of a UI control.
 
-- **Q1. Who may sign?** Whether ordinary project members may ever sign, whether a
-  single named signatory must be designated per agreement, and whether a
-  countersignature by the Founder is required. The recommendation above is a
-  recommendation, not a decision. The specific grant of signer authority is a
-  business decision, not something this design may assume.
-
-Whatever the Founder decides, the rule must be **server-enforced on every
-submission**, never inferred from the presence of a UI control.
-
+### 9.3 Authorization reuse
 ### 9.3 Authorization reuse
 
 Signing reuses the existing customer authorization model unchanged:
@@ -555,16 +510,8 @@ API is defined or implemented here.
    (it is no longer `published`) and the signature row is the durable evidence.
    The result returned is deterministic and idempotent.
 
-   The meaning of "success" is **conditional on Q1** and must not be implemented
-   before Q1 is resolved:
+   The meaning of success is now settled by Q1-A: a successful submission records the single authorized customer signature and the version becomes `signed`.
 
-   - **Q1 outcome A (one authorized signer):** a successful submission records
-     the single signature and the version becomes `signed`;
-   - **Q1 outcome B (countersignature required):** a successful submission
-     records the signature(s) required by the resolved model, but the version
-     does not become `signed` merely because the first signature exists; the
-     version becomes `signed` only when the completed, Q1-defined completion
-     condition is met.
 5. **Historical record.** The signed version and its signature row remain
    readable and immutable for the life of the project record.
 
@@ -589,13 +536,8 @@ transition to `signed`.
 Application-level guarantees this design requires:
 
 - **append-only:** no update and no delete path for a signature row;
-- **signature cardinality — conditional on Q1.** Until Q1 is resolved there is
-  no fixed rule: one signature per version is sufficient (Q1-A) or multiple
-  signature records per version are required (Q1-B, with the signer model and
-  completion condition implemented explicitly). The version's `signed` status is
-  not implementation-ready until Q1 is resolved. Once Q1 is resolved, if the
-  result is Q1-A, a partial unique index enforces one signature per version;
-  otherwise no such relation is assumed.
+- **signature cardinality — Q1-A settled.** One authorized customer signature completes each agreement version. A partial unique index may enforce one signature per version as a last-resort integrity guard.
+
 - **idempotent replay:** a replayed operation returns the previously recorded
   signature rather than being rejected, because the service resolves the
   idempotency key *before* any terminal-state rejection (§10 step 3). The unique
@@ -935,27 +877,10 @@ tests must cover, against the real services and store:
   agreement version is either `published` (awaiting signature) or `signed`
   (completed for that version), never both.
 
-  The immutability/evidence guarantees below are stated without reference to a
-  fixed signature cardinality. Until Q1 is resolved there is no fixed rule: Q1-A
-  allows one signature per version (enforced by a partial unique index) and
-  Q1-B requires multiple signature records per version (modeled explicitly, with
-  signer purpose/order and a completion condition that is not merely the first
-  signature). No fixed database uniqueness rule and no fixed
-  terminal-cardinality are final until Q1 is resolved.
-- **Q1-A only:** if the design resolves to one authorized signer, the partial
-  unique index is the last-resort guard against a second row; under Q1-B the
-  partial unique index is not applied, and no fixed database uniqueness rule is
-  final. The derived "agreement completed" signal (§18) is true exactly when a
-  current agreement version exists and is `signed`, and is false when there is no
-  current agreement version or the current agreement version is `published`.
-- **Signature-record write vs. the signed transition are separate atomic
-  steps, and both depend on the resolved Q1 model:** Q1-A records one signature
-  row and its audit evidence atomically alongside the version's `signed`
-  transition; Q1-B records each signature row and its audit evidence atomically,
-  and the version's `signed` transition is atomic only when the Q1-defined
-  completion condition is satisfied (the partial unique index is the
-  last-resort guard against a second row in Q1-A only, and it is not
-  final until Q1 is resolved).
+  The immutability/evidence guarantees use the now-settled Q1-A cardinality: one authorized customer signature completes the version; a partial unique index may guard against a second signature; the derived "agreement completed" signal (§18) is true exactly when a current agreement version exists and is `signed`, and is false when there is no current agreement version or the current agreement version is `published`.
+
+- **Signature-record write and signed transition:** the signature row, its audit evidence, and the version's `signed` transition are one atomic operation.
+
 - a `signed` version whose accepted proposal baseline is stale is not the
   current agreement version and does not satisfy the agreement-completed signal;
 - a newer `draft` version does not change the current signable version, does not
@@ -1023,30 +948,15 @@ Implementation of this design may proceed only when the decisions that
 materially determine **what is built** are resolved. The open questions in
 section 21 fall into three tiers.
 
-**Required before implementation (the answers change what is built):**
+**Required before implementation:**
 
-- **Q1 — who may sign, and therefore signature-cardinality and completion.**
-  Q1 is a pre-implementation business decision because it determines signature
-  cardinality and completion semantics. Until Q1 is resolved:
-  - no implementation may begin;
-  - no fixed database uniqueness rule requiring one or more signatures per
-    version is final;
-  - no fixed terminal-signature cardinality is treated as implementation-ready;
-  - no fixed terminal-signature semantics (`signed` after the first signature)
-    is treated as implementation-ready;
-  - the acceptance tests in §20.1 cannot be final.
-  The signer-authority rule determines the authorization behavior the signing
-  service implements (§9.2, §20.1).
-- **Q2 — agreement content/baseline.** Whether an agreement version must
-  restate/embed the accepted proposal terms or may reference the exact accepted
-  version materially changes what a version stores and shows (§7.3).
-- **Q3 — one agreement per project vs multiple agreement types.** This
-  materially changes the domain model, identity, and version numbering (§7.1,
-  §7.2).
+The Founder has resolved Q1, Q2, and Q3 on 2026-10-07. Implementation may now proceed as a separate implementation task based on this approved design and its settled choices:
 
-Implementation may begin once this design is **Founder-approved** and Q1, Q2,
-and Q3 are resolved and recorded, and the authorization, version-binding,
-immutability/evidence, and supersession tests in §20.1 exist.
+- **Q1-A:** one authorized customer signer; Founder countersignature not required by default.
+- **Q2:** exact accepted proposal version binding, with additional contractual terms permitted in the agreement.
+- **Q3:** one primary agreement per project initially, with additional agreement types introduced later as related records if a genuine need exists.
+
+Implementation must satisfy the authorization, version-binding, immutability/evidence, supersession, and signing-verification requirements in §20.1.
 
 **Required before production or provider-dependent operation:**
 
