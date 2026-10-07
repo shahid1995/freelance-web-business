@@ -290,34 +290,74 @@ An agreement version has exactly one status:
 | Status | Meaning |
 | --- | --- |
 | `draft` | Created by the Founder/internal authority; not visible to any customer; not signable. |
-| `published` | Made visible to authorized customers for the project; the current signable version. |
-| `signed` | A signature has been recorded against this exact version; terminal and immutable. |
+| `published` | Made visible to authorized customers for the project; eligible to be the current signable version (§8.2). A version stops being the current signable version once a later `published` version exists. |
+| `signed` | A signature has been recorded against this exact version; terminal and immutable. A `signed` version is never `published` again and is never signable again. |
 
 Publication is a separate, explicit, Founder-only act, exactly as it is for a
 proposal. Creating a `draft` version does not make it signable, and publishing a
 version does not mean anyone has signed it.
 
+A version has **exactly one** status at a time. A version that has been signed
+has status `signed`; it is **never** simultaneously `published` and `signed`,
+and it never returns to `draft` or `published`. The three states are mutually
+exclusive, and the derived concepts in §8.2 are computed from them.
+
 There is deliberately **no** stored `pending`, `awaiting_signature`,
 `expired`, `declined`, `cancelled`, `superseded`, or `void` state. Supersession
-is derived (§8.2); an unsigned published version simply stops being the current
-one. Notifications, reminders, and expiry are out of scope (section 19).
+is derived (§8.2), not stored: an unsigned `published` version simply stops
+being the current signable version once a later `published` version exists.
+Notifications, reminders, and expiry are out of scope (section 19).
 
-### 8.2 Current version and supersession (derived)
+### 8.2 Current agreement version, current signable version, and signed history (derived)
 
-- The **current signable version** is the highest-numbered `published` version
-  of the agreement. A `draft` version is never current for a customer.
-- A `published` but unsigned version is **superseded** once a later `published`
-  version exists. Supersession is **derived**, not stored.
-- A `signed` version remains `signed` forever, whether or not later versions
-  exist. Signing one version does not retroactively change earlier signed
-  versions.
+Three distinct concepts are derived from the immutable version and signature
+rows. None of them is stored, and none of them changes the status of a version.
+
+- **Current agreement version.** The highest-numbered agreement version that is
+  *applicable to a customer* — that is, the highest-numbered version whose status
+  is `published` or `signed`. A `draft` is an internal, unpublished working
+  version; it is not the current agreement version until it is published. The
+  current agreement version is therefore either `published` (awaiting signature)
+  or `signed` (completed for that version), and there is no current agreement
+  version at all until a first version is published.
+- **Current signable version.** The highest-numbered `published` version
+  eligible for signing. When the current agreement version is `published`, the
+  current signable version is that same version; when the current agreement
+  version is `signed`, there is no current signable version — the agreement is
+  complete for that version and nothing awaits signature until a later version
+  is published. A `draft` is never signable, and a `signed` version is never
+  signable again, so neither is ever the current signable version.
+- **Signed history.** Every `signed` version remains `signed` forever, whether
+  or not later versions exist, and remains readable and auditable. Signing one
+  version never changes the status or content of any other version.
+
+Consequences of the three states, stated explicitly:
+
+- Because a version has exactly one status at a time, no version is ever
+  simultaneously `published` and `signed`. "The current published version is
+  signed" is therefore not a valid description in this model; the accurate
+  statement is "the current agreement version is `signed`".
+- When the current agreement version is `signed`, the agreement has completed
+  signing **for that version**.
+- When a later `published` version exists, that later version becomes the
+  current signable version and requires its own signature. The earlier version
+  is either already `signed` (terminal, part of signed history) or unsigned and
+  simply no longer the current signable version. There is no stored
+  `superseded` state: "superseded" is only the derived fact that a version is no
+  longer the highest-numbered `published` version.
+- An earlier `signed` version never changes state.
+- A newer `draft` does not pretend to be signable, does not change the current
+  signable version, and does not modify historical signed evidence.
 - Standing is always derived from the immutable version and signature rows,
   never from a mutable per-project agreement field.
 
+The terms "current agreement version", "current signable version", and "signed
+history" are used throughout this document with exactly these meanings.
+
 ### 8.3 Immutability
 
-- A `signed` version is immutable: there is no update or delete path for it, and
-  its `signed` status never changes.
+- A `signed` version is immutable: there is no update or delete path for it, its
+  `signed` status never changes, and it never returns to `draft` or `published`.
 - A written signature row is append-only: the store exposes no update and no
   delete method for it.
 - A later commercial change that alters the agreement's meaning requires a
@@ -422,9 +462,10 @@ Signing reuses the existing customer authorization model unchanged:
 The smallest useful workflow, described as application behavior only. No UI or
 API is defined or implemented here.
 
-1. **Agreement presented.** For the current `published` version, an authorized
-   customer for the project can see that an agreement exists and is awaiting
-   signature. This is a read and is non-mutating; it creates no audit event.
+1. **Agreement presented.** For the current signable version (§8.2), an
+   authorized customer for the project can see that an agreement exists and is
+   awaiting signature. This is a read and is non-mutating; it creates no audit
+   event.
 2. **Signature intent.** The customer expresses intent to sign by submitting an
    explicit action against the **exact version they were shown**, carrying an
    idempotency key. Intent is **not** a stored state: the submission either
@@ -433,16 +474,17 @@ API is defined or implemented here.
    transaction that takes the write lock before its first read:
    - authorizes the caller against live access rows;
    - applies the signer-authority rule (section 9.2);
-   - re-derives the **current published version** of the agreement;
-   - rejects a **stale version** (the customer signed a version that is no
-     longer current) and writes nothing — no silent rebinding;
+   - re-derives the **current signable version** of the agreement (§8.2);
+   - rejects a **stale version** (the customer submitted against a version that
+     is no longer the current signable version) and writes nothing — no silent
+     rebinding;
    - rejects a version that is `draft` or already `signed`;
    - resolves a replayed idempotency key to the already-recorded signature
      instead of creating a second row;
    - writes the signature row and its audit event together.
-4. **Signature completion.** On success the version becomes `signed` and the
-   signature row is the durable evidence. The result returned is deterministic
-   and idempotent.
+4. **Signature completion.** On success the version's status becomes `signed`
+   (it is no longer `published`) and the signature row is the durable evidence.
+   The result returned is deterministic and idempotent.
 5. **Historical record.** The signed version and its signature row remain
    readable and immutable for the life of the project record.
 
@@ -484,15 +526,17 @@ This section defines what must happen over time. It must never silently
 overwrite prior signed history.
 
 - **A customer signs.** The signature is recorded against the exact current
-  published version. That version becomes `signed` and is terminal.
+  signable version (§8.2). That version's status becomes `signed` (it is no
+  longer `published`) and is terminal.
 - **A replayed submission.** The idempotency key resolves to the recorded
   signature: one row, one audit event, and the same deterministic result. A
   fresh submission against an already-`signed` version is rejected and writes
   nothing.
-- **An agreement version is superseded.** A later `published` version becomes
-  the current signable version (derived, §8.2). The earlier version is either
-  already `signed` (terminal) or unsigned and no longer current. Nothing is
-  deleted or edited.
+- **An agreement version stops being the current signable version.** A later
+  `published` version becomes the current signable version (derived, §8.2), and
+  the earlier version is either already `signed` (terminal, part of signed
+  history) or unsigned and no longer the current signable version. Nothing is
+  deleted or edited, and no stored state changes.
 - **A new agreement version is created.** It is a new numbered, immutable
   version. All earlier versions and signatures remain readable and auditable,
   unchanged.
@@ -501,18 +545,30 @@ overwrite prior signed history.
   earlier version is never edited; history shows exactly what was signed, when,
   and by whom.
 - **A customer needs to sign a later agreement.** They sign the **current
-  published version**. The platform records a second, separate signature against
-  the new version. Earlier signatures remain intact. A signed version can never
-  be re-signed or re-opened.
+  signable version** (§8.2). The platform records a second, separate signature
+  against the new version. Earlier signatures remain intact, and the earlier
+  `signed` versions keep status `signed`. A signed version can never be re-signed
+  or re-opened.
 - **The accepted proposal baseline changes.** A new agreement version binds to
   the newly accepted proposal version. Prior agreement versions remain bound to
   the exact proposal versions they referenced, so later proposal changes cannot
   silently rewrite historical agreement evidence.
 
-The platform's **current agreement standing** is derived: signed when the
-current published version has a signature, otherwise awaiting signature. What
-"the current agreement" means for downstream payment/activation is defined in
-section 18 and is **derived**, never a stored project field.
+The platform's **current agreement standing** is derived from the immutable
+rows, never stored. Over the **current agreement version** (§8.2 — the
+highest-numbered version whose status is `published` or `signed`):
+
+- if the current agreement version is `signed`, the agreement has completed
+  signing **for that version**;
+- if the current agreement version is `published`, that version is the current
+  signable version and the agreement is awaiting signature;
+- if no version has been published, there is no current agreement version and
+  nothing is signable.
+
+A `signed` version is never described as "published and signed": its status is
+`signed`, and it remains signed history. What "the current agreement" means for
+downstream payment/activation is defined in section 18 and is **derived**, never
+a stored project field.
 
 ## 13. Customer authorization and project isolation
 
@@ -655,14 +711,19 @@ This design defines **only the agreement boundary** inside that chain. It does
 customer-facing project stage.
 
 - **What this slice may expose to downstream systems later.** A derived,
-  read-only signal that the project's **current published agreement version is
-  signed** — an "agreement completed" boolean plus the identifying version and
-  timestamp — computed from the append-only rows, never stored as a mutable
-  project field.
+  read-only signal that the project's **current agreement version is signed**
+  (§8.2) — an "agreement completed" boolean plus the identifying version number
+  and timestamp — computed from the append-only rows, never stored as a mutable
+  project field. The signal is derived from a version whose own status is
+  `signed`; it never queries for a version that is simultaneously `published`
+  and `signed`, which the state model forbids.
 - **What downstream may rely on.** A later activation design may consult that
-  derived signal as the "Agreement completed" condition. It must not treat
-  proposal acceptance alone, or a draft or superseded agreement version, as
-  completed.
+  derived signal as the "Agreement completed" condition. "Completed" means the
+  current agreement version (§8.2) carries a signature. It must not treat
+  proposal acceptance alone as completed, and it must not treat a `draft` (not
+  applicable to a customer) or an unsigned version as completed. A `signed`
+  version that is no longer the current agreement version stays signed history
+  and is never reported as unsigned.
 - **What this slice does not do.** No payment record, no payment status, no
   payment provider, no activation, and no stage change. `customerStageFor` and
   the customer-facing stages remain exactly as accepted elsewhere (I7).
@@ -703,9 +764,20 @@ tests must cover, against the real services and store:
 
 - a signature binds to the exact agreement version and accepted proposal version
   shown to the customer;
-- a stale (superseded) version submission is rejected and writes nothing;
-- a `draft` version is never signable and never current for a customer;
-- a `published` version is the only signable version;
+- a stale submission against a version that is no longer the current signable
+  version (§8.2) is rejected and writes nothing;
+- a `draft` version is never signable, is never the current signable version,
+  and is never the current agreement version until it is published;
+- only a `published` version is signable, and a `signed` version is never
+  signable again;
+- no version is ever simultaneously `published` and `signed`: the current
+  agreement version is either `published` (awaiting signature) or `signed`
+  (completed for that version), never both;
+- the derived "agreement completed" signal (§18) is true exactly when the
+  current agreement version is `signed`, and is false when the current agreement
+  version is `published` or does not exist;
+- a newer `draft` version does not change the current signable version, does not
+  invalidate historical signed evidence, and does not itself become signable;
 - the accepted proposal baseline is required: a draft or unaccepted proposal
   version cannot be a baseline;
 - `customerStageFor` and the customer-facing project stages are unchanged.
@@ -725,30 +797,72 @@ tests must cover, against the real services and store:
 
 **Supersession and repetition**
 
-- a later published version becomes the only current signable version;
-- earlier signed versions remain readable and unchanged;
+- a later published version becomes the current signable version and requires
+  its own signature, without changing the status or content of any earlier
+  signed version;
+- earlier signed versions remain readable, remain `signed`, and are unchanged;
 - a commercial change produces a new version rather than modifying a signed one;
 - a customer signs a later version as a separate signature, preserving earlier
-  history.
+  history;
+- no assertion queries for a version that is both `published` and `signed`; the
+  derived completion signal references the current agreement version's own
+  `signed` status.
 
 ### 20.2 Acceptance gate
 
-Implementation may proceed only when:
+Implementation of this design may proceed only when the decisions that
+materially determine **what is built** are resolved. The open questions in
+section 21 fall into three tiers.
 
-1. this design is **Founder-approved**;
-2. the signer-authority decision (§9.2, Q1) is recorded;
-3. the legal and retention decisions required for production (Q4, Q5, Q6, Q7,
-   Q8) are resolved **before production activation**, and are explicitly not
-   required merely to build and test the slice against synthetic data;
-4. the authorization, version-binding, immutability/evidence, and supersession
-   tests in §20.1 exist;
-5. no provider is activated, no deployment occurs, and no live customer data is
+**Required before implementation (the answers change what is built):**
+
+- **Q1 — who may sign.** The signer-authority rule determines the authorization
+  behavior the signing service implements (§9.2, §20.1).
+- **Q2 — agreement content/baseline.** Whether an agreement version must
+  restate/embed the accepted proposal terms or may reference the exact accepted
+  version materially changes what a version stores and shows (§7.3).
+- **Q3 — one agreement per project vs multiple agreement types.** This
+  materially changes the domain model, identity, and version numbering (§7.1,
+  §7.2).
+
+Implementation may begin once this design is **Founder-approved** and Q1, Q2,
+and Q3 are resolved and recorded, and the authorization, version-binding,
+immutability/evidence, and supersession tests in §20.1 exist.
+
+**Required before production or provider-dependent operation:**
+
+- **Q4 — legal framework** targeted, and any required signature standard;
+- **Q5 — e-signature provider** selection, before any provider-dependent signing
+  flow is operated;
+- **Q6 — identity-proofing** strength;
+- **Q7 — document-retention period** and secure-retention policy;
+- **Q8 — applicable jurisdictions** and their requirements.
+
+These are production, legal, and provider gates. They are **not** required
+merely to build and test the provider-neutral application model against
+synthetic data, and the core model may remain provider-neutral without selecting
+a vendor.
+
+**May remain deferred / explicitly out of scope for the first implementation:**
+
+- **Q9 — decline/withdraw/expiry/reminders.** Deferrable only if the first
+  implementation **explicitly excludes** them (§10, §19).
+- **Q10 — customer download/view of a signed agreement.** Deferrable only if
+  customer download/view is **explicitly out of scope** for the first slice.
+
+Deferring Q9 or Q10 is not a decision on the question: both remain **Founder
+decision required** and must be recorded before the corresponding behavior is
+built.
+
+Additional standing conditions:
+
+1. no provider is activated, no deployment occurs, and no live customer data is
    processed without separate authorization;
-6. `customerStageFor` and the customer-facing stages remain unchanged.
+2. `customerStageFor` and the customer-facing stages remain unchanged.
 
 A merged implementation PR would not authorize production deployment, provider
-activation, or live customer-data operation, and would not assert legal
-validity.
+activation, or live customer-data operation, would not assert legal validity,
+and would not resolve any of Q1–Q10.
 
 ## 21. Open questions requiring Founder decision
 
@@ -830,8 +944,9 @@ design would pre-empt it.
 claim and routes that to separate legal review (Q4, Q8).
 
 **Add expiry, reminders, and decline states now.** Rejected for the smallest
-slice. The state model stays at `draft` / `published` / `signed`; supersession is
-derived (Q9).
+slice. The state model stays at `draft` / `published` / `signed`; "supersession"
+is only a derived concept (a version is no longer the highest-numbered
+`published` version), never a stored state (Q9).
 
 **Introduce a new signer role or identity system.** Rejected. It reuses the
 existing person, organization, and project-access model; only the signer-
@@ -858,8 +973,9 @@ Approval covers the design as proposed, including:
   version states (`draft`, `published`, `signed`) (§7, §8);
 - an agreement version that references an exact accepted proposal version as an
   immutable baseline and never mutates the proposal (§7.3);
-- the derived current-version and supersession model, with signed versions
-  immutable and terminal (§8);
+- the derived current-agreement-version / current-signable-version / signed-
+  history model, with signed versions immutable and terminal and no stored
+  `superseded` state (§8);
 - an append-only signature record carrying person, organization, project,
   agreement version, accepted proposal baseline, authority exercised, action,
   timestamp, and idempotency key, and no signature image or identity artifact
@@ -892,5 +1008,6 @@ project activation, or legal certification, and it does not resolve Q1–Q10. Ea
 of those requires its own later decision.
 
 Once approved, implementation of this design is a separate, later task that must
-satisfy the verification contract in §20.1 and must not begin before the design
-is approved.
+satisfy the verification contract in §20.1, must not begin before the design is
+approved, and must not begin before the pre-implementation decisions Q1, Q2, and
+Q3 are resolved and recorded (§20.2).
