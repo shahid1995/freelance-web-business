@@ -1,37 +1,44 @@
 # Customer Proposal Response — Request Changes and Accept
 
-**Status:** Accepted. Founder approval: Approved 2026-10-06.  
+**Status:** Accepted and implemented. Founder approval: Approved 2026-10-06.  
 **Date:** 2026-10-06  
 **Founder approval:** Approved 2026-10-06  
 **Scope:** Smallest durable customer response slice for a published proposal — an explicit, version-bound *Request Changes* and *Accept Proposal* action, and nothing else  
 **Related:** Customer Platform Direction, Customer Platform Requirements, Customer Platform Foundation, Founder/Internal Workspace and Project Intake review, Founder Project Queue, Proposal Foundation, Customer Proposal Review
 
-> **Status note.** The Founder approved this design on 2026-10-06. It is now the
-> governing design for the Customer Proposal Response slice. **Design accepted;
-> implementation not yet performed.** Nothing in `website/` implements any part
-> of this document, no table, route, endpoint, or service described here exists,
-> and approval of this design does not authorize production deployment, live
-> customer-data processing, provider activation, or any capability listed in
-> section 5 — each of those requires its own later decision.
+> **Status note.** The Founder approved this design on 2026-10-06, and it remains
+> the governing design for the Customer Proposal Response slice. **Design
+> accepted on 2026-10-06; implementation completed and merged in PR #45 (merge
+> commit `d9c95f265393197878fe55a5820a26e00e8fe0a9`).** Implementation is not
+> deployment: the slice is not deployed, is not activated for live customers, and
+> has processed no live customer data. Production deployment, provider
+> activation, and every capability listed in section 5 remain separately
+> controlled and each still requires its own later decision.
 
 ## 1. Status
 
-**Status: Accepted. Founder approval: Approved 2026-10-06.**
+**Status: Accepted and implemented. Founder approval: Approved 2026-10-06.**
 
 This document is the approved design for the Customer Proposal Response slice.
-The Founder approved it on 2026-10-06.
+The Founder approved it on 2026-10-06; it was subsequently implemented and merged
+into `main`.
 
-Two facts must be kept separate and neither is implied by the other:
+The lifecycle must be read in three separate steps, and none implies the next:
 
 - **The ADR/design is accepted.** This design is the governing specification for
-  the slice and may now be implemented.
-- **The implementation has not been performed.** No application code, database
-  table, migration, customer route, or customer endpoint described in this
-  document exists yet. Acceptance of a design is not delivery of a capability.
+  the slice. Implementation does not alter its design or its business rules.
+- **The implementation is completed and merged.** The slice described here was
+  implemented in PR #45 (merge commit
+  `d9c95f265393197878fe55a5820a26e00e8fe0a9`) and is now part of `main`.
+- **The capability is not deployed.** Implementation is not deployment or
+  production availability: the slice is not deployed, is not activated for live
+  customers, and has processed no live customer data. Acceptance and
+  implementation of a design are not delivery to customers.
 
-Approval of this design authorizes only the proposal-response slice described
-here. It does not authorize deployment, publication, live customer-data
-operation, provider activation, or any excluded capability in section 5.
+Approval and implementation of this design authorize only the proposal-response
+slice described here. They do not authorize deployment, publication, live
+customer-data operation, provider activation, or any excluded capability in
+section 5.
 
 ## 2. Context
 
@@ -1255,7 +1262,7 @@ requires a further Founder decision:
 
 ## 21. Approval
 
-**Status: Accepted. Founder approval: Approved 2026-10-06.**
+**Status: Accepted and implemented. Founder approval: Approved 2026-10-06.**
 
 The Founder approved this design on 2026-10-06. That approval is recorded in
 this repository, which is the sole system of record.
@@ -1308,15 +1315,17 @@ Approval covers the design as written, including:
 - the transaction and concurrency requirements, including that two concurrent
   actions cannot both succeed as acceptances (section 12).
 
-**Design accepted; implementation not yet performed.**
+**Design accepted on 2026-10-06; implementation completed and merged in PR #45
+(merge commit `d9c95f265393197878fe55a5820a26e00e8fe0a9`).**
 
-Approval of this design does **not** mean the capability exists. No application
-code, table, migration, route, or endpoint has been created; the implementation
-is a separate, later task that must satisfy the verification contract in
-section 17.
+Approval of this design authorized the implementation, which was carried out as a
+separate, later task against the verification contract in section 17, and the
+result is now part of `main`. Implementation does **not** mean the capability is
+deployed: the slice is not activated for live customers and has processed no live
+customer data.
 
-Approval of this design does not authorize production deployment, live
-customer-data operation, or provider activation, and it does not authorize any
-capability listed in section 5 — agreement/e-signature, payments, activation,
-messaging, notifications, documents, analytics, AI/LLM, or any customer
-project-stage change — each of which requires its own later decision.
+Approval and implementation of this design do not authorize production
+deployment, live customer-data operation, or provider activation, and they do not
+authorize any capability listed in section 5 — agreement/e-signature, payments,
+activation, messaging, notifications, documents, analytics, AI/LLM, or any
+customer project-stage change — each of which requires its own later decision.

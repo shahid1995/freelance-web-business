@@ -73,7 +73,7 @@ Phase 4 current direction:
 - Proposal Foundation (Founder-only proposal authoring, immutable versions, explicit publication) — implemented and merged
 - Customer Proposal Review (read-only customer view of the current published proposal for an authorized customer) — implemented and merged
 - No customer-platform slice is deployed or activated for live customers
-- Customer-facing commercial workflow beyond the Customer Proposal Review (request changes, acceptance) — implemented per docs/decisions/2026-10-06-customer-proposal-response.md (Status: Accepted; Founder approval: Approved 2026-10-06). Not deployed and not available in production.
+- Customer-facing commercial workflow beyond the Customer Proposal Review (request changes, acceptance) — implemented and merged (PR #45) per docs/decisions/2026-10-06-customer-proposal-response.md (Status: Accepted and implemented; Founder approval: Approved 2026-10-06). Not deployed and not available in production.
 - Delivery workspace and lifecycle integration — planned
 - Domain/hosting — deferred
 - Analytics — deferred
