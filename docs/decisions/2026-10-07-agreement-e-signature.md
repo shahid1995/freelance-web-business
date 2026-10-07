@@ -266,6 +266,22 @@ Concretely:
   **accepted** under Customer Proposal Response. It may not be based on a draft,
   an unpublished version, or a merely published but unaccepted version. An
   accepted version is the commercial baseline.
+- **The baseline must remain the project's current accepted proposal version to
+  stay signable.** An agreement version is eligible for signing only while its
+  `proposal_version_id` still equals the project's **currently accepted proposal
+  version** — the accepted version the project holds now, derived from the
+  acceptance rows defined by Customer Proposal Response, never stored on the
+  agreement or the project. If a newer proposal version is accepted after the
+  agreement version was published, the agreement version's baseline is **stale**:
+  it stops being signable, is never silently rebound to the new proposal
+  version, and remains immutable historical data.
+- **Stale is not a stored state.** A stale baseline is a **derived** fact,
+  exactly like supersession (§8.2). It never changes an agreement version's
+  status and never edits a version or a signature.
+- **Enforcing the exact baseline is not the Q2 decision.** Q2 asks whether the
+  agreement must reproduce or may reference the accepted terms; that question
+  stays open. This rule only enforces the baseline binding this design already
+  defines, and it holds under either answer to Q2.
 
 ### 7.4 What the model deliberately does not store
 
@@ -303,9 +319,11 @@ and it never returns to `draft` or `published`. The three states are mutually
 exclusive, and the derived concepts in §8.2 are computed from them.
 
 There is deliberately **no** stored `pending`, `awaiting_signature`,
-`expired`, `declined`, `cancelled`, `superseded`, or `void` state. Supersession
-is derived (§8.2), not stored: an unsigned `published` version simply stops
-being the current signable version once a later `published` version exists.
+`expired`, `declined`, `cancelled`, `superseded`, `stale`, or `void` state.
+Both supersession and staleness are **derived** (§8.2), not stored: an unsigned
+`published` version stops being the current signable version once a later
+`published` version exists, and any version stops being signable once its
+accepted proposal baseline is no longer the project's current accepted version.
 Notifications, reminders, and expiry are out of scope (section 19).
 
 ### 8.2 Current agreement version, current signable version, and signed history (derived)
@@ -320,13 +338,18 @@ rows. None of them is stored, and none of them changes the status of a version.
   current agreement version is therefore either `published` (awaiting signature)
   or `signed` (completed for that version), and there is no current agreement
   version at all until a first version is published.
-- **Current signable version.** The highest-numbered `published` version
-  eligible for signing. When the current agreement version is `published`, the
-  current signable version is that same version; when the current agreement
-  version is `signed`, there is no current signable version — the agreement is
-  complete for that version and nothing awaits signature until a later version
-  is published. A `draft` is never signable, and a `signed` version is never
-  signable again, so neither is ever the current signable version.
+- **Current signable version.** The highest-numbered `published` version that
+  is **eligible for signing**. A `published` version is eligible only when both
+  (a) it is the highest-numbered `published` version and (b) its accepted
+  proposal baseline is still the project's **currently accepted proposal
+  version** (§7.3). When the current agreement version is `published` *and* its
+  baseline is current, the current signable version is that version and the
+  agreement is awaiting signature. A `draft` is never signable, a `signed`
+  version is never signable again, and a version whose proposal baseline has
+  changed is **stale** and never signable. When the current agreement version is
+  `signed`, or when its baseline is stale, there is no current signable version:
+  nothing can be signed until a new agreement version based on the current
+  accepted proposal version is published.
 - **Signed history.** Every `signed` version remains `signed` forever, whether
   or not later versions exist, and remains readable and auditable. Signing one
   version never changes the status or content of any other version.
@@ -345,6 +368,14 @@ Consequences of the three states, stated explicitly:
   simply no longer the current signable version. There is no stored
   `superseded` state: "superseded" is only the derived fact that a version is no
   longer the highest-numbered `published` version.
+- A version can stop being the current signable version for **two distinct
+  derived reasons**, and the design keeps them separate:
+  - **superseded** — a later `published` agreement version exists, so the
+    earlier version is no longer the highest-numbered `published` version;
+  - **stale** — the project's accepted proposal version has changed, so the
+    version's `proposal_version_id` is no longer the current accepted baseline.
+  Both are **derived, not stored**; both leave the version's status and content
+  untouched; and neither ever edits or re-derives historical signed evidence.
 - An earlier `signed` version never changes state.
 - A newer `draft` does not pretend to be signable, does not change the current
   signable version, and does not modify historical signed evidence.
@@ -474,19 +505,33 @@ API is defined or implemented here.
    transaction that takes the write lock before its first read:
    - authorizes the caller against live access rows;
    - applies the signer-authority rule (section 9.2);
+   - **resolves the idempotency key before any state rejection**: if the key
+     already recorded this exact signing operation, it returns the recorded
+     deterministic result (even though the version is now `signed`); if the key
+     conflicts with a different operation or context, it rejects
+     deterministically;
    - re-derives the **current signable version** of the agreement (§8.2);
-   - rejects a **stale version** (the customer submitted against a version that
-     is no longer the current signable version) and writes nothing — no silent
-     rebinding;
+   - re-derives the project's **currently accepted proposal version** and
+     verifies the agreement version's `proposal_version_id` still matches it —
+     a changed baseline is a **stale** version (§7.3, §8.2);
+   - rejects a **stale version** — either no longer the current signable version
+     or bound to a proposal baseline that is no longer accepted — and writes
+     nothing, with no silent rebinding;
    - rejects a version that is `draft` or already `signed`;
-   - resolves a replayed idempotency key to the already-recorded signature
-     instead of creating a second row;
-   - writes the signature row and its audit event together.
+   - writes the signature row, the version's `signed` transition, and its audit
+     event atomically.
 4. **Signature completion.** On success the version's status becomes `signed`
    (it is no longer `published`) and the signature row is the durable evidence.
    The result returned is deterministic and idempotent.
 5. **Historical record.** The signed version and its signature row remain
    readable and immutable for the life of the project record.
+
+**Retry property.** A retry of an already-successful signing operation returns
+the recorded result even though the version is now `signed`, because the
+idempotency key is resolved *before* the terminal-state check (step 3). A replay
+is therefore never rejected as "already signed". The partial unique index is a
+last-resort integrity guard, **not** the mechanism for idempotent retry: the
+service resolves replay explicitly.
 
 There is no stored "awaiting signature" state, no reminder, no expiry, and no
 decline path in this slice. A customer who does not sign simply leaves the
@@ -504,6 +549,11 @@ Application-level guarantees this design requires:
 - **append-only:** no update and no delete path for a signature row;
 - **single signature per version:** enforced by a partial unique index, not only
   by an application check;
+- **idempotent replay:** a replayed operation returns the previously recorded
+  signature rather than being rejected, because the service resolves the
+  idempotency key *before* any terminal-state rejection (§10 step 3). The unique
+  index is the last-resort guard against a second row, **not** the retry
+  mechanism;
 - **immutable signed version:** the signed version's content never changes;
 - **transactional:** the signature row, the version's `signed` status, and the
   audit event are one atomic write, so neither layer exists without the other;
@@ -528,15 +578,24 @@ overwrite prior signed history.
 - **A customer signs.** The signature is recorded against the exact current
   signable version (§8.2). That version's status becomes `signed` (it is no
   longer `published`) and is terminal.
-- **A replayed submission.** The idempotency key resolves to the recorded
-  signature: one row, one audit event, and the same deterministic result. A
-  fresh submission against an already-`signed` version is rejected and writes
-  nothing.
+- **A replayed submission.** The idempotency key is resolved **before** any
+  state check. A retry of an already-successful signing operation returns the
+  recorded result — one row, one audit event, the same deterministic outcome —
+  even though the version is now `signed`. A *fresh* submission (a new key)
+  against an already-`signed` version is rejected and writes nothing.
 - **An agreement version stops being the current signable version.** A later
   `published` version becomes the current signable version (derived, §8.2), and
   the earlier version is either already `signed` (terminal, part of signed
   history) or unsigned and no longer the current signable version. Nothing is
   deleted or edited, and no stored state changes.
+- **The accepted proposal baseline changes after an agreement version is
+  published.** If a newer proposal version is accepted, any agreement version
+  still bound to the older accepted proposal version becomes **stale** and stops
+  being signable (§7.3, §8.2). A signing attempt against it is rejected and
+  writes nothing — there is no silent rebinding to the new proposal version —
+  and the stale version remains immutable historical data. The Founder publishes
+  a new agreement version based on the current accepted proposal version, which
+  becomes the current signable version.
 - **A new agreement version is created.** It is a new numbered, immutable
   version. All earlier versions and signatures remain readable and auditable,
   unchanged.
@@ -560,8 +619,13 @@ highest-numbered version whose status is `published` or `signed`):
 
 - if the current agreement version is `signed`, the agreement has completed
   signing **for that version**;
-- if the current agreement version is `published`, that version is the current
-  signable version and the agreement is awaiting signature;
+- if the current agreement version is `published` and its proposal baseline is
+  current, that version is the current signable version and the agreement is
+  awaiting signature;
+- if the current agreement version is `published` but its proposal baseline is
+  **stale** (a newer proposal version has been accepted), the agreement is not
+  signable and awaits a new agreement version based on the current accepted
+  proposal version; the stale version is never rebound;
 - if no version has been published, there is no current agreement version and
   nothing is signable.
 
@@ -724,9 +788,25 @@ customer-facing project stage.
   applicable to a customer) or an unsigned version as completed. A `signed`
   version that is no longer the current agreement version stays signed history
   and is never reported as unsigned.
+- **What a completion signal becoming false does and does not mean.** A newly
+  published agreement version requires its own signature (§8.2, §12), so the
+  derived completion signal for the *current* version may become false after a
+  new version is published — for example signed Agreement v1, then published
+  Agreement v2, gives a current version that is not yet signed. That is expected
+  and correct: the earlier signed version stays immutable signed history, and
+  the signal simply reports that the *current* version is not yet signed.
+  - The completion signal is a **read-only commercial gate/condition**, never a
+    command. Nothing consumes it as an instruction to change state.
+  - Publishing a new agreement version must **not**, by itself, deactivate,
+    suspend, roll back, or otherwise revoke an already activated project, and
+    must not change `customerStageFor`.
+  - Any post-activation amendment, re-signing, suspension, or deactivation
+    behavior requires a **separate Founder-approved activation/commercial
+    decision**. This design defines none of it.
 - **What this slice does not do.** No payment record, no payment status, no
-  payment provider, no activation, and no stage change. `customerStageFor` and
-  the customer-facing stages remain exactly as accepted elsewhere (I7).
+  payment provider, no activation, no deactivation, no suspension, no rollback,
+  and no stage change. `customerStageFor` and the customer-facing stages remain
+  exactly as accepted elsewhere (I7).
 - **The ordering and the exact "required payment conditions" remain a separate
   decision.** §15 already fixes the sequence; the specific conditions are a
   later Founder decision, not part of this design.
@@ -775,9 +855,16 @@ tests must cover, against the real services and store:
   (completed for that version), never both;
 - the derived "agreement completed" signal (§18) is true exactly when the
   current agreement version is `signed`, and is false when the current agreement
-  version is `published` or does not exist;
+  version is `published` (including when its proposal baseline is stale) or
+  does not exist;
 - a newer `draft` version does not change the current signable version, does not
   invalidate historical signed evidence, and does not itself become signable;
+- an agreement version whose accepted proposal baseline is no longer the
+  project's current accepted proposal version is **stale** and cannot be signed —
+  Agreement v1 based on accepted Proposal v1 → Proposal v2 accepted → signing
+  Agreement v1 is rejected and writes nothing, with no rebinding;
+- a later accepted proposal version makes the older agreement version stale
+  without changing its status or content;
 - the accepted proposal baseline is required: a draft or unaccepted proposal
   version cannot be a baseline;
 - `customerStageFor` and the customer-facing project stages are unchanged.
@@ -789,6 +876,10 @@ tests must cover, against the real services and store:
   the service;
 - a replayed idempotency key records exactly one signature and one audit event;
 - a duplicate idempotency key cannot create a second row;
+- the idempotency key is resolved **before** the terminal-state check: a replay
+  of an already-successful signing operation returns the recorded result even
+  though the version is now `signed`, while a fresh submission against a
+  `signed` version is rejected;
 - the signature row, the `signed` transition, and the audit event are atomic
   (a failure in one rolls back all);
 - audit metadata contains identifiers only and never agreement text, proposal
@@ -806,7 +897,13 @@ tests must cover, against the real services and store:
   history;
 - no assertion queries for a version that is both `published` and `signed`; the
   derived completion signal references the current agreement version's own
-  `signed` status.
+  `signed` status;
+- publishing a newer agreement version does not, by itself, change
+  `customerStageFor` and does not authorize automatic project deactivation,
+  suspension, rollback, or revocation of an activated project;
+- the derived "agreement completed" signal may become false when a newer
+  agreement version is published, and that change is a read-only condition, not
+  a deactivation command.
 
 ### 20.2 Acceptance gate
 
@@ -858,7 +955,13 @@ Additional standing conditions:
 
 1. no provider is activated, no deployment occurs, and no live customer data is
    processed without separate authorization;
-2. `customerStageFor` and the customer-facing stages remain unchanged.
+2. `customerStageFor` and the customer-facing stages remain unchanged;
+3. an agreement version bound to a no-longer-current accepted proposal baseline
+   is rejected at signing time — the design enforces the exact baseline and never
+   rebinds;
+4. publishing a new agreement version does not change `customerStageFor` and does
+   not deactivate an activated project (any such behavior is a separate
+   Founder-approved decision).
 
 A merged implementation PR would not authorize production deployment, provider
 activation, or live customer-data operation, would not assert legal validity,
@@ -873,7 +976,7 @@ they are resolved, the corresponding behavior must not be treated as decided.
 | # | Question | Status | Notes |
 | --- | --- | --- | --- |
 | Q1 | **Who may sign an agreement?** Owner/Admin only (recommended default), or ordinary project members as well; and whether a named signatory or a Founder countersignature is required. | **Founder decision required** | §9.2 recommends reusing the Owner/Admin acceptance authority; the grant itself is a business decision. |
-| Q2 | **Must the agreement restate/embed the accepted proposal terms, or may it reference the exact accepted version?** | **Founder / legal decision required** | §7.3 takes the smallest position (reference + optional Founder text) and does not claim reference alone satisfies any legal requirement. |
+| Q2 | **Must the agreement restate/embed the accepted proposal terms, or may it reference the exact accepted version?** | **Founder / legal decision required** | §7.3 takes the smallest position (reference + optional Founder text) and does not claim reference alone satisfies any legal requirement. The stale-baseline rule (§7.3) enforces the exact baseline binding and does not decide Q2. |
 | Q3 | **Is one agreement per project sufficient, or are multiple concurrent agreement types needed?** | **Founder decision required** | §7.1 assumes one as the smallest model; a second type is additive. |
 | Q4 | **What legal framework (if any) is targeted**, and is any specific signature standard required? | **Founder / legal decision required** | §17 makes no legal claim. |
 | Q5 | **Which e-signature provider (if any) is selected**, and what evidence does it add? | **Founder decision required** | §16 keeps the design provider-neutral; provider selection is separate and is required before a production signing flow depending on it. |
@@ -897,6 +1000,20 @@ implementing task without changing any business rule:
 5. whether the derived "agreement completed" signal is computed on read or
    exposed as a store method.
 
+**Review suggestions deliberately not adopted.** Two `LOW` review suggestions
+are **not required** by this design and are intentionally left unchanged:
+
+- **Adding a `proposal_response_id` to the signature record.** Unnecessary: the
+  signature already stores the exact accepted proposal baseline (`proposal_id`,
+  `proposal_version_id`, version number; §7.3, §9.1), which is what the baseline
+  check needs. The signature is an agreement-level action, not a
+  proposal-response action, and binding it to a specific response row would
+  couple agreement evidence to a record it does not depend on.
+- **Renaming the `agreement.signed` audit event to `agreement_version.signed`.**
+  Unnecessary: the event's identifiers-only metadata already carries the
+  agreement version identifier and version number (§14), and `agreement.signed`
+  stays coherent with `agreement.created` and `agreement_version.published`.
+
 ## 22. Consequences
 
 - The platform gains a small, provider-neutral, append-only agreement model that
@@ -907,6 +1024,9 @@ implementing task without changing any business rule:
 - Signed history cannot be silently overwritten: it is append-only, single per
   version, bound to an exact accepted proposal version, and never re-derived
   from mutable state.
+- An agreement cannot be signed from a stale commercial baseline: if a newer
+  proposal version is accepted, an agreement version bound to the older accepted
+  version stops being signable and is never silently rebound.
 - The commercial gate becomes implementable in steps: acceptance exists today; a
   completed-agreement signal becomes available when this slice is implemented;
   payment and activation remain later, separate decisions whose ordering §15
@@ -945,8 +1065,8 @@ claim and routes that to separate legal review (Q4, Q8).
 
 **Add expiry, reminders, and decline states now.** Rejected for the smallest
 slice. The state model stays at `draft` / `published` / `signed`; "supersession"
-is only a derived concept (a version is no longer the highest-numbered
-`published` version), never a stored state (Q9).
+(a later agreement version exists) and "stale" (the accepted proposal baseline
+changed) are only derived concepts, never a stored state (Q9).
 
 **Introduce a new signer role or identity system.** Rejected. It reuses the
 existing person, organization, and project-access model; only the signer-
@@ -975,7 +1095,7 @@ Approval covers the design as proposed, including:
   immutable baseline and never mutates the proposal (§7.3);
 - the derived current-agreement-version / current-signable-version / signed-
   history model, with signed versions immutable and terminal and no stored
-  `superseded` state (§8);
+  `superseded`/`stale` state (§8);
 - an append-only signature record carrying person, organization, project,
   agreement version, accepted proposal baseline, authority exercised, action,
   timestamp, and idempotency key, and no signature image or identity artifact
@@ -987,8 +1107,8 @@ Approval covers the design as proposed, including:
   completion, historical record — with no stored awaiting-signature state (§10);
 - application-level evidence and immutability guarantees that create **no** claim
   of legal validity (§11, §17);
-- repeat-signing and supersession rules that never overwrite signed history
-  (§12);
+- repeat-signing and supersession rules that never overwrite signed history and
+  that reject a stale accepted-proposal baseline with no write (§12);
 - customer authorization on the existing project-access model with no bypass
   (§13);
 - identifier-only, transactionally consistent audit events with no new Founder
@@ -999,7 +1119,8 @@ Approval covers the design as proposed, including:
 - a provider-neutral architecture with provider selection left as Q5 **Founder
   decision required** (§16);
 - the agreement boundary to payment and activation, with payment and activation
-  left out (§18);
+  left out and no automatic project deactivation from publishing a new agreement
+  version (§18);
 - notifications out of scope (§19).
 
 Approval of this design does **not** authorize production deployment, live
