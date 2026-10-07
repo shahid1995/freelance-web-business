@@ -1180,6 +1180,22 @@ export class SqlitePlatformStore implements PlatformStore {
     ).map((row) => this.toProposalResponse(row));
   }
 
+  /**
+   * The responses recorded against one exact proposal version, oldest first.
+   *
+   * Reads by `proposal_version_id`, which the `proposal_responses_by_version`
+   * index covers, so one version's history is fetched without scanning the
+   * whole project. Ordering matches `listProposalResponses`.
+   */
+  listProposalResponsesByVersion(
+    proposalVersionId: ProposalVersionId,
+  ): ProposalResponseInternal[] {
+    return this.all(
+      "SELECT * FROM proposal_responses WHERE proposal_version_id = ? ORDER BY created_at ASC, id ASC",
+      proposalVersionId,
+    ).map((row) => this.toProposalResponse(row));
+  }
+
   findProposalResponseByKey(actionKey: string): ProposalResponseInternal | null {
     const row = this.get(
       "SELECT * FROM proposal_responses WHERE action_key = ?",

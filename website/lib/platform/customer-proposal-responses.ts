@@ -165,7 +165,7 @@ export class CustomerProposalResponseService {
       }
 
       // 5. The rule table, derived from this version's history alone.
-      this.evaluateRules(store, project.id, version.id, action);
+      this.evaluateRules(store, version.id, action);
 
       // 6. Write the immutable response row.
       const now = this.options.clock.now();
@@ -234,9 +234,7 @@ export class CustomerProposalResponseService {
     if (!version || version.publishedAt === null) {
       return null;
     }
-    const responses = this.options.store
-      .listProposalResponses(project.id)
-      .filter((response) => response.proposalVersionId === version.id);
+    const responses = this.options.store.listProposalResponsesByVersion(version.id);
     const state = deriveResponseState(responses);
     return toCustomerProposalResponseStanding({
       versionNumber: version.versionNumber,
@@ -255,13 +253,10 @@ export class CustomerProposalResponseService {
    */
   private evaluateRules(
     store: PlatformStore,
-    projectId: ProjectId,
     proposalVersionId: string,
     action: ProposalResponseAction,
   ): void {
-    const responses = store
-      .listProposalResponses(projectId)
-      .filter((response) => response.proposalVersionId === proposalVersionId);
+    const responses = store.listProposalResponsesByVersion(proposalVersionId);
     const isAccepted = responses.some((response) => response.action === "accepted");
 
     if (action === "accepted") {

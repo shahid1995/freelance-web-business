@@ -282,6 +282,18 @@ export interface PlatformStore {
    */
   listProposalResponses(projectId: ProjectId): ProposalResponseInternal[];
   /**
+   * The responses recorded against one exact proposal version, oldest first.
+   *
+   * A read-only lookup for a single version's history: it reads that version's
+   * rows directly — served by the `proposal_responses_by_version` index — rather
+   * than loading the whole project's response history and filtering it in
+   * memory. Ordering matches `listProposalResponses`, so both reads agree on
+   * what one version's history is.
+   */
+  listProposalResponsesByVersion(
+    proposalVersionId: ProposalVersionId,
+  ): ProposalResponseInternal[];
+  /**
    * Looks up one submission by its idempotency key.
    *
    * A retried or replayed submission hits this first and resolves to the

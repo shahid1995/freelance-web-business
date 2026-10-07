@@ -1002,6 +1002,48 @@ describe("proposal response storage invariants", () => {
     assert.equal(responsesFor(harness, owner.projectId).length, 1);
     harness.platform.close();
   });
+
+  it("reads one version's response history by version alone", async () => {
+    const harness = await responseHarness();
+    const owner = await publishedOwner(harness);
+    const firstVersion = harness.platform.store.findCurrentPublishedProposalVersion(
+      owner.projectId,
+    );
+    assert.ok(firstVersion);
+
+    respondAs(harness, owner, { action: "changes_requested", message: "v1 first" });
+    respondAs(harness, owner, { action: "changes_requested", message: "v1 second" });
+    publishNextVersion(harness, owner, 2);
+    const secondVersion = harness.platform.store.findCurrentPublishedProposalVersion(
+      owner.projectId,
+    );
+    assert.ok(secondVersion);
+    respondAs(harness, owner, { action: "accepted", versionNumber: 2 });
+
+    // The project-wide history is the union of both versions' responses...
+    assert.equal(responsesFor(harness, owner.projectId).length, 3);
+
+    // ...while the per-version read returns exactly that version's rows, oldest
+    // first, so reading one version never loads another version's history.
+    const firstHistory = harness.platform.store.listProposalResponsesByVersion(
+      firstVersion.id,
+    );
+    assert.deepEqual(firstHistory.map((row) => row.message), ["v1 first", "v1 second"]);
+    assert.ok(firstHistory.every((row) => row.proposalVersionId === firstVersion.id));
+
+    const secondHistory = harness.platform.store.listProposalResponsesByVersion(
+      secondVersion.id,
+    );
+    assert.deepEqual(secondHistory.map((row) => row.action), ["accepted"]);
+    assert.ok(secondHistory.every((row) => row.proposalVersionId === secondVersion.id));
+
+    // A version with no recorded history reads as empty, not as another's rows.
+    assert.deepEqual(
+      harness.platform.store.listProposalResponsesByVersion("version-with-no-history"),
+      [],
+    );
+    harness.platform.close();
+  });
 });
 
 describe("proposal response boundaries", () => {
