@@ -1012,6 +1012,10 @@ describe("proposal response storage invariants", () => {
     assert.ok(firstVersion);
 
     respondAs(harness, owner, { action: "changes_requested", message: "v1 first" });
+    // Move the clock so the two rows differ in time: rows written in the same
+    // millisecond tie on `created_at` and fall back to the random id, so the
+    // "oldest first" assertion below is only meaningful once time advances.
+    harness.clock.advance(1_000);
     respondAs(harness, owner, { action: "changes_requested", message: "v1 second" });
     publishNextVersion(harness, owner, 2);
     const secondVersion = harness.platform.store.findCurrentPublishedProposalVersion(
