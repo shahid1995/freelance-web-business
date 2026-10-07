@@ -97,7 +97,7 @@ The approved product requirements describe the rest of the customer and delivery
 
 Each of these remains a future design and implementation step until its own implementation decision is approved.
 
-The agreement/e-signature design gate is now open in docs/decisions/2026-10-07-agreement-e-signature.md (Status: Proposed; Founder approval pending). It is a proposed design only: it is not implemented, no provider is selected, and no legal or retention decision is made. Opening a design gate is not implementation.
+The agreement/e-signature design gate is Founder-approved in docs/decisions/2026-10-07-agreement-e-signature.md (Status: Approved; Founder approval recorded 2026-10-07). It is an approved design only: it is not implemented, no provider is selected, no legal or retention decision is made, and Q1, Q2, and Q3 remain required before implementation. Approval of the design is not implementation or provider activation.
 
 ### Planned or deferred
 
