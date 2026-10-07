@@ -6,17 +6,17 @@
 **Scope:** Smallest durable agreement and e-signature model and workflow — agreement identity, agreement versioning, signatory identity, signature evidence and immutability, and the boundary to payment and activation — with no provider selected and no legal-validity claim  
 **Related:** Customer Platform Direction, Customer Platform Requirements (§10, §13, §15, §24, §26, §27, §28), Customer Platform Foundation, Proposal Foundation, Customer Proposal Review, Customer Proposal Response
 
-> **Status note.** This is an **approved design gate**. Founder approval was recorded on 2026-10-07. It authorizes the design as the basis for later implementation planning, but it does **not** authorize implementation before Q1, Q2, and Q3 are resolved, does not authorize provider selection or production activation, and does not resolve any legal question. It defines the smallest durable agreement/e-signature model the platform needs, preserves the accepted separation between **Accept Proposal** (application-level commercial evidence) and **Sign Agreement**, and marks every unresolved business, legal, and provider question as **Founder decision required** rather than assuming an answer. Nothing described here is implemented, deployed, activated, or legally certified, and no live customer data is processed.
+> **Status note.** This is an **approved design gate**. Founder approval was recorded on 2026-10-07. It authorizes the design as the basis for later implementation planning, but it does **not** authorize provider selection or production activation, and does not resolve any remaining legal or business question. It defines the smallest durable agreement/e-signature model the platform needs, preserves the accepted separation between **Accept Proposal** (application-level commercial evidence) and **Sign Agreement**, and marks every unresolved business, legal, and provider question as **Founder decision required** rather than assuming an answer. Nothing described here is implemented, deployed, activated, or legally certified, and no live customer data is processed.
 
 ## 1. Status
 
-**Status: Proposed — Founder approval pending.**
+**Status: Approved — Founder approval recorded 2026-10-07.**
 
-This document is the Founder-approved design for the Agreement and E-signature slice. It authorizes no implementation by itself, creates, deploys, and activates nothing, and implementation remains blocked until the required pre-implementation decisions Q1, Q2, and Q3 are resolved and recorded.
+This document is the Founder-approved design for the Agreement and E-signature slice. It authorizes no implementation by itself, creates, deploys, and activates nothing. The Founder has now resolved Q1, Q2, and Q3; implementation remains a separate later task and is subject to the verification contract and remaining production/provider gates recorded here.
 
 Three facts must be kept separate, and none implies the next:
 
-- **The design is approved.** Founder approval was recorded on 2026-10-07. The implementation remains a separate, later task and may proceed only after the pre-implementation decisions Q1, Q2, and Q3 are resolved and recorded.
+- **The design is approved.** Founder approval was recorded on 2026-10-07. Q1, Q2, and Q3 are now resolved; implementation remains a separate later task and must follow the verification contract and remaining production/provider gates.
 - **Nothing is implemented.** No agreement model, table, route, endpoint,
   service, or UI exists, and this design does not create one. A proposed or even
   accepted design is not a capability.
@@ -208,11 +208,7 @@ project. It is organizational and long-lived; its content lives in its versions.
 - An agreement is created by the Founder/internal authority; it is never created
   by a customer.
 
-Whether a single project may ever need **more than one concurrent agreement**
-(for example a separate confidentiality agreement alongside a services
-agreement) is a **Founder decision required** (section 21, Q3). This design
-assumes one agreement per project as the smallest model; introducing a second
-agreement type later is an additive change, not a rewrite.
+The Founder has decided that the platform will have **one primary agreement per project initially**. Additional agreement types may be introduced later as related records if an actual business need requires them; that expansion is additive and does not change this initial identity/versioning model.
 
 ### 7.2 Agreement version identity
 
@@ -245,11 +241,7 @@ Concretely:
 - The agreement may additionally carry **Founder-authored agreement text** for
   terms the proposal does not state. That text belongs to the agreement version,
   not to the proposal.
-- Whether the agreement must **restate or embed the full accepted proposal terms**
-  rather than reference them is a **Founder / legal decision required**
-  (section 21, Q2). This design takes the smallest position — reference the
-  exact version, allow additional agreement text — and does not claim that
-  reference alone satisfies any legal requirement.
+- The Founder has decided that an agreement version **binds to the exact accepted proposal version** and may contain **additional contractual terms** that belong to the agreement. This does not claim that reference alone satisfies any legal requirement and does not permit rebinding to a different proposal version.
 - An agreement version may only be based on a proposal version that is
   **accepted** under Customer Proposal Response. It may not be based on a draft,
   an unpublished version, or a merely published but unaccepted version. An
