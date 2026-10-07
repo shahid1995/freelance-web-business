@@ -1102,55 +1102,20 @@ duplicate the accepted stage model; `customerStageFor` stays unchanged (I7).
 
 ## 24. Approval
 
-**Status: Proposed — Founder approval pending.**
+**Status: Approved — Founder approval recorded 2026-10-07.**
 
-This document records the Founder-approved Agreement / E-signature design gate for the Phase 4 commercial workflow. It is a design decision, not an implementation, and it records the unresolved business and legal questions openly in section 21.
+This document records the Founder-approved Agreement / E-signature design gate for the Phase 4 commercial workflow. It is a design decision, not an implementation, and it records the resolved Q1–Q3 choices and the remaining business/legal questions in section 21.
 
-Approval covers the design as proposed, including:
+Approval covers the design, including:
 
-- one agreement per project, with immutable numbered versions and exactly three
-  version states (`draft`, `published`, `signed`) (§7, §8);
-- an agreement version that references an exact accepted proposal version as an
-  immutable baseline and never mutates the proposal (§7.3);
-- the derived current-agreement-version / current-signable-version / signed-
-  history model, where the current agreement version must match the project's
-  current accepted proposal baseline, a stale signed version stays signed history
-  but is not current, and no `superseded`/`stale` state is stored (§8);
-- an append-only signature record carrying person, organization, project,
-  agreement version, accepted proposal baseline, authority exercised, action,
-  timestamp, and idempotency key, and no signature image or identity artifact
-  (§9.1), with the signature cardinality — one signature per version (Q1-A) or a
-  modeled multi-signature completion (Q1-B) — left conditional on Q1 until that
-  decision is recorded;
-- signer authority reusing the Customer Proposal Response acceptance authority
-  as the recommended default, with the final grant and the signature-cardinality
-  outcome recorded as Q1 **Founder decision required** (§9.2);
-- the smallest signature workflow — present, intent, transactional validation,
-  completion, historical record — whose completion semantics are conditional on
-  Q1 and no stored awaiting-signature state (§10);
-- application-level evidence and immutability guarantees that create **no** claim
-  of legal validity (§11, §17);
-- repeat-signing and supersession rules that never overwrite signed history and
-  that reject a stale accepted-proposal baseline with no write (§12), and that
-  hold signature cardinality and completion open until Q1 is resolved (§9.2,
-  §20.2);
-- customer authorization on the existing project-access model with no bypass
-  (§13);
-- identifier-only, transactionally consistent audit events with no new Founder
-  UI required (§14);
-- the separated retention concerns, with the legal retention period and
-  jurisdiction-specific requirements left as Q7 and Q8 **Founder / legal
-  decision required** (§15);
-- a provider-neutral architecture with provider selection left as Q5 **Founder
-  decision required** (§16);
-- the agreement boundary to payment and activation, with payment and activation
-  left out and no automatic project deactivation from publishing a new agreement
-  version (§18);
-- notifications out of scope (§19).
+- one primary agreement per project initially, with additional agreement types allowed later as related records if actually needed;
+- exact accepted proposal version binding, with additional contractual terms permitted in the agreement;
+- one authorized customer signer per agreement version, with no default Founder countersignature and Q1-A single-signature completion;
+- immutable numbered agreement versions with exactly three version states (`draft`, `published`, `signed`), derived current-version semantics, and immutable signed history;
+- append-only signature records, authorization re-checks, idempotent signing, atomic signature/audit/state writes, and no signature image or identity artifact;
+- provider-neutral architecture, no legal-validity claim, and the payment/activation boundary unchanged;
+- Q4–Q10 remain separate later decisions and production/provider/legal gates.
 
-Approval of this design does **not** authorize production deployment, live
-customer-data operation, provider activation, payment implementation, automatic
-project activation, or legal certification, and it does not resolve Q1–Q10. Each
-of those requires its own later decision.
+Approval does **not** authorize production deployment, live customer-data operation, provider activation, payment implementation, automatic project activation, or legal certification.
 
-Following approval, implementation of this design remains a separate, later task that must satisfy the verification contract in §20.1 and must not begin before the pre-implementation decisions Q1, Q2, and Q3 are resolved and recorded (§20.2).
+Following approval and the Founder decisions recorded here, implementation of this design is a separate, later task that must satisfy the verification contract in §20.1 and the remaining production/provider gates in §15–§17 and §21.
