@@ -258,10 +258,9 @@ Concretely:
 - **Stale is not a stored state.** A stale baseline is a **derived** fact,
   exactly like supersession (§8.2). It never changes an agreement version's
   status and never edits a version or a signature.
-- **Enforcing the exact baseline is not the Q2 decision.** Q2 asks whether the
-  agreement must reproduce or may reference the accepted terms; that question
-  stays open. This rule only enforces the baseline binding this design already
-  defines, and it holds under either answer to Q2.
+- **The exact baseline rule is now settled by Q2.** The agreement version binds
+  to the exact accepted proposal version and may contain additional contractual
+  terms; it is never silently rebound to a different proposal version.
 
 ### 7.4 What the model deliberately does not store
 
@@ -462,7 +461,6 @@ What is a **design/implementation rule** (settled by this design if approved):
 
 The Q1 decision is now recorded: one authorized customer signer is sufficient, and Founder countersignature is not required by default. The rule must be **server-enforced on every submission**, never inferred from the presence of a UI control.
 
-### 9.3 Authorization reuse
 ### 9.3 Authorization reuse
 
 Signing reuses the existing customer authorization model unchanged:
@@ -880,7 +878,7 @@ tests must cover, against the real services and store:
 
 **Immutability and evidence**
 
-- - **signature cardinality — Q1-A settled.** One authorized customer signature completes each agreement version; a partial unique index is the last-resort guard against a second row.
+- **signature cardinality — Q1-A settled.** One authorized customer signature completes each agreement version; a partial unique index is the last-resort guard against a second row.
 
 - a replayed idempotency key records exactly one signature and one audit event;
 - a duplicate idempotency key cannot create a second row;
