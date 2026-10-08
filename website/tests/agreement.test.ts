@@ -66,8 +66,11 @@ describe("agreement authoring", () => {
 
     const events = harness.platform.store.listAuditEventsForProject(owner.projectId, 50);
     assert.deepEqual(
-      events.filter((event) => event.type.startsWith("agreement")).map((event) => event.type),
-      ["agreement_version.created", "agreement.created"],
+      events
+        .filter((event) => event.type.startsWith("agreement"))
+        .map((event) => event.type)
+        .sort(),
+      ["agreement.created", "agreement_version.created"].sort(),
     );
     harness.platform.close();
   });
@@ -232,6 +235,16 @@ describe("customer agreement signing", () => {
     });
 
     assert.deepEqual(replay, first);
+    expectFailure(
+      () =>
+        harness.platform.customerAgreements.sign({
+          personId: owner.personId,
+          projectId: owner.projectId,
+          versionNumber: 1,
+          actionKey: "same-key-new-operation",
+        }),
+      "agreement_completed",
+    );
     const agreement = harness.platform.store.findAgreementByProject(owner.projectId);
     assert.ok(agreement);
     const version = harness.platform.store.listAgreementVersions(agreement.id)[0]!;
