@@ -1,4 +1,4 @@
-import { requireFounderWithBootstrap, requireProjectAccess } from "./authorization";
+import { requireFounderWithBootstrap } from "./authorization";
 import type { Clock } from "./clock";
 import {
   NotFoundError,
@@ -99,7 +99,7 @@ export class AgreementService {
         createdByPersonId: input.personId,
         createdAt: now,
       });
-      this.recordEvent({
+      this.recordEvent(store, {
         type: "agreement.created",
         personId: input.personId,
         project,
@@ -191,7 +191,7 @@ export class AgreementService {
       }
 
       store.publishAgreementVersion({ id: version.id, now });
-      this.recordEvent({
+      this.recordEvent(store, {
         type: "agreement_version.published",
         personId: input.personId,
         project,
@@ -232,7 +232,7 @@ export class AgreementService {
       createdAt: input.now,
       publishedAt: null,
     });
-    this.recordEvent({
+    this.recordEvent(input.store, {
       type: "agreement_version.created",
       personId: input.personId,
       project: input.project,
@@ -268,14 +268,14 @@ export class AgreementService {
     return agreement;
   }
 
-  private recordEvent(input: {
+  private recordEvent(store: PlatformStore, input: {
     type: AuditEventType;
     personId: string;
     project: ProjectInternal;
     occurredAt: number;
     metadata: Record<string, unknown>;
   }): void {
-    this.options.store.appendAuditEvent({
+    store.appendAuditEvent({
       id: this.options.newId(),
       organizationId: input.project.organizationId,
       personId: input.personId,
