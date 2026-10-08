@@ -4,17 +4,12 @@ import { describe, it } from "node:test";
 import { isPlatformError } from "../lib/platform/errors";
 import { generateActionKey } from "../lib/platform/secrets";
 import {
-  addVersion,
-  authorFor,
-  content,
   createProposalHarness,
   ownerWithProject,
-  publish,
   publishFirstVersion,
   publishNextVersion,
   type Owner,
 } from "./support/proposals";
-import { MEMBER_EMAIL, addOrdinaryMember, signIn, type TestPlatform } from "./support/harness";
 
 const agreementContent = "Additional terms for this synthetic agreement.";
 
