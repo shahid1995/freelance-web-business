@@ -66,6 +66,9 @@ export default async function InternalProposalPage({
             <p className="portal__meta">
               <Link href={`/internal/projects/${encodeURIComponent(reference)}/review`}>
                 Back to review
+              </Link>{" · "}
+              <Link href={`/internal/projects/${encodeURIComponent(reference)}/agreement`}>
+                Agreement
               </Link>
             </p>
           </div>

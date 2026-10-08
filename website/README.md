@@ -114,6 +114,7 @@ separate from the public content model in `lib/content.ts` and `lib/services.ts`
 | Proposal foundation | `lib/platform/proposals.ts` | Founder-only: one proposal per project, append-only numbered versions, explicit publication |
 | Customer proposal review | `lib/platform/customer-proposals.ts` | Customer-facing read-only: the current published version only, never a draft |
 | Customer proposal response | `lib/platform/customer-proposal-responses.ts` | Customer-facing: Request Changes and Accept, each bound to the current published version, append-only, Accept restricted to organization Owner/Admin |
+| Agreements / e-signatures | `lib/platform/agreements.ts`, `lib/platform/customer-agreements.ts` | Founder-only version authoring plus customer signing using Q1-A; exact accepted proposal baseline; provider-neutral; signed-content download/view remains deferred under Q10 |
 | Internal projections | `lib/platform/internal-views.ts` | Internal views built field by field; drops audit metadata and never spreads a stored record |
 | Request guard | `lib/platform/http.ts` | Origin check plus session requirement |
 | Next.js adapter | `lib/platform/server.ts` | Reads headers, redirects; no authorization logic |
@@ -126,6 +127,7 @@ Customer routes:
 - /dashboard
 - /dashboard/projects/{reference}/intake
 - /dashboard/projects/{reference}/proposal
+- /dashboard/projects/{reference}/agreement
 
 Endpoints (all state-changing requests are same-origin POSTs):
 
@@ -136,6 +138,7 @@ Endpoints (all state-changing requests are same-origin POSTs):
 - POST /api/projects
 - POST /api/projects/{reference}/intake
 - POST /api/projects/{reference}/proposal-response
+- POST /api/projects/{reference}/agreement/sign
 
 ### Founder workspace
 
@@ -148,7 +151,10 @@ A separate internal surface, governed by
 - POST /api/internal/projects/{reference}/review
 - /internal/projects/{reference}/proposal — proposal authoring (governed by
   `docs/decisions/2026-10-05-proposal-foundation.md`)
+- /internal/projects/{reference}/agreement — agreement authoring and publication (governed by
+  `docs/decisions/2026-10-07-agreement-e-signature.md`)
 - POST /api/internal/projects/{reference}/proposal
+- POST /api/internal/projects/{reference}/agreement
 
 It is not linked from any customer page and shares no handler with the customer
 endpoints. Access requires a session holding the `founder` internal capability,

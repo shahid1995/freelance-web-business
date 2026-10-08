@@ -18,6 +18,9 @@ import { DatabaseSync, type StatementSync } from "node:sqlite";
 
 import {
   PROJECT_INTAKE_COLUMNS,
+  type AgreementInternal,
+  type AgreementSignatureInternal,
+  type AgreementVersionInternal,
   PROJECT_INTAKE_FIELDS,
   emptyProjectIntakeAnswers,
   type AuditEvent,
@@ -307,6 +310,54 @@ CREATE INDEX IF NOT EXISTS proposal_responses_by_version
 -- guarantee, not merely an application check.
 CREATE UNIQUE INDEX IF NOT EXISTS proposal_responses_accepted_once
   ON proposal_responses (proposal_version_id) WHERE action = 'accepted';
+
+-- Stable agreement identity: one primary agreement per project.
+CREATE TABLE IF NOT EXISTS agreements (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL UNIQUE REFERENCES projects(id),
+  created_by_person_id TEXT NOT NULL REFERENCES people(id),
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS agreements_by_project ON agreements (project_id);
+
+CREATE TABLE IF NOT EXISTS agreement_versions (
+  id TEXT PRIMARY KEY,
+  agreement_id TEXT NOT NULL REFERENCES agreements(id),
+  proposal_id TEXT NOT NULL REFERENCES proposals(id),
+  proposal_version_id TEXT NOT NULL REFERENCES proposal_versions(id),
+  proposal_version_number INTEGER NOT NULL,
+  version_number INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('draft', 'published', 'signed')),
+  additional_terms TEXT NOT NULL,
+  created_by_person_id TEXT NOT NULL REFERENCES people(id),
+  created_at INTEGER NOT NULL,
+  published_at INTEGER,
+  UNIQUE (agreement_id, version_number)
+);
+CREATE INDEX IF NOT EXISTS agreement_versions_by_agreement
+  ON agreement_versions (agreement_id, version_number);
+CREATE INDEX IF NOT EXISTS agreement_versions_by_proposal_version
+  ON agreement_versions (proposal_version_id);
+
+CREATE TABLE IF NOT EXISTS agreement_signatures (
+  id TEXT PRIMARY KEY,
+  person_id TEXT NOT NULL REFERENCES people(id),
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  agreement_id TEXT NOT NULL REFERENCES agreements(id),
+  agreement_version_id TEXT NOT NULL REFERENCES agreement_versions(id),
+  proposal_id TEXT NOT NULL REFERENCES proposals(id),
+  proposal_version_id TEXT NOT NULL REFERENCES proposal_versions(id),
+  proposal_version_number INTEGER NOT NULL,
+  authority_role TEXT NOT NULL CHECK (authority_role IN ('owner', 'admin')),
+  action TEXT NOT NULL CHECK (action = 'signed'),
+  created_at INTEGER NOT NULL,
+  action_key TEXT NOT NULL UNIQUE
+);
+CREATE INDEX IF NOT EXISTS agreement_signatures_by_version
+  ON agreement_signatures (agreement_version_id, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS agreement_signatures_once
+  ON agreement_signatures (agreement_version_id);
 
 CREATE TABLE IF NOT EXISTS rate_limits (
   bucket TEXT PRIMARY KEY,
@@ -1218,6 +1269,209 @@ export class SqlitePlatformStore implements PlatformStore {
       proposalVersionId,
     );
     return row ? this.toProposalResponse(row) : null;
+  }
+
+  // --- agreements ----------------------------------------------------------
+
+  private toAgreement(row: Row): AgreementInternal {
+    return {
+      id: text(row, "id"),
+      projectId: text(row, "project_id"),
+      createdByPersonId: text(row, "created_by_person_id"),
+      createdAt: int(row, "created_at"),
+    };
+  }
+
+  private toAgreementVersion(row: Row): AgreementVersionInternal {
+    return {
+      id: text(row, "id"),
+      agreementId: text(row, "agreement_id"),
+      proposalId: text(row, "proposal_id"),
+      proposalVersionId: text(row, "proposal_version_id"),
+      proposalVersionNumber: int(row, "proposal_version_number"),
+      versionNumber: int(row, "version_number"),
+      status: text(row, "status") as AgreementVersionInternal["status"],
+      additionalTerms: text(row, "additional_terms"),
+      createdByPersonId: text(row, "created_by_person_id"),
+      createdAt: int(row, "created_at"),
+      publishedAt: nullableInt(row, "published_at"),
+    };
+  }
+
+  private toAgreementSignature(row: Row): AgreementSignatureInternal {
+    return {
+      id: text(row, "id"),
+      personId: text(row, "person_id"),
+      organizationId: text(row, "organization_id"),
+      projectId: text(row, "project_id"),
+      agreementId: text(row, "agreement_id"),
+      agreementVersionId: text(row, "agreement_version_id"),
+      proposalId: text(row, "proposal_id"),
+      proposalVersionId: text(row, "proposal_version_id"),
+      proposalVersionNumber: int(row, "proposal_version_number"),
+      authorityRole: text(row, "authority_role") as AgreementSignatureInternal["authorityRole"],
+      action: "signed",
+      createdAt: int(row, "created_at"),
+      actionKey: text(row, "action_key"),
+    };
+  }
+
+  findCurrentAcceptedProposalVersion(projectId: ProjectId): ProposalVersionInternal | null {
+    const row = this.get(
+      "SELECT pv.* FROM proposal_versions pv " +
+        "JOIN proposals p ON p.id = pv.proposal_id " +
+        "JOIN proposal_responses pr ON pr.proposal_version_id = pv.id AND pr.action = 'accepted' " +
+        "WHERE p.project_id = ? ORDER BY pv.version_number DESC LIMIT 1",
+      projectId,
+    );
+    return row ? this.toProposalVersion(row) : null;
+  }
+
+  findAgreementByProject(projectId: ProjectId): AgreementInternal | null {
+    const row = this.get("SELECT * FROM agreements WHERE project_id = ?", projectId);
+    return row ? this.toAgreement(row) : null;
+  }
+
+  findAgreementById(id: string): AgreementInternal | null {
+    const row = this.get("SELECT * FROM agreements WHERE id = ?", id);
+    return row ? this.toAgreement(row) : null;
+  }
+
+  listAgreementVersions(agreementId: string): AgreementVersionInternal[] {
+    return this.all(
+      "SELECT * FROM agreement_versions WHERE agreement_id = ? ORDER BY version_number ASC",
+      agreementId,
+    ).map((row) => this.toAgreementVersion(row));
+  }
+
+  findAgreementVersionById(id: string): AgreementVersionInternal | null {
+    const row = this.get("SELECT * FROM agreement_versions WHERE id = ?", id);
+    return row ? this.toAgreementVersion(row) : null;
+  }
+
+  findCurrentAgreementVersion(projectId: ProjectId): AgreementVersionInternal | null {
+    const row = this.get(
+      "SELECT av.* FROM agreement_versions av " +
+        "JOIN agreements a ON a.id = av.agreement_id " +
+        "WHERE a.project_id = ? AND av.status IN ('published', 'signed') " +
+        "AND av.proposal_version_id = (" +
+        "SELECT pv.id FROM proposal_versions pv " +
+        "JOIN proposal_responses pr ON pr.proposal_version_id = pv.id AND pr.action = 'accepted' " +
+        "JOIN proposals p ON p.id = pv.proposal_id " +
+        "WHERE p.project_id = ? ORDER BY pv.version_number DESC LIMIT 1" +
+        ") ORDER BY av.version_number DESC LIMIT 1",
+      projectId,
+      projectId,
+    );
+    return row ? this.toAgreementVersion(row) : null;
+  }
+
+  findCurrentSignableAgreementVersion(projectId: ProjectId): AgreementVersionInternal | null {
+    const row = this.get(
+      "SELECT current_version.* FROM (" +
+        "SELECT av.* FROM agreement_versions av " +
+        "JOIN agreements a ON a.id = av.agreement_id " +
+        "WHERE a.project_id = ? AND av.status IN ('published', 'signed') " +
+        "AND av.proposal_version_id = (" +
+        "SELECT pv.id FROM proposal_versions pv " +
+        "JOIN proposal_responses pr ON pr.proposal_version_id = pv.id AND pr.action = 'accepted' " +
+        "JOIN proposals p ON p.id = pv.proposal_id " +
+        "WHERE p.project_id = ? ORDER BY pv.version_number DESC LIMIT 1" +
+        ") ORDER BY av.version_number DESC LIMIT 1" +
+        ") AS current_version WHERE current_version.status = 'published'",
+      projectId,
+      projectId,
+    );
+    return row ? this.toAgreementVersion(row) : null;
+  }
+
+  createAgreement(input: AgreementInternal): AgreementInternal {
+    this.run(
+      "INSERT INTO agreements (id, project_id, created_by_person_id, created_at) VALUES (?, ?, ?, ?)",
+      input.id,
+      input.projectId,
+      input.createdByPersonId,
+      input.createdAt,
+    );
+    const stored = this.findAgreementById(input.id);
+    if (!stored) throw new Error("Agreement was not readable immediately after creation.");
+    return stored;
+  }
+
+  createAgreementVersion(input: AgreementVersionInternal): AgreementVersionInternal {
+    this.run(
+      "INSERT INTO agreement_versions " +
+        "(id, agreement_id, proposal_id, proposal_version_id, proposal_version_number, " +
+        "version_number, status, additional_terms, created_by_person_id, created_at, published_at) " +
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      input.id,
+      input.agreementId,
+      input.proposalId,
+      input.proposalVersionId,
+      input.proposalVersionNumber,
+      input.versionNumber,
+      input.status,
+      input.additionalTerms,
+      input.createdByPersonId,
+      input.createdAt,
+      input.publishedAt,
+    );
+    const stored = this.findAgreementVersionById(input.id);
+    if (!stored) throw new Error("Agreement version was not readable immediately after creation.");
+    return stored;
+  }
+
+  publishAgreementVersion(input: { id: string; now: number }): void {
+    this.run(
+      "UPDATE agreement_versions SET published_at = ?, status = 'published' " +
+        "WHERE id = ? AND status = 'draft' AND published_at IS NULL",
+      input.now,
+      input.id,
+    );
+  }
+
+  signAgreementVersion(input: { id: string; now: number }): void {
+    this.run(
+      "UPDATE agreement_versions SET status = 'signed' WHERE id = ? AND status = 'published'",
+      input.id,
+    );
+  }
+
+  createAgreementSignature(input: AgreementSignatureInternal): AgreementSignatureInternal {
+    this.run(
+      "INSERT INTO agreement_signatures " +
+        "(id, person_id, organization_id, project_id, agreement_id, agreement_version_id, " +
+        "proposal_id, proposal_version_id, proposal_version_number, authority_role, " +
+        "action, created_at, action_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      input.id,
+      input.personId,
+      input.organizationId,
+      input.projectId,
+      input.agreementId,
+      input.agreementVersionId,
+      input.proposalId,
+      input.proposalVersionId,
+      input.proposalVersionNumber,
+      input.authorityRole,
+      input.action,
+      input.createdAt,
+      input.actionKey,
+    );
+    const stored = this.findAgreementSignatureByKey(input.actionKey);
+    if (!stored) throw new Error("Agreement signature was not readable immediately after creation.");
+    return stored;
+  }
+
+  findAgreementSignatureByKey(actionKey: string): AgreementSignatureInternal | null {
+    const row = this.get("SELECT * FROM agreement_signatures WHERE action_key = ?", actionKey);
+    return row ? this.toAgreementSignature(row) : null;
+  }
+
+  listAgreementSignaturesByVersion(agreementVersionId: string): AgreementSignatureInternal[] {
+    return this.all(
+      "SELECT * FROM agreement_signatures WHERE agreement_version_id = ? ORDER BY created_at ASC, id ASC",
+      agreementVersionId,
+    ).map((row) => this.toAgreementSignature(row));
   }
 
   // --- internal capabilities ------------------------------------------------

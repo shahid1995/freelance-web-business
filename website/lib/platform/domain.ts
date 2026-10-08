@@ -150,6 +150,61 @@ export type ProposalId = string;
 export type ProposalVersionId = string;
 export type ProposalResponseId = string;
 
+export type AgreementId = string;
+export type AgreementVersionId = string;
+export type AgreementSignatureId = string;
+
+export type AgreementVersionStatus = "draft" | "published" | "signed";
+export const AGREEMENT_VERSION_STATUSES = ["draft", "published", "signed"] as const;
+
+export function isAgreementVersionStatus(value: unknown): value is AgreementVersionStatus {
+  return (
+    typeof value === "string" &&
+    (AGREEMENT_VERSION_STATUSES as readonly string[]).includes(value)
+  );
+}
+
+/** The stable primary agreement identity for one project. */
+export interface AgreementInternal {
+  id: AgreementId;
+  projectId: ProjectId;
+  createdByPersonId: PersonId;
+  createdAt: number;
+}
+
+/** One immutable agreement version bound to one exact accepted proposal version. */
+export interface AgreementVersionInternal {
+  id: AgreementVersionId;
+  agreementId: AgreementId;
+  proposalId: ProposalId;
+  proposalVersionId: ProposalVersionId;
+  proposalVersionNumber: number;
+  versionNumber: number;
+  status: AgreementVersionStatus;
+  additionalTerms: string;
+  createdByPersonId: PersonId;
+  createdAt: number;
+  publishedAt: number | null;
+}
+
+/** One immutable Q1-A customer signature record. */
+export interface AgreementSignatureInternal {
+  id: AgreementSignatureId;
+  personId: PersonId;
+  organizationId: OrganizationId;
+  projectId: ProjectId;
+  agreementId: AgreementId;
+  agreementVersionId: AgreementVersionId;
+  proposalId: ProposalId;
+  proposalVersionId: ProposalVersionId;
+  proposalVersionNumber: number;
+  authorityRole: "owner" | "admin";
+  action: "signed";
+  createdAt: number;
+  actionKey: string;
+}
+
+
 /**
  * Version state.
  *
@@ -437,4 +492,9 @@ export type AuditEventType =
   // Customer proposal response. Metadata carries identifiers only — never the
   // customer's request-for-changes message and never proposal content.
   | "proposal_response.accepted"
-  | "proposal_response.changes_requested";
+  | "proposal_response.changes_requested"
+  // Agreement / e-signature. Metadata carries identifiers only.
+  | "agreement.created"
+  | "agreement_version.created"
+  | "agreement_version.published"
+  | "agreement.signed";
