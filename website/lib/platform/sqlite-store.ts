@@ -1368,15 +1368,17 @@ export class SqlitePlatformStore implements PlatformStore {
 
   findCurrentSignableAgreementVersion(projectId: ProjectId): AgreementVersionInternal | null {
     const row = this.get(
-      "SELECT av.* FROM agreement_versions av " +
+      "SELECT current_version.* FROM (" +
+        "SELECT av.* FROM agreement_versions av " +
         "JOIN agreements a ON a.id = av.agreement_id " +
-        "WHERE a.project_id = ? AND av.status = 'published' " +
+        "WHERE a.project_id = ? AND av.status IN ('published', 'signed') " +
         "AND av.proposal_version_id = (" +
         "SELECT pv.id FROM proposal_versions pv " +
         "JOIN proposal_responses pr ON pr.proposal_version_id = pv.id AND pr.action = 'accepted' " +
         "JOIN proposals p ON p.id = pv.proposal_id " +
         "WHERE p.project_id = ? ORDER BY pv.version_number DESC LIMIT 1" +
-        ") ORDER BY av.version_number DESC LIMIT 1",
+        ") ORDER BY av.version_number DESC LIMIT 1" +
+        ") AS current_version WHERE current_version.status = 'published'",
       projectId,
       projectId,
     );
