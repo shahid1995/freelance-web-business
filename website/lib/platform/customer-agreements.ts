@@ -101,11 +101,15 @@ export class CustomerAgreementService {
               .listAgreementVersions(agreement.id)
               .find((version) => version.versionNumber === versionNumber)
           : null;
+        if (!replayVersion) {
+          throw new ValidationError(
+            "That signing submission could not be recognised. Reload the agreement and try again.",
+          );
+        }
         const matches =
           replayed.personId === input.personId &&
           replayed.projectId === project.id &&
           replayed.action === "signed" &&
-          replayVersion !== null &&
           replayed.agreementVersionId === replayVersion.id &&
           replayed.proposalId === replayVersion.proposalId &&
           replayed.proposalVersionId === replayVersion.proposalVersionId;
