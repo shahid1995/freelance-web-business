@@ -108,6 +108,22 @@ const MESSAGES: Record<string, Notice> = {
     message:
       "This proposal version can no longer be accepted because changes were requested against it.",
   },
+  "agreement-signed": {
+    kind: "success",
+    message: "Your agreement signature has been recorded for this agreement version.",
+  },
+  "agreement-updated": {
+    kind: "error",
+    message: "This agreement has been updated. Review the current version, then try again.",
+  },
+  "agreement-denied": {
+    kind: "error",
+    message: "We could not record that agreement action. Please reload the page and try again.",
+  },
+  "agreement-invalid": {
+    kind: "error",
+    message: "That agreement action was not valid. Reload the page and try again.",
+  },
 };
 
 export function noticeFor(
