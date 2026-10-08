@@ -308,3 +308,49 @@ describe("customer agreement signing", () => {
     harness.platform.close();
   });
 });
+
+
+describe("customer agreement projection boundary", () => {
+  it("shows signing content before Q1-A signing but withholds signed content until Q10 is decided", async () => {
+    const harness = await createProposalHarness();
+    const owner = await publishedOwner(harness);
+    acceptCurrentProposal(harness, owner);
+    harness.platform.agreements.createAgreement({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      additionalTerms: agreementContent,
+    });
+    harness.platform.agreements.publishVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 1,
+    });
+
+    const before = harness.platform.customerAgreements.readByProjectId(
+      owner.personId,
+      owner.projectId,
+    );
+    assert.equal(before.state, "awaiting_signature");
+    assert.equal(before.canSign, true);
+    assert.ok(before.proposal);
+    assert.equal(before.additionalTerms, agreementContent);
+
+    harness.platform.customerAgreements.sign({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 1,
+      actionKey: generateActionKey(),
+    });
+
+    const after = harness.platform.customerAgreements.readByProjectId(
+      owner.personId,
+      owner.projectId,
+    );
+    assert.equal(after.state, "completed");
+    assert.equal(after.canSign, false);
+    assert.equal(after.proposal, null);
+    assert.equal(after.additionalTerms, null);
+    assert.ok(after.signedAt !== null);
+    harness.platform.close();
+  });
+});
