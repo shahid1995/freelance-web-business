@@ -356,3 +356,50 @@ describe("customer agreement projection boundary", () => {
     harness.platform.close();
   });
 });
+
+
+describe("customer agreement access boundary", () => {
+  it("allows an assigned ordinary member to read the agreement but never to sign", async () => {
+    const harness = await createProposalHarness();
+    const owner = await publishedOwner(harness);
+    acceptCurrentProposal(harness, owner);
+    harness.platform.agreements.createAgreement({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      additionalTerms: agreementContent,
+    });
+    harness.platform.agreements.publishVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 1,
+    });
+
+    const member = await addOrdinaryMember(harness, owner.organizationId, MEMBER_EMAIL);
+    harness.platform.projects.grantProjectAccess({
+      personId: owner.personId,
+      organizationId: owner.organizationId,
+      projectId: owner.projectId,
+      memberPersonId: member.personId,
+    });
+
+    const visible = harness.platform.customerAgreements.readByProjectId(
+      member.personId,
+      owner.projectId,
+    );
+    assert.equal(visible.state, "awaiting_signature");
+    assert.equal(visible.canSign, false);
+    assert.ok(visible.proposal);
+
+    expectFailure(
+      () =>
+        harness.platform.customerAgreements.sign({
+          personId: member.personId,
+          projectId: owner.projectId,
+          versionNumber: 1,
+          actionKey: generateActionKey(),
+        }),
+      "forbidden",
+    );
+    harness.platform.close();
+  });
+});
