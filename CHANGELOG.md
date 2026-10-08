@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-08
+
+### Agreement and e-signature (implementation slice)
+- Implemented the Founder-approved Q1-A agreement model: one primary agreement per project, immutable numbered versions, exact accepted proposal-version binding, additional contractual terms, one authorized customer signer, append-only signature evidence, idempotent signing, stale-baseline rejection, and atomic signature/version/audit writes.
+- Added provider-neutral Founder agreement authoring/publishing and customer signing surfaces. Signed agreement content download/view remains explicitly deferred under Q10; no provider is selected or activated.
+- Added focused real-service/real-SQL verification for authorization, baseline binding, Q1-A completion, replay safety, stale rejection, immutability, audit evidence, and unchanged customer project stage. No deployment or live customer data operation occurred.
+
 ## 2026-10-07
 
 ### Agreement and e-signature (design and Q1–Q3 approved)
