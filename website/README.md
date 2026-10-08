@@ -127,6 +127,7 @@ Customer routes:
 - /dashboard
 - /dashboard/projects/{reference}/intake
 - /dashboard/projects/{reference}/proposal
+- /dashboard/projects/{reference}/agreement
 
 Endpoints (all state-changing requests are same-origin POSTs):
 
@@ -150,6 +151,8 @@ A separate internal surface, governed by
 - POST /api/internal/projects/{reference}/review
 - /internal/projects/{reference}/proposal — proposal authoring (governed by
   `docs/decisions/2026-10-05-proposal-foundation.md`)
+- /internal/projects/{reference}/agreement — agreement authoring and publication (governed by
+  `docs/decisions/2026-10-07-agreement-e-signature.md`)
 - POST /api/internal/projects/{reference}/proposal
 - POST /api/internal/projects/{reference}/agreement
 
