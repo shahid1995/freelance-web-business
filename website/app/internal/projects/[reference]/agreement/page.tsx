@@ -137,7 +137,7 @@ export default async function InternalAgreementPage({
                     <input type="hidden" name="intent" value="publish" />
                     <div className="field">
                       <label className="field__label" htmlFor="versionNumber">Version</label>
-                      <select className="field__select" id="versionNumber" name="versionNumber" defaultValue={String(agreement.latestVersionNumber ?? 1)}>
+                      <select className="textarea" id="versionNumber" name="versionNumber" defaultValue={String(agreement.latestVersionNumber ?? 1)}>
                         {agreement.versions
                           .filter((version) => version.status === "draft")
                           .map((version) => (
