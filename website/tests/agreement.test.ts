@@ -315,6 +315,59 @@ describe("customer agreement signing", () => {
     harness.platform.close();
   });
 
+  it("does not expose an older published version after a newer agreement version is signed", async () => {
+    const harness = await createProposalHarness();
+    const owner = await publishedOwner(harness);
+    acceptCurrentProposal(harness, owner);
+
+    harness.platform.agreements.createAgreement({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      additionalTerms: "version one",
+    });
+    harness.platform.agreements.publishVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 1,
+    });
+
+    harness.platform.agreements.createVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      additionalTerms: "version two",
+    });
+    harness.platform.agreements.publishVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 2,
+    });
+    harness.platform.customerAgreements.sign({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 2,
+      actionKey: generateActionKey(),
+    });
+
+    const view = harness.platform.customerAgreements.readByProjectId(
+      owner.personId,
+      owner.projectId,
+    );
+    assert.equal(view.state, "completed");
+    assert.equal(view.versionNumber, 2);
+
+    expectFailure(
+      () =>
+        harness.platform.customerAgreements.sign({
+          personId: owner.personId,
+          projectId: owner.projectId,
+          versionNumber: 1,
+          actionKey: generateActionKey(),
+        }),
+      "agreement_completed",
+    );
+    harness.platform.close();
+  });
+
   it("rejects a stale published agreement after a newer proposal version is accepted", async () => {
     const harness = await createProposalHarness();
     const owner = await publishedOwner(harness);
