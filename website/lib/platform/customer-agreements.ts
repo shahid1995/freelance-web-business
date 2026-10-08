@@ -95,18 +95,27 @@ export class CustomerAgreementService {
 
       const replayed = store.findAgreementSignatureByKey(actionKey);
       if (replayed) {
+        const agreement = store.findAgreementByProject(project.id);
+        const replayVersion = agreement
+          ? store
+              .listAgreementVersions(agreement.id)
+              .find((version) => version.versionNumber === versionNumber)
+          : null;
         const matches =
           replayed.personId === input.personId &&
           replayed.projectId === project.id &&
-          replayed.proposalVersionNumber === versionNumber &&
-          replayed.action === "signed";
+          replayed.action === "signed" &&
+          replayVersion !== null &&
+          replayed.agreementVersionId === replayVersion.id &&
+          replayed.proposalId === replayVersion.proposalId &&
+          replayed.proposalVersionId === replayVersion.proposalVersionId;
         if (!matches) {
           throw new ValidationError(
             "That signing submission could not be recognised. Reload the agreement and try again.",
           );
         }
         return {
-          versionNumber: replayed.proposalVersionNumber,
+          versionNumber: replayVersion.versionNumber,
           signedAt: replayed.createdAt,
         };
       }
