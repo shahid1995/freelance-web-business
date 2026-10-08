@@ -101,6 +101,27 @@ export class RateLimitedError extends PlatformError {
  * and give each outcome its own approved notice, without a service message ever
  * travelling through the redirect. Messages are customer-safe wording.
  */
+export const AGREEMENT_ERROR_CODES = {
+  updated: "agreement_updated",
+  completed: "agreement_completed",
+} as const;
+
+export class AgreementUpdatedError extends PlatformError {
+  constructor(
+    message = "This agreement is no longer the current version for signing. Reload and review the latest agreement.",
+  ) {
+    super(AGREEMENT_ERROR_CODES.updated, message, 409);
+  }
+}
+
+export class AgreementCompletedError extends PlatformError {
+  constructor(
+    message = "This agreement version has already been completed.",
+  ) {
+    super(AGREEMENT_ERROR_CODES.completed, message, 409);
+  }
+}
+
 export const PROPOSAL_RESPONSE_ERROR_CODES = {
   /** The submitted version number is no longer the current published version. */
   updated: "proposal_updated",
