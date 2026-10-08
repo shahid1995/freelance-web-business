@@ -245,6 +245,63 @@ describe("customer agreement signing", () => {
     harness.platform.close();
   });
 
+  it("rejects idempotency-key reuse for a different agreement version", async () => {
+    const harness = await createProposalHarness();
+    const owner = await publishedOwner(harness);
+    acceptCurrentProposal(harness, owner);
+
+    harness.platform.agreements.createAgreement({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      additionalTerms: "version one",
+    });
+    harness.platform.agreements.publishVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 1,
+    });
+
+    const first = harness.platform.customerAgreements.sign({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 1,
+      actionKey: "reused-key",
+    });
+    assert.equal(first.versionNumber, 1);
+
+    harness.platform.agreements.createVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      additionalTerms: "version two",
+    });
+    harness.platform.agreements.publishVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 2,
+    });
+
+    expectFailure(
+      () =>
+        harness.platform.customerAgreements.sign({
+          personId: owner.personId,
+          projectId: owner.projectId,
+          versionNumber: 2,
+          actionKey: "reused-key",
+        }),
+      "invalid_input",
+    );
+
+    const agreement = harness.platform.store.findAgreementByProject(owner.projectId);
+    assert.ok(agreement);
+    assert.equal(
+      harness.platform.store.listAgreementSignaturesByVersion(
+        harness.platform.store.listAgreementVersions(agreement.id)[1]!.id,
+      ).length,
+      0,
+    );
+    harness.platform.close();
+  });
+
   it("rejects a stale published agreement after a newer proposal version is accepted", async () => {
     const harness = await createProposalHarness();
     const owner = await publishedOwner(harness);
