@@ -1,5 +1,5 @@
 import { requireProjectAccess } from "./authorization";
-import { AgreementUpdatedError, ValidationError } from "./errors";
+import { AgreementUpdatedError, ForbiddenError, ValidationError } from "./errors";
 import type { Clock } from "./clock";
 import type { ProjectId } from "./domain";
 import type { PlatformStore } from "./ports";
@@ -90,7 +90,7 @@ export class CustomerAgreementService {
     return this.options.store.transaction((store) => {
       const { context, project } = requireProjectAccess(store, input.personId, input.projectId);
       if (!context.isAdministrator) {
-        throw new Error("unreachable: signing route requires administrator authority");
+        throw new ForbiddenError("Only an organization owner or admin can sign an agreement.");
       }
 
       const replayed = store.findAgreementSignatureByKey(actionKey);
@@ -98,8 +98,8 @@ export class CustomerAgreementService {
         const matches =
           replayed.personId === input.personId &&
           replayed.projectId === project.id &&
-          replayed.agreementVersionId === store.findAgreementVersionById(replayed.agreementVersionId)?.id &&
-          replayed.proposalVersionNumber === versionNumber;
+          replayed.proposalVersionNumber === versionNumber &&
+          replayed.action === "signed";
         if (!matches) {
           throw new ValidationError(
             "That signing submission could not be recognised. Reload the agreement and try again.",
