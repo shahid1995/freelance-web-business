@@ -141,7 +141,7 @@ export class CustomerAgreementService {
         proposalId: current.proposalId,
         proposalVersionId: current.proposalVersionId,
         proposalVersionNumber: current.proposalVersionNumber,
-        authorityRole: context.role,
+        authorityRole: context.role === "owner" ? "owner" : "admin",
         action: "signed",
         createdAt: now,
         actionKey,
