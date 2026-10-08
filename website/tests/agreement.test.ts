@@ -3,11 +3,13 @@ import { describe, it } from "node:test";
 
 import { isPlatformError } from "../lib/platform/errors";
 import { generateActionKey } from "../lib/platform/secrets";
+import { MEMBER_EMAIL, addOrdinaryMember, type TestPlatform } from "./support/harness";
 import {
   createProposalHarness,
   ownerWithProject,
   publishFirstVersion,
   publishNextVersion,
+  publishedOwner,
   type Owner,
 } from "./support/proposals";
 
