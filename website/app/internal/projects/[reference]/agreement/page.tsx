@@ -71,7 +71,7 @@ export default async function InternalAgreementPage({
                   <label className="field__label" htmlFor="additionalTerms">
                     Additional contractual terms
                   </label>
-                  <textarea className="textarea" id="additionalTerms" name="additionalTerms" />
+                  <textarea className="textarea" id="additionalTerms" name="additionalTerms" maxLength={20000} />
                   <p className="portal__meta">Optional. Maximum 20,000 characters.</p>
                 </div>
                 <button className="button" type="submit">Start agreement</button>
@@ -124,7 +124,7 @@ export default async function InternalAgreementPage({
                       <label className="field__label" htmlFor="nextTerms">
                         Additional contractual terms
                       </label>
-                      <textarea className="textarea" id="nextTerms" name="additionalTerms" />
+                      <textarea className="textarea" id="nextTerms" name="additionalTerms" maxLength={20000} />
                     </div>
                     <button className="button" type="submit">Save next draft</button>
                   </form>
@@ -137,7 +137,7 @@ export default async function InternalAgreementPage({
                     <input type="hidden" name="intent" value="publish" />
                     <div className="field">
                       <label className="field__label" htmlFor="versionNumber">Version</label>
-                      <select className="textarea" id="versionNumber" name="versionNumber" defaultValue={String(agreement.latestVersionNumber ?? 1)}>
+                      <select className="field__select" id="versionNumber" name="versionNumber" defaultValue={String(agreement.latestVersionNumber ?? 1)}>
                         {agreement.versions
                           .filter((version) => version.status === "draft")
                           .map((version) => (
