@@ -1,5 +1,5 @@
 import { requireProjectAccess } from "./authorization";
-import { AgreementUpdatedError, ForbiddenError, ValidationError } from "./errors";
+import { AgreementCompletedError, AgreementUpdatedError, ForbiddenError, ValidationError } from "./errors";
 import type { Clock } from "./clock";
 import type { ProjectId } from "./domain";
 import type { PlatformStore } from "./ports";
@@ -124,7 +124,7 @@ export class CustomerAgreementService {
       if (!current || current.status !== "published") {
         const completed = store.findCurrentAgreementVersion(project.id);
         if (completed?.status === "signed") {
-          throw new AgreementUpdatedError(
+          throw new AgreementCompletedError(
             "This agreement is already completed. Reload the project to see its current status.",
           );
         }
