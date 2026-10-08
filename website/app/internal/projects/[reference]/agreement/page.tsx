@@ -111,7 +111,7 @@ export default async function InternalAgreementPage({
                   </li>
                 ))}
               </ul>
-              {latest && latest.status !== "signed" ? (
+              {latest ? (
                 <div className="portal__panel portal__stack">
                   <h2>Create next version</h2>
                   <p className="portal__meta">
@@ -130,7 +130,7 @@ export default async function InternalAgreementPage({
                   </form>
                 </div>
               ) : null}
-              {agreement.versions.length > 0 ? (
+              {agreement.versions.some((version) => version.status === "draft") ? (
                 <div className="portal__panel portal__stack">
                   <h2>Publish version</h2>
                   <form className="form-stack" method="post" action={action}>
