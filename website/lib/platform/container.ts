@@ -15,6 +15,8 @@ import { randomUUID } from "node:crypto";
 
 import { systemClock, type Clock } from "./clock";
 import { loadPlatformConfig, type PlatformConfig, type EnvironmentLike } from "./config";
+import { AgreementService } from "./agreements";
+import { CustomerAgreementService } from "./customer-agreements";
 import { AuthService } from "./auth";
 import { CustomerProposalService } from "./customer-proposals";
 import { CustomerProposalResponseService } from "./customer-proposal-responses";
@@ -41,6 +43,10 @@ export interface Platform {
   internal: FounderWorkspaceService;
   /** Founder-only proposal authoring. Never mounted into the customer workspace. */
   proposals: ProposalService;
+  /** Founder-only agreement authoring. Never mounted into the customer workspace. */
+  agreements: AgreementService;
+  /** Customer-facing agreement reading/signing, using project access and Owner/Admin authority. */
+  customerAgreements: CustomerAgreementService;
   /**
    * Customer-facing, read-only proposal view. Separate from the Founder authoring
    * service and authorized by the customer project model, never by the internal
@@ -142,6 +148,17 @@ export async function createPlatform(
       store: resolvedStore,
     }),
     customerProposalResponses: new CustomerProposalResponseService({
+      store: resolvedStore,
+      clock,
+      newId,
+    }),
+    agreements: new AgreementService({
+      store: resolvedStore,
+      clock,
+      newId,
+      founderEmailHashes: config.founderEmailHashes,
+    }),
+    customerAgreements: new CustomerAgreementService({
       store: resolvedStore,
       clock,
       newId,

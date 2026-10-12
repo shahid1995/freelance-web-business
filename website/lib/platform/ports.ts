@@ -8,6 +8,9 @@
  */
 
 import type {
+  AgreementInternal,
+  AgreementSignatureInternal,
+  AgreementVersionInternal,
   AuditEvent,
   AuthenticationChallenge,
   FounderDecision,
@@ -309,6 +312,25 @@ export interface PlatformStore {
   findAcceptedProposalVersion(
     proposalVersionId: ProposalVersionId,
   ): ProposalResponseInternal | null;
+  /** The highest-numbered accepted proposal version for a project. */
+  findCurrentAcceptedProposalVersion(projectId: ProjectId): ProposalVersionInternal | null;
+
+  // --- agreements ----------------------------------------------------------
+  findAgreementByProject(projectId: ProjectId): AgreementInternal | null;
+  findAgreementById(id: string): AgreementInternal | null;
+  listAgreementVersions(agreementId: string): AgreementVersionInternal[];
+  findAgreementVersionById(id: string): AgreementVersionInternal | null;
+  /** Highest numbered published or signed version whose baseline matches the current accepted proposal. */
+  findCurrentAgreementVersion(projectId: ProjectId): AgreementVersionInternal | null;
+  /** Highest numbered published version whose baseline matches the current accepted proposal. */
+  findCurrentSignableAgreementVersion(projectId: ProjectId): AgreementVersionInternal | null;
+  createAgreement(input: AgreementInternal): AgreementInternal;
+  createAgreementVersion(input: AgreementVersionInternal): AgreementVersionInternal;
+  publishAgreementVersion(input: { id: string; now: number }): void;
+  signAgreementVersion(input: { id: string; now: number }): void;
+  createAgreementSignature(input: AgreementSignatureInternal): AgreementSignatureInternal;
+  findAgreementSignatureByKey(actionKey: string): AgreementSignatureInternal | null;
+  listAgreementSignaturesByVersion(agreementVersionId: string): AgreementSignatureInternal[];
 
   // --- project access ------------------------------------------------------
   findProjectAccess(projectId: ProjectId, personId: string): ProjectAccess | null;

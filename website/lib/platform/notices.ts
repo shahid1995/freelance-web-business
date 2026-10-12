@@ -11,6 +11,8 @@
  * strings below.
  */
 
+import { AGREEMENT_ERROR_CODES, isPlatformError } from "./errors";
+
 export interface Notice {
   kind: "error" | "success";
   message: string;
@@ -108,6 +110,27 @@ const MESSAGES: Record<string, Notice> = {
     message:
       "This proposal version can no longer be accepted because changes were requested against it.",
   },
+  "agreement-signed": {
+    kind: "success",
+    message: "Your agreement signature has been recorded for this agreement version.",
+  },
+  "agreement-completed": {
+    kind: "success",
+    message:
+      "This agreement version has already been signed and completed, so it cannot be signed again. No further action is needed.",
+  },
+  "agreement-updated": {
+    kind: "error",
+    message: "This agreement has been updated. Review the current version, then try again.",
+  },
+  "agreement-denied": {
+    kind: "error",
+    message: "We could not record that agreement action. Please reload the page and try again.",
+  },
+  "agreement-invalid": {
+    kind: "error",
+    message: "That agreement action was not valid. Reload the page and try again.",
+  },
 };
 
 export function noticeFor(
@@ -117,4 +140,23 @@ export function noticeFor(
   const code = Array.isArray(raw) ? raw[0] : raw;
   if (!code) return null;
   return MESSAGES[code] ?? null;
+}
+
+
+/**
+ * Maps an agreement signing failure to the notice key the sign route redirects
+ * with.
+ *
+ * The completed and stale outcomes are deliberately kept apart: an
+ * already-signed agreement must never be reported as merely "updated", which
+ * would wrongly invite the customer to sign again. Expected platform failures
+ * map to their own approved keys; any unexpected error is re-thrown so it is
+ * never rendered as a customer notice.
+ */
+export function agreementSignNoticeCodeFor(error: unknown): string {
+  if (isPlatformError(error, AGREEMENT_ERROR_CODES.updated)) return "agreement-updated";
+  if (isPlatformError(error, AGREEMENT_ERROR_CODES.completed)) return "agreement-completed";
+  if (isPlatformError(error, "invalid_input")) return "agreement-invalid";
+  if (isPlatformError(error)) return "agreement-denied";
+  throw error;
 }

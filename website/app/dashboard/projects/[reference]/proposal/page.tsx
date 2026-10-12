@@ -50,6 +50,7 @@ export default async function CustomerProposalPage({
   let detail;
   let proposal;
   let standing;
+  let agreement;
   try {
     // Resolve the customer-facing reference exactly once, so an inaccessible or
     // unrelated project is reported as missing rather than disclosed, and reuse
@@ -63,6 +64,7 @@ export default async function CustomerProposalPage({
       personId,
       projectId,
     );
+    agreement = platform.customerAgreements.readByProjectId(personId, projectId);
   } catch (error) {
     if (isMissing(error)) {
       notFound();
@@ -91,6 +93,11 @@ export default async function CustomerProposalPage({
             <p className="portal__meta">{project.title}</p>
           </div>
           <div className="portal__actions">
+            {agreement.state !== "not_ready" ? (
+              <Link className="button button-secondary" href={`/dashboard/projects/${encodeURIComponent(reference)}/agreement`}>
+                Agreement
+              </Link>
+            ) : null}
             <Link className="button button-secondary" href="/dashboard">
               Back to dashboard
             </Link>

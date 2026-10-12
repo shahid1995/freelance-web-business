@@ -45,6 +45,18 @@ const MESSAGES: Record<string, InternalNotice> = {
     kind: "success",
     message: "Version published. The customer has still seen and accepted nothing.",
   },
+  "agreement-created": {
+    kind: "success",
+    message: "Agreement started. Version 1 is a draft and stays internal.",
+  },
+  "agreement-version-created": {
+    kind: "success",
+    message: "New agreement draft saved. Earlier versions are unchanged.",
+  },
+  "agreement-version-published": {
+    kind: "success",
+    message: "Agreement version published and ready for the authorised customer signer.",
+  },
 };
 
 export function internalNoticeFor(
