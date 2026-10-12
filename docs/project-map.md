@@ -97,6 +97,8 @@ The approved product requirements describe the rest of the customer and delivery
 
 Each of these remains a future design and implementation step until its own implementation decision is approved.
 
+The agreement/e-signature design gate is Founder-approved in docs/decisions/2026-10-07-agreement-e-signature.md (Status: Approved; Founder approval recorded 2026-10-07). Q1–Q3 are now resolved: one authorized customer signer with no default Founder countersignature; exact accepted proposal-version binding with additional contractual terms permitted; and one primary agreement per project initially. The design is not implemented, no provider is selected, and no legal/provider production gate is resolved. Approval of the design and Q1–Q3 does not authorize deployment, provider activation, or production use.
+
 ### Planned or deferred
 
 - Domain/hosting — deferred

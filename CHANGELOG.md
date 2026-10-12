@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-07
+
+### Agreement and e-signature (design and Q1–Q3 approved)
+- Recorded Founder approval on 2026-10-07 for the Agreement / E-signature design in docs/decisions/2026-10-07-agreement-e-signature.md (Status: Approved). Q1–Q3 were also resolved on 2026-10-07: one authorized customer signer with no default Founder countersignature; exact accepted proposal-version binding with additional contractual terms permitted; and one primary agreement per project initially, with additional agreement types deferred to future related records if needed. The design remains provider-neutral, no provider is selected, Q4–Q8 remain production/provider/legal gates, and no deployment or provider activation is authorized.
+- Preserves the accepted distinction that Accept Proposal is application-level commercial evidence and explicitly not a legal signature. No contract or signature is claimed to exist, and no legal validity is asserted.
+- No e-signature provider is selected or integrated (provider selection remains a later decision); no payment or project activation is implemented, and no customer project stage or `customerStageFor` is changed.
+- Remaining Founder/legal decisions are recorded explicitly as unresolved: Q4 legal framework and signature standard; Q5 provider selection; Q6 identity proofing; Q7 retention policy; Q8 jurisdiction-specific requirements; Q9 decline/withdrawal/expiry/reminders; and Q10 customer access to signed agreements.
+- Design only. No application code, schema, route, endpoint, UI, or test was added; nothing is deployed, no provider is activated, and no live customer data is processed.
+
 ## 2026-10-06
 
 ### Customer Proposal Response (implementation)
