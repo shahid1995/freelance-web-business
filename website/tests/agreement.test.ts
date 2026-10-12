@@ -6,6 +6,7 @@ import { generateActionKey } from "../lib/platform/secrets";
 import { MEMBER_EMAIL, addOrdinaryMember, type TestPlatform } from "./support/harness";
 import {
   createProposalHarness,
+  grantAccess,
   ownerWithProject,
   publishFirstVersion,
   publishNextVersion,
@@ -35,6 +36,58 @@ function expectFailure(action: () => unknown, code: string): void {
   );
 }
 
+function createAgreement(harness: TestPlatform, owner: Owner, additionalTerms: string) {
+  return harness.platform.agreements.createAgreement({
+    personId: owner.personId,
+    projectId: owner.projectId,
+    additionalTerms,
+  });
+}
+
+function createAgreementVersion(harness: TestPlatform, owner: Owner, additionalTerms: string): void {
+  harness.platform.agreements.createVersion({
+    personId: owner.personId,
+    projectId: owner.projectId,
+    additionalTerms,
+  });
+}
+
+function publishAgreementVersion(harness: TestPlatform, owner: Owner, versionNumber: number): void {
+  harness.platform.agreements.publishVersion({
+    personId: owner.personId,
+    projectId: owner.projectId,
+    versionNumber,
+  });
+}
+
+/** Signs an agreement version as the owner, or as `signerPersonId` when given. */
+function signAgreement(
+  harness: TestPlatform,
+  owner: Owner,
+  versionNumber: number,
+  actionKey: string,
+  signerPersonId = owner.personId,
+) {
+  return harness.platform.customerAgreements.sign({
+    personId: signerPersonId,
+    projectId: owner.projectId,
+    versionNumber,
+    actionKey,
+  });
+}
+
+/** An owner whose accepted proposal has a published, signable agreement version 1. */
+async function ownerWithPublishedAgreement(
+  harness: TestPlatform,
+  additionalTerms: string = agreementContent,
+): Promise<Owner> {
+  const owner = await publishedOwner(harness);
+  acceptCurrentProposal(harness, owner);
+  createAgreement(harness, owner, additionalTerms);
+  publishAgreementVersion(harness, owner, 1);
+  return owner;
+}
+
 describe("agreement authoring", () => {
   it("requires an accepted proposal and creates immutable version 1", async () => {
     const harness = await createProposalHarness();
@@ -42,21 +95,12 @@ describe("agreement authoring", () => {
     publishFirstVersion(harness, owner);
 
     expectFailure(
-      () =>
-        harness.platform.agreements.createAgreement({
-          personId: owner.personId,
-          projectId: owner.projectId,
-          additionalTerms: agreementContent,
-        }),
+      () => createAgreement(harness, owner, agreementContent),
       "invalid_input",
     );
 
     acceptCurrentProposal(harness, owner);
-    const view = harness.platform.agreements.createAgreement({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      additionalTerms: agreementContent,
-    });
+    const view = createAgreement(harness, owner, agreementContent);
 
     assert.equal(view.versions.length, 1);
     assert.equal(view.versions[0]?.versionNumber, 1);
@@ -80,27 +124,14 @@ describe("agreement authoring", () => {
     const owner = await publishedOwner(harness);
     acceptCurrentProposal(harness, owner);
 
-    harness.platform.agreements.createAgreement({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      additionalTerms: "v1 terms",
-    });
+    createAgreement(harness, owner, "v1 terms");
 
     expectFailure(
-      () =>
-        harness.platform.agreements.createAgreement({
-          personId: owner.personId,
-          projectId: owner.projectId,
-          additionalTerms: "duplicate",
-        }),
+      () => createAgreement(harness, owner, "duplicate"),
       "invalid_input",
     );
 
-    harness.platform.agreements.createVersion({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      additionalTerms: "v2 terms",
-    });
+    createAgreementVersion(harness, owner, "v2 terms");
     const view = harness.platform.agreements.read(owner.personId, owner.projectId);
     assert.deepEqual(
       view.versions.map((version) => version.versionNumber),
@@ -115,22 +146,13 @@ describe("agreement authoring", () => {
     const harness = await createProposalHarness();
     const owner = await publishedOwner(harness);
     acceptCurrentProposal(harness, owner);
-    harness.platform.agreements.createAgreement({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      additionalTerms: "v1 terms",
-    });
+    createAgreement(harness, owner, "v1 terms");
 
     publishNextVersion(harness, owner, 2);
     acceptCurrentProposal(harness, owner);
 
     expectFailure(
-      () =>
-        harness.platform.agreements.publishVersion({
-          personId: owner.personId,
-          projectId: owner.projectId,
-          versionNumber: 1,
-        }),
+      () => publishAgreementVersion(harness, owner, 1),
       "invalid_input",
     );
     harness.platform.close();
@@ -140,44 +162,17 @@ describe("agreement authoring", () => {
 describe("customer agreement signing", () => {
   it("allows only organization owners/admins to sign and completes Q1-A atomically", async () => {
     const harness = await createProposalHarness();
-    const owner = await publishedOwner(harness);
-    acceptCurrentProposal(harness, owner);
-    harness.platform.agreements.createAgreement({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      additionalTerms: agreementContent,
-    });
-    harness.platform.agreements.publishVersion({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      versionNumber: 1,
-    });
+    const owner = await ownerWithPublishedAgreement(harness);
 
     const member = await addOrdinaryMember(harness, owner.organizationId, MEMBER_EMAIL);
-    harness.platform.projects.grantProjectAccess({
-      personId: owner.personId,
-      organizationId: owner.organizationId,
-      projectId: owner.projectId,
-      memberPersonId: member.personId,
-    });
+    grantAccess(harness, owner, member.personId);
 
     expectFailure(
-      () =>
-        harness.platform.customerAgreements.sign({
-          personId: member.personId,
-          projectId: owner.projectId,
-          versionNumber: 1,
-          actionKey: generateActionKey(),
-        }),
+      () => signAgreement(harness, owner, 1, generateActionKey(), member.personId),
       "forbidden",
     );
 
-    const signed = harness.platform.customerAgreements.sign({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      versionNumber: 1,
-      actionKey: "agreement-sign-1",
-    });
+    const signed = signAgreement(harness, owner, 1, "agreement-sign-1");
     assert.equal(signed.versionNumber, 1);
 
     const agreement = harness.platform.store.findAgreementByProject(owner.projectId);
@@ -208,41 +203,14 @@ describe("customer agreement signing", () => {
 
   it("resolves an idempotent replay before terminal-state rejection", async () => {
     const harness = await createProposalHarness();
-    const owner = await publishedOwner(harness);
-    acceptCurrentProposal(harness, owner);
-    harness.platform.agreements.createAgreement({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      additionalTerms: agreementContent,
-    });
-    harness.platform.agreements.publishVersion({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      versionNumber: 1,
-    });
+    const owner = await ownerWithPublishedAgreement(harness);
 
-    const first = harness.platform.customerAgreements.sign({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      versionNumber: 1,
-      actionKey: "same-key",
-    });
-    const replay = harness.platform.customerAgreements.sign({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      versionNumber: 1,
-      actionKey: "same-key",
-    });
+    const first = signAgreement(harness, owner, 1, "same-key");
+    const replay = signAgreement(harness, owner, 1, "same-key");
 
     assert.deepEqual(replay, first);
     expectFailure(
-      () =>
-        harness.platform.customerAgreements.sign({
-          personId: owner.personId,
-          projectId: owner.projectId,
-          versionNumber: 1,
-          actionKey: "same-key-new-operation",
-        }),
+      () => signAgreement(harness, owner, 1, "same-key-new-operation"),
       "agreement_completed",
     );
     const agreement = harness.platform.store.findAgreementByProject(owner.projectId);
@@ -260,47 +228,16 @@ describe("customer agreement signing", () => {
 
   it("rejects idempotency-key reuse for a different agreement version", async () => {
     const harness = await createProposalHarness();
-    const owner = await publishedOwner(harness);
-    acceptCurrentProposal(harness, owner);
+    const owner = await ownerWithPublishedAgreement(harness, "version one");
 
-    harness.platform.agreements.createAgreement({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      additionalTerms: "version one",
-    });
-    harness.platform.agreements.publishVersion({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      versionNumber: 1,
-    });
-
-    const first = harness.platform.customerAgreements.sign({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      versionNumber: 1,
-      actionKey: "reused-key",
-    });
+    const first = signAgreement(harness, owner, 1, "reused-key");
     assert.equal(first.versionNumber, 1);
 
-    harness.platform.agreements.createVersion({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      additionalTerms: "version two",
-    });
-    harness.platform.agreements.publishVersion({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      versionNumber: 2,
-    });
+    createAgreementVersion(harness, owner, "version two");
+    publishAgreementVersion(harness, owner, 2);
 
     expectFailure(
-      () =>
-        harness.platform.customerAgreements.sign({
-          personId: owner.personId,
-          projectId: owner.projectId,
-          versionNumber: 2,
-          actionKey: "reused-key",
-        }),
+      () => signAgreement(harness, owner, 2, "reused-key"),
       "invalid_input",
     );
 
@@ -317,36 +254,11 @@ describe("customer agreement signing", () => {
 
   it("does not expose an older published version after a newer agreement version is signed", async () => {
     const harness = await createProposalHarness();
-    const owner = await publishedOwner(harness);
-    acceptCurrentProposal(harness, owner);
+    const owner = await ownerWithPublishedAgreement(harness, "version one");
 
-    harness.platform.agreements.createAgreement({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      additionalTerms: "version one",
-    });
-    harness.platform.agreements.publishVersion({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      versionNumber: 1,
-    });
-
-    harness.platform.agreements.createVersion({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      additionalTerms: "version two",
-    });
-    harness.platform.agreements.publishVersion({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      versionNumber: 2,
-    });
-    harness.platform.customerAgreements.sign({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      versionNumber: 2,
-      actionKey: generateActionKey(),
-    });
+    createAgreementVersion(harness, owner, "version two");
+    publishAgreementVersion(harness, owner, 2);
+    signAgreement(harness, owner, 2, generateActionKey());
 
     const view = harness.platform.customerAgreements.readByProjectId(
       owner.personId,
@@ -356,13 +268,7 @@ describe("customer agreement signing", () => {
     assert.equal(view.versionNumber, 2);
 
     expectFailure(
-      () =>
-        harness.platform.customerAgreements.sign({
-          personId: owner.personId,
-          projectId: owner.projectId,
-          versionNumber: 1,
-          actionKey: generateActionKey(),
-        }),
+      () => signAgreement(harness, owner, 1, generateActionKey()),
       "agreement_completed",
     );
     harness.platform.close();
@@ -370,30 +276,13 @@ describe("customer agreement signing", () => {
 
   it("rejects a stale published agreement after a newer proposal version is accepted", async () => {
     const harness = await createProposalHarness();
-    const owner = await publishedOwner(harness);
-    acceptCurrentProposal(harness, owner);
-    harness.platform.agreements.createAgreement({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      additionalTerms: agreementContent,
-    });
-    harness.platform.agreements.publishVersion({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      versionNumber: 1,
-    });
+    const owner = await ownerWithPublishedAgreement(harness);
 
     publishNextVersion(harness, owner, 2);
     acceptCurrentProposal(harness, owner);
 
     expectFailure(
-      () =>
-        harness.platform.customerAgreements.sign({
-          personId: owner.personId,
-          projectId: owner.projectId,
-          versionNumber: 1,
-          actionKey: generateActionKey(),
-        }),
+      () => signAgreement(harness, owner, 1, generateActionKey()),
       "agreement_updated",
     );
 
@@ -411,22 +300,9 @@ describe("customer agreement signing", () => {
     acceptCurrentProposal(harness, owner);
 
     const before = harness.platform.projects.getCustomerProject(owner.personId, owner.projectId);
-    harness.platform.agreements.createAgreement({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      additionalTerms: agreementContent,
-    });
-    harness.platform.agreements.publishVersion({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      versionNumber: 1,
-    });
-    harness.platform.customerAgreements.sign({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      versionNumber: 1,
-      actionKey: generateActionKey(),
-    });
+    createAgreement(harness, owner, agreementContent);
+    publishAgreementVersion(harness, owner, 1);
+    signAgreement(harness, owner, 1, generateActionKey());
     const after = harness.platform.projects.getCustomerProject(owner.personId, owner.projectId);
 
     assert.equal(after.project.stage, before.project.stage);
@@ -438,18 +314,7 @@ describe("customer agreement signing", () => {
 describe("customer agreement projection boundary", () => {
   it("shows signing content before Q1-A signing but withholds signed content until Q10 is decided", async () => {
     const harness = await createProposalHarness();
-    const owner = await publishedOwner(harness);
-    acceptCurrentProposal(harness, owner);
-    harness.platform.agreements.createAgreement({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      additionalTerms: agreementContent,
-    });
-    harness.platform.agreements.publishVersion({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      versionNumber: 1,
-    });
+    const owner = await ownerWithPublishedAgreement(harness);
 
     const before = harness.platform.customerAgreements.readByProjectId(
       owner.personId,
@@ -460,12 +325,7 @@ describe("customer agreement projection boundary", () => {
     assert.ok(before.proposal);
     assert.equal(before.additionalTerms, agreementContent);
 
-    harness.platform.customerAgreements.sign({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      versionNumber: 1,
-      actionKey: generateActionKey(),
-    });
+    signAgreement(harness, owner, 1, generateActionKey());
 
     const after = harness.platform.customerAgreements.readByProjectId(
       owner.personId,
@@ -484,26 +344,10 @@ describe("customer agreement projection boundary", () => {
 describe("customer agreement access boundary", () => {
   it("allows an assigned ordinary member to read the agreement but never to sign", async () => {
     const harness = await createProposalHarness();
-    const owner = await publishedOwner(harness);
-    acceptCurrentProposal(harness, owner);
-    harness.platform.agreements.createAgreement({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      additionalTerms: agreementContent,
-    });
-    harness.platform.agreements.publishVersion({
-      personId: owner.personId,
-      projectId: owner.projectId,
-      versionNumber: 1,
-    });
+    const owner = await ownerWithPublishedAgreement(harness);
 
     const member = await addOrdinaryMember(harness, owner.organizationId, MEMBER_EMAIL);
-    harness.platform.projects.grantProjectAccess({
-      personId: owner.personId,
-      organizationId: owner.organizationId,
-      projectId: owner.projectId,
-      memberPersonId: member.personId,
-    });
+    grantAccess(harness, owner, member.personId);
 
     const visible = harness.platform.customerAgreements.readByProjectId(
       member.personId,
@@ -514,13 +358,7 @@ describe("customer agreement access boundary", () => {
     assert.ok(visible.proposal);
 
     expectFailure(
-      () =>
-        harness.platform.customerAgreements.sign({
-          personId: member.personId,
-          projectId: owner.projectId,
-          versionNumber: 1,
-          actionKey: generateActionKey(),
-        }),
+      () => signAgreement(harness, owner, 1, generateActionKey(), member.personId),
       "forbidden",
     );
     harness.platform.close();
