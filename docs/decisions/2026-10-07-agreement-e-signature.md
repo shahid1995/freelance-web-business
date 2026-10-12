@@ -6,20 +6,23 @@
 **Scope:** Smallest durable agreement and e-signature model and workflow — agreement identity, agreement versioning, signatory identity, signature evidence and immutability, and the boundary to payment and activation — with no provider selected and no legal-validity claim  
 **Related:** Customer Platform Direction, Customer Platform Requirements (§10, §13, §15, §24, §26, §27, §28), Customer Platform Foundation, Proposal Foundation, Customer Proposal Review, Customer Proposal Response
 
-> **Status note.** This is an **approved design gate**. Founder approval was recorded on 2026-10-07. It authorizes the design as the basis for later implementation planning, but it does **not** authorize provider selection or production activation, and does not resolve any remaining legal or business question. It defines the smallest durable agreement/e-signature model the platform needs, preserves the accepted separation between **Accept Proposal** (application-level commercial evidence) and **Sign Agreement**, and marks every unresolved business, legal, and provider question as **Founder decision required** rather than assuming an answer. Nothing described here is implemented, deployed, activated, or legally certified, and no live customer data is processed.
+> **Status note.** This is an **approved design gate**. Founder approval was recorded on 2026-10-07. It authorizes the design as the basis for later implementation planning, but it does **not** authorize provider selection or production activation, and does not resolve any remaining legal or business question. It defines the smallest durable agreement/e-signature model the platform needs, preserves the accepted separation between **Accept Proposal** (application-level commercial evidence) and **Sign Agreement**, and marks every unresolved business, legal, and provider question as **Founder decision required** rather than assuming an answer. The design described here was subsequently implemented and merged as PR #48 on 2026-10-12; it is not deployed, activated, or legally certified, and no live customer data is processed.
 
 ## 1. Status
 
 **Status: Approved — Founder approval recorded 2026-10-07.**
 
-This document is the Founder-approved design for the Agreement and E-signature slice. It authorizes no implementation by itself, creates, deploys, and activates nothing. The Founder has now resolved Q1, Q2, and Q3; implementation remains a separate later task and is subject to the verification contract and remaining production/provider gates recorded here.
+This document is the Founder-approved design for the Agreement and E-signature slice. It authorizes no implementation by itself, creates, deploys, and activates nothing. The Founder resolved Q1, Q2, and Q3 on 2026-10-07; the implementation was subsequently carried out as a separate task and merged as PR #48 on 2026-10-12, subject to the verification contract and remaining production/provider gates recorded here.
 
 Three facts must be kept separate, and none implies the next:
 
-- **The design is approved.** Founder approval was recorded on 2026-10-07. Q1, Q2, and Q3 are now resolved; implementation remains a separate later task and must follow the verification contract and remaining production/provider gates.
-- **Nothing is implemented.** No agreement model, table, route, endpoint,
-  service, or UI exists, and this design does not create one. A proposed or even
-  accepted design is not a capability.
+- **The design is approved.** Founder approval was recorded on 2026-10-07. Q1, Q2, and Q3 are resolved; implementation was a separate later task and had to follow the verification contract and remaining production/provider gates.
+- **Design approval is not implementation.** When this document was written, no
+  agreement model, table, route, endpoint, service, or UI existed, and this design
+  did not create one — a proposed or even accepted design is not a capability. The
+  design was subsequently implemented and merged as PR #48 on 2026-10-12; that
+  implementation does not change the approval status, the invariants, or any
+  production/provider/legal gate recorded here.
 - **Nothing is legally decided.** Legal validity, jurisdiction-specific
   requirements, document-retention policy, and provider selection are
   explicitly **not** decided here. Each is a separate later decision, and each
@@ -1094,4 +1097,4 @@ Approval covers the design, including:
 
 Approval does **not** authorize production deployment, live customer-data operation, provider activation, payment implementation, automatic project activation, or legal certification.
 
-Following approval and the Founder decisions recorded here, implementation of this design is a separate, later task that must satisfy the verification contract in §20.1 and the remaining production/provider gates in §15–§17 and §21.
+Following approval and the Founder decisions recorded here, implementation of this design was carried out as a separate task — merged as PR #48 on 2026-10-12 — and had to satisfy the verification contract in §20.1 and the remaining production/provider gates in §15–§17 and §21. Merging the implementation does not resolve those gates.
