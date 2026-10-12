@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isPlatformError } from "../lib/platform/errors";
+import { noticeFor } from "../lib/platform/notices";
 import { generateActionKey } from "../lib/platform/secrets";
 import { MEMBER_EMAIL, addOrdinaryMember, type TestPlatform } from "./support/harness";
 import {
@@ -362,5 +363,23 @@ describe("customer agreement access boundary", () => {
       "forbidden",
     );
     harness.platform.close();
+  });
+});
+
+
+describe("completed-agreement notice", () => {
+  it("renders a dedicated completed notice that does not ask the customer to retry", () => {
+    const notice = noticeFor({ error: "agreement-completed" });
+    assert.ok(notice);
+    assert.equal(notice.message, "This agreement version has already been signed and completed, so it cannot be signed again. No further action is needed.");
+    assert.ok(!notice.message.includes("try again"));
+  });
+
+  it("keeps the completed notice distinct from the stale-version updated notice", () => {
+    const completed = noticeFor({ error: "agreement-completed" });
+    const updated = noticeFor({ error: "agreement-updated" });
+    assert.ok(completed);
+    assert.ok(updated);
+    assert.notEqual(completed.message, updated.message);
   });
 });

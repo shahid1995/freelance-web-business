@@ -112,6 +112,11 @@ const MESSAGES: Record<string, Notice> = {
     kind: "success",
     message: "Your agreement signature has been recorded for this agreement version.",
   },
+  "agreement-completed": {
+    kind: "success",
+    message:
+      "This agreement version has already been signed and completed, so it cannot be signed again. No further action is needed.",
+  },
   "agreement-updated": {
     kind: "error",
     message: "This agreement has been updated. Review the current version, then try again.",

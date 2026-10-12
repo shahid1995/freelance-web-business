@@ -28,7 +28,7 @@ export async function POST(
       return redirectWith(request, returnTo, { error: "agreement-updated" });
     }
     if (isPlatformError(error, AGREEMENT_ERROR_CODES.completed)) {
-      return redirectWith(request, returnTo, { error: "agreement-updated" });
+      return redirectWith(request, returnTo, { error: "agreement-completed" });
     }
     if (isPlatformError(error, "invalid_input")) {
       return redirectWith(request, returnTo, { error: "agreement-invalid" });
