@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { isPlatformError } from "../lib/platform/errors";
-import { noticeFor } from "../lib/platform/notices";
+import {
+  AgreementCompletedError,
+  AgreementUpdatedError,
+  ForbiddenError,
+  isPlatformError,
+  ValidationError,
+} from "../lib/platform/errors";
+import { agreementSignNoticeCodeFor, noticeFor } from "../lib/platform/notices";
 import { generateActionKey } from "../lib/platform/secrets";
 import { MEMBER_EMAIL, addOrdinaryMember, type TestPlatform } from "./support/harness";
 import {
@@ -367,19 +373,35 @@ describe("customer agreement access boundary", () => {
 });
 
 
-describe("completed-agreement notice", () => {
-  it("renders a dedicated completed notice that does not ask the customer to retry", () => {
-    const notice = noticeFor({ error: "agreement-completed" });
+describe("completed-agreement signing notice mapping", () => {
+  it("maps an AgreementCompletedError to the dedicated completed notice", () => {
+    const code = agreementSignNoticeCodeFor(new AgreementCompletedError());
+    assert.equal(code, "agreement-completed");
+  });
+
+  it("maps an AgreementUpdatedError to the stale-version updated notice", () => {
+    const code = agreementSignNoticeCodeFor(new AgreementUpdatedError());
+    assert.equal(code, "agreement-updated");
+  });
+
+  it("keeps the completed and updated outcomes distinct", () => {
+    const completed = agreementSignNoticeCodeFor(new AgreementCompletedError());
+    const updated = agreementSignNoticeCodeFor(new AgreementUpdatedError());
+    assert.notEqual(completed, updated);
+  });
+
+  it("renders a completed notice that does not ask the customer to retry signing", () => {
+    const code = agreementSignNoticeCodeFor(new AgreementCompletedError());
+    const notice = noticeFor({ error: code });
     assert.ok(notice);
     assert.equal(notice.message, "This agreement version has already been signed and completed, so it cannot be signed again. No further action is needed.");
     assert.ok(!notice.message.includes("try again"));
   });
 
-  it("keeps the completed notice distinct from the stale-version updated notice", () => {
-    const completed = noticeFor({ error: "agreement-completed" });
-    const updated = noticeFor({ error: "agreement-updated" });
-    assert.ok(completed);
-    assert.ok(updated);
-    assert.notEqual(completed.message, updated.message);
+  it("keeps invalid-input, denied and unexpected-error handling unchanged", () => {
+    assert.equal(agreementSignNoticeCodeFor(new ValidationError("bad input")), "agreement-invalid");
+    assert.equal(agreementSignNoticeCodeFor(new ForbiddenError()), "agreement-denied");
+    const unexpected = new Error("boom");
+    assert.throws(() => agreementSignNoticeCodeFor(unexpected), (error: unknown) => error === unexpected);
   });
 });

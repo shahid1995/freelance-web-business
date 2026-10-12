@@ -1,8 +1,4 @@
-import {
-  AGREEMENT_ERROR_CODES,
-  isPlatformError,
-  ValidationError,
-} from "@/lib/platform/errors";
+import { agreementSignNoticeCodeFor } from "@/lib/platform/notices";
 import { redirectWith, requireSessionForAction } from "@/lib/platform/server";
 
 export async function POST(
@@ -24,18 +20,6 @@ export async function POST(
     });
     return redirectWith(request, returnTo, { sent: "agreement-signed" });
   } catch (error) {
-    if (isPlatformError(error, AGREEMENT_ERROR_CODES.updated)) {
-      return redirectWith(request, returnTo, { error: "agreement-updated" });
-    }
-    if (isPlatformError(error, AGREEMENT_ERROR_CODES.completed)) {
-      return redirectWith(request, returnTo, { error: "agreement-completed" });
-    }
-    if (isPlatformError(error, "invalid_input")) {
-      return redirectWith(request, returnTo, { error: "agreement-invalid" });
-    }
-    if (isPlatformError(error)) {
-      return redirectWith(request, returnTo, { error: "agreement-denied" });
-    }
-    throw error;
+    return redirectWith(request, returnTo, { error: agreementSignNoticeCodeFor(error) });
   }
 }
