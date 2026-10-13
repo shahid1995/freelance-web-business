@@ -24,9 +24,19 @@ approval and, where relevant, separate decisions.
 
 All draft framing here must remain draft until a Founder explicitly approves it.
 
+This draft is being revised for Founder and independent engineering review. It
+keeps the five review corrections already delivered on this PR, restores the
+useful substance of the original draft sections that were reorganized away, and
+removes the remaining failed-state contradiction.
+
+Out of scope for this doc: provider integration, fees, taxes, refunds,
+chargebacks, dunning, retry policy, invoicing style, receipts, ledger export,
+any consequence of activation, and any decision of pricing, currency, payment
+structure, provider choice, evidence authority, or what happens after activation.
+
 ---
 
-## A. Purpose
+## A. Purpose and the gap being closed
 
 This design gate defines the minimum internal model needed to reason about
 **payments** and **project activation** for projects whose commercial
@@ -34,22 +44,26 @@ arrangement is captured by the existing accepted-proposal / signed-agreement
 baseline, without committing the repository to any provider, price, policy, or
 implementation.
 
+The platform has implemented, and merged, the commercial workflow up to agreement
+signing:
+
+- **Proposal acceptance** is an append-only, version-bound customer action recorded
+  in `proposal_responses` (Customer Proposal Response, merged as PR #45). It is
+  **application-level commercial evidence**, explicitly not a payment and explicitly
+  not a signature. The decision behind it states that acceptance "does not create a
+  payment obligation, schedule, or status" and is "not the commercial gate."
+- **Agreement signing** is a separate, version-bound record with append-only
+  signature evidence and immutable signed history (Agreement and E-Signature,
+  merged as PR #48). Its "agreement completed" signal is a **derived, read-only**
+  boolean computed from append-only rows, never a stored mutable field.
+
+The next two links in the approved sequence — **required payment conditions
+satisfied** and **project activated** — are **not implemented**. There is no record
+of what a project owes, no evidence of what has been paid, and no activation event.
+This design proposes the conceptual model for those two links.
+
 It is written so a reviewer can challenge the model itself before any
 implementation direction is chosen.
-
-Issue: we do not yet have a shared, coherent internal definition of which
-commercial facts are authoritative for activating a project, how a payment is
-known to exist, how an obligation is known to be satisfied, and how those facts
-are recorded so that financial position can be reconstructed without inventing
-policy.
-
-Desired outcome: a single, provider-neutral draft model that distinguishes the
-commercial baseline, the payment evidence, the obligation state, and the audit
-boundary, and that states clearly what is left as an unresolved Founder decision.
-
-Out of scope for this doc: provider integration, fees, taxes, refunds,
-chargebacks, dunning, retry policy, invoicing style, receipts, ledger export,
-and any consequence of activation.
 
 ---
 
@@ -112,7 +126,8 @@ taken earlier.
 
 This section is a proposed design rule, draft and subject to Founder review. It
 does not decide amendment, cancellation, replacement, price changes, currency
-changes, obligation changes, or post-activation commercial behavior.
+changes, obligation changes, activation-trigger choice, or post-activation
+commercial behavior.
 
 ### B.2 Obligations (what must be paid)
 
@@ -130,9 +145,15 @@ the obligation is defined, not reconstructed from unrelated records.
 Obligations are identified by stable internal identifiers. The obligation identity
 is separate from the payment evidence that may later satisfy it.
 
+The set of obligations, their ordering, the schedule that tells the system when each
+obligation is payable, and the exact expected amounts and currencies are all derived
+from whichever commercial structure the Founder eventually approves. This draft does
+not choose one structure, does not select a currency, and does not invent amounts or
+schedules.
+
 This section deliberately does not define refund policy, partial-payment policy,
-overpayment handling, late fees, taxes, or anything that changes the expected
-amount after issuance.
+overpayment handling, late fees, taxes, retry policy, or anything that changes the
+expected amount after issuance.
 
 ### B.3 Payments as evidence-backed events
 
@@ -163,7 +184,7 @@ reasoning. They are derived from, and traceable to, the provider source evidence
 but they are not a second independent claim about the provider outcome.
 
 Do not copy raw provider payloads, credentials, or sensitive financial content into
-the cross-cutting audit metadata. (See §B.6.)
+the cross-cutting audit metadata. (See §H.)
 
 ### B.4 One authoritative source for payment/obligation state
 
@@ -208,9 +229,10 @@ The following are intentionally distinct concepts. They are not synonyms.
 Do not use these interchangeably in the document or in any later implementation
 discussion.
 
-Also distinct: a payment attempt outcome, the aggregate paid/outstanding
-financial position, and the obligation state. A failed attempt is an attempt
-outcome. It does not by itself mean the obligation has permanently failed.
+Also distinct: a **payment attempt outcome**, the **aggregate paid/outstanding
+financial position**, and the **obligation state**. A failed payment attempt is an
+attempt outcome. It is not an obligation state, and it does not by itself mean the
+obligation has permanently failed or been satisfied.
 
 ### B.6 Audit boundary
 
@@ -235,27 +257,64 @@ its audit entry are consistent.
 ### B.7 Customer-facing stages are unchanged by this model
 
 This model is internal. It does not introduce, remove, or alter
-`customerStageFor` or any customer-facing stage. Agreement states, project
-intake states, and the existing mapping to customer-facing stages remain as they
-are. Any later customer-facing change would be a separate decision.
+`customerStageFor` or any customer-facing stage. Agreement states, project intake
+states, and the existing mapping to customer-facing stages remain as they are. Any
+later customer-facing change would be a separate decision.
 
 ---
 
-## C. Payment obligation lifecycle (candidate states, draft)
+## C. Payment obligations, schedules, and lifecycle (proposed only)
 
-This is a **candidate** lifecycle for internal obligation state. States are not
-agreement states. The list is illustrative of distinct semantics, not a finalized
-policy.
+### C.1 What the requirements already allow
 
-| State | Meaning | Trigger and notes |
+The requirements allow several possible commercial structures for what a project owes
+and when. This design **does not select one** and **invents no monetary values or
+schedules**.
+
+For example, a project could be arranged as:
+
+- full amount up front;
+- a deposit plus later payments;
+- milestone-linked payments tied to approved scope or milestone versions;
+- another Founder-approved arrangement.
+
+The model is deliberately open to each. Which structure applies to a given project,
+and the currency, amounts, due timing, and whether obligations can be edited after
+issuance, are all separate Founder decisions.
+
+### C.2 What can stay configurable and provider-neutral
+
+- The **set of obligations** and their ordering are derived from whichever structure
+  the Founder approves; the model does not hard-code a schedule shape or a fixed
+  number of installments.
+- Obligations reference **scope/milestone version identifiers** rather than embedding
+  amounts, so milestone-linked schedules work without schema assumptions about money
+  or milestone shape.
+- The model is provider-neutral: an obligation and its evidence carry **opaque
+  provider references**, never a chosen provider's field names.
+- Amounts and currencies are stored where the obligation is defined. They are not
+  reconstructed from unrelated records, and they are not adjusted by the system
+  without an explicit Founder-approved policy.
+
+### C.3 Candidate obligation states (proposed only, draft)
+
+These are **proposed** internal obligation states with distinct semantics. They are
+not agreement states, not customer-facing terms, and not a finalized policy. States
+are illustrative of separate concerns, deliberately not collapsed.
+
+| State | Proposed meaning | Transition evidence required |
 | --- | --- | --- |
-| `proposed` | Obligation exists as part of a configuration version, not yet payable/relevant in the active flow. | Configuration/obstacle modeling only. |
-| `due` | Obligation is currently expected to be paid. | Baseline says it applies now. |
-| `paid` | Obligation has been satisfied by allocated payment evidence. | Allocation + evidence satisfy expected amount/currency per the relevant decision. |
+| `proposed` | Obligation exists as part of a configuration version, not yet payable/relevant in the active flow. | Configuration modeling only; no payment status implied. |
+| `due` | Obligation is currently expected to be paid. | Baseline schedule/trigger says it applies now. |
 | `partially_paid` | Some allocated payment exists, but the obligation is not yet fully satisfied. | Partial payment allocated; remaining balance still owed by the obligation. |
+| `paid` | Obligation has been satisfied by allocated payment evidence. | Allocation + evidence satisfy expected amount/currency per the relevant Founder decision. |
 | `disputed` | The obligation is contested; no payment-relevant conclusion is assumed here. | Unresolved Founder decision what this implies. |
-| `reversed` | A prior satisfied obligation is reversed by a refund/reversal that the model treats as removing that satisfaction. | Reversal outcome; distinct from " refunded ". |
-| `failed` | **This is an obligation lifecycle state only if explicitly adopted as such later.** In the current draft, do **not** treat `failed` as an obligation state. Failed is an **attempt** outcome, not an obligation state. | See §E.1 and §C clarification. |
+| `reversed` | A prior satisfied obligation is reversed by a refund/reversal that the model treats as removing that satisfaction. | Reversal outcome; distinct from "refunded". |
+
+There is **no `failed` obligation state** in this draft. `failed` is a
+**payment-attempt outcome**, not an obligation state. Section C.4 and the
+unresolved-decisions list in this draft make that explicit and remove the
+remaining contradiction from the prior draft.
 
 Candidate states above overlap in naming with payment-attempt outcomes and with
 refund/reversal concepts. That is exactly what this section is flagging. Do not
@@ -272,13 +331,21 @@ In particular:
   expected amounts, tracked per obligation and across obligations; it is a derived
   view, not a magic field on the attempt.
 
-If an obligation is disputed, that does not by itself mean the payment did not
-occur or that the obligation is `failed`. If a payment attempt failed, that does
-not by itself mean the obligation is satisfied or permanently failed. The attempt
-outcome and the obligation state are distinct columns in the model.
+If an obligation is disputed, that does not by itself mean the payment did not occur
+or that the obligation is "failed". If a payment attempt failed, that does not by
+itself mean the obligation is satisfied or permanently failed. The attempt outcome
+and the obligation state are distinct columns in the model.
 
-Retry limits, dunning, retry scheduling, notifications, and any "give up" policy
-are unresolved Founder decisions, not part of this lifecycle.
+Retry limits, retry scheduling, dunning, notifications, and any "give up" policy are
+unresolved Founder decisions, not part of this lifecycle.
+
+### C.4 What requires Founder approval here
+
+The **choice of structure per project**, the **currency/unit**, the **amounts**, the
+**schedule/trigger logic** that moves an obligation into `due`, whether an obligation
+can be edited after issuance, and whether late or failed obligations block anything are
+all Founder decisions. The design holds the model open for each of them without
+presuming an answer.
 
 ---
 
@@ -286,8 +353,8 @@ are unresolved Founder decisions, not part of this lifecycle.
 
 ### D.1 Evidence types, conceptually
 
-The model is provider-neutral. It does not depend on one provider's webhook
-schema, one provider's reconciliation API, or one provider's certainty semantics.
+The model is provider-neutral. It does not depend on one provider's webhook schema,
+one provider's reconciliation API, or one provider's certainty semantics.
 
 Evidence can come from different sources with different certainty:
 
@@ -296,19 +363,19 @@ Evidence can come from different sources with different certainty:
 - internal reconciliation with the provider's reported outcome;
 - customer-uploaded or manually recorded evidence where allowed (if ever).
 
-Each evidence record is identified by its source and its provider/source
-identifiers. Evidence is verified before it is used to support a payment event.
-A provider callback is not automatically trusted as authoritative without
-verification within the system's own boundary.
+Each evidence record is identified by its source and its provider/source identifiers.
+Evidence is verified before it is used to support a payment event. A provider callback
+is not automatically trusted as authoritative without verification within the
+system's own boundary.
 
 This document does not require a specific verification mechanism; it requires that
 the rule exist.
 
 ### D.2 Comparing evidence to the obligation
 
-Before a payment can count as confirming payment against an obligation, the
-payment evidence amount and currency are compared to **that specific obligation's**
-expected amount and currency.
+Before a payment can count as confirming payment against an obligation, the payment
+evidence amount and currency are compared to **that specific obligation's** expected
+amount and currency.
 
 That is:
 
@@ -318,157 +385,372 @@ That is:
 - the system compares the two before treating the payment as allocated to that
   obligation.
 
-The system does **not** match payments to obligations by amount alone, by order
-alone, or by proximity in time alone. Allocation is explicit.
+The system does **not** match payments to obligations by amount alone, by order alone,
+or by proximity in time alone. Allocation is explicit.
 
 ### D.3 Attempts, allocations, and refunds
 
-- A **payment attempt** is one provider/reconciliation outcome. It may succeed or
-  fail or be pending.
+- A **payment attempt** is one provider/reconciliation outcome. It may succeed, fail,
+  or be pending.
 - An **allocation** applies part or all of a successful payment to one or more
   obligations, with explicit amounts per obligation.
-- A **refund/reversal** is a separate later event, tied to the original payment
-  where applicable. It can be partial or full.
+- A **refund/reversal** is a separate later event, tied to the original payment where
+  applicable. It can be partial or full.
 
 No amount or financial detail is stored in identifier-only audit metadata.
 
-Original payment evidence and original refund evidence are preserved as
-append-only history. A refund does not erase the original payment record; it adds
-a reversible record that can be traced back.
+Original payment evidence and original refund/reversal evidence are preserved as
+append-only history. A refund does not erase the original payment record; it adds a
+reversible record that can be traced back.
 
 ### D.4 Partial payments and partial refunds
 
 A partial payment is a payment whose allocated amount is less than the obligation's
-expected amount. It leaves the obligation in a not-fully-satisfied state, for
-example `partially_paid` if that state is adopted.
+expected amount. It leaves the obligation in a not-fully-satisfied state, for example
+`partially_paid` if that state is adopted.
 
-A partial refund is a refund whose amount is less than the originally allocated
-amount. It does **not** mean the entire obligation is refunded.
+A partial refund is a refund whose amount is less than the originally allocated amount.
+It does **not** mean the entire obligation is refunded.
 
-The `refunded` state, if used, must be defined so a partial refund cannot be
-mistaken for a complete refund of the obligation. In this draft, the safe approach
-is to keep refund as an event and amount relative to the specific allocation or
-obligation, and to avoid using a single boolean `refunded` that implies complete
-satisfaction reversal unless the exact meaning is stated.
+The `refunded` state, if used, must be defined so a partial refund cannot be mistaken
+for a complete refund of the obligation. In this draft, the safe approach is to keep
+refund as an event and amount relative to the specific allocation or obligation, and to
+avoid using a single boolean `refunded` that implies complete satisfaction reversal
+unless the exact meaning is stated.
 
-Impact of partial payments/refunds on obligation satisfaction remains dependent on
-an explicit Founder-approved policy. This document does not invent that policy.
+Impact of partial payments and partial refunds on obligation satisfaction remains
+dependent on an explicit Founder-approved policy. This document does not invent that
+policy.
 
 If additional records are needed per concept (one record per attempt, one per
 allocation, one per refund), that is allowed if justified. If a concept can be
-represented without a separate record, say so. The guiding rule is
-reconstructability and no conflicting duplicate source of truth.
+represented without a separate record, say so. The guiding rule is reconstructability
+and no conflicting duplicate source of truth.
 
 ### D.5 Idempotency and deduplication
 
-The model must be able to receive the same external event more than once.
-Repeated delivery must be handled by idempotent processing keyed on a
-provider/source event identifier, so a duplicate is recognized and does not create
-a second payment event or a second allocation that double counts.
+The model must be able to receive the same external event more than once. Repeated
+delivery must be handled by idempotent processing keyed on a provider/source event
+identifier, so a duplicate is recognized and does not create a second payment event or
+a second allocation that double counts.
 
-The deduplication scope is the provider/source event identity for that evidence
-source. Internal normalized events may be deduplicated against already-accepted
-external evidence.
+The deduplication scope is the provider/source event identity for that evidence source.
+Internal normalized events may be deduplicated against already-accepted external
+evidence.
 
 This does **not** mean "last write wins" silently. If the same provider event is
-received again, the system should recognize the prior accepted outcome and not
-rewrite it. If different evidence conflicts with prior accepted evidence, that is a
-reconciliation conflict to be handled explicitly, not by overwriting earlier
-records.
+received again, the system should recognize the prior accepted outcome and not rewrite
+it. If different evidence conflicts with prior accepted evidence, that is a
+reconciliation conflict to be handled explicitly, not by overwriting earlier records.
 
 ### D.6 Delayed, duplicated, out-of-order, conflicting events
 
 - Delayed events: accepted if they are within the system's reconciliation/temporal
-  rules, and correlated to the correct obligation/version. No silent mutation of
-  earlier records.
+  rules, and correlated to the correct obligation/version. No silent mutation of earlier
+  records.
 - Duplicated events: deduplicated, as above.
-- Out-of-order events: applied in a way that preserves the append-only history and
-  does not erase prior attempts. Later events do not rewrite earlier ones.
-- Conflicting events: flagged for reconciliation. The earlier accepted record is
-  not silently overwritten. Reconciliation outcome is itself recorded.
+- Out-of-order events: applied in a way that preserves the append-only history and does
+  not erase prior attempts. Later events do not rewrite earlier ones.
+- Conflicting events: flagged for reconciliation. The earlier accepted record is not
+  silently overwritten. Reconciliation outcome is itself recorded.
 
-Transactional consistency: an accepted payment event, any derived obligation state
-(if materialized), and its audit entry must be written in a consistent transaction
-so the system does not end up with an accepted event and no corresponding audit
-entry, or an audit entry with no accepted event.
+Transactional consistency: an accepted payment event, any derived obligation state (if
+materialized), and its audit entry must be written in a consistent transaction so the
+system does not end up with an accepted event and no corresponding audit entry, or an
+audit entry with no accepted event.
 
 ---
 
-## E. Activation predicate (candidate)
+## E. Failed, reversed, disputed, and refunded payments (outcome model, no policy invented)
 
-### E.1 Activation as an internal gate
+This section explains lifecycle outcomes **without inventing business policy.** Each
+item names the decision the Founder must make; none is resolved here.
 
-Activation is an internal event recorded when the activation predicate is
-satisfied. It is not the same as acceptance, not the same as signing, and not a
-provider callback.
+### E.1 Failed or abandoned attempts
 
-Candidate activation predicate (draft, subject to Founder review):
+A failed payment attempt records a `failed` **attempt outcome** and leaves the
+obligation in whatever state the model defines for not-yet-satisfied obligations. It
+does not, by itself, change the obligation into a `failed` obligation state, because
+this draft does not have one.
 
-1. The project's **current accepted proposal version** is the exact version
+Whether a customer may **retry**, how many times, and whether repeated failure blocks
+anything are Founder decisions. The design only requires the failure be recorded as an
+attempt outcome, not silently dropped.
+
+### E.2 Duplicate or delayed confirmations
+
+Handled by idempotency and derived state (§D.5, §D.6). A delayed confirmation that
+arrives after another determination must be **reconciled**, not allowed to silently
+overwrite; the reconciliation outcome is a recorded event.
+
+### E.3 Reversals / chargebacks after apparent success
+
+A reversal is a **new forward event** tied to the original payment where applicable,
+with its own evidence; the original payment record is never edited. Whether a reversal
+re-opens an obligation, blocks further work, or is purely financial is a Founder
+decision. It is not automatic.
+
+### E.4 Full and partial refunds
+
+A refund is a forward event; **partial refunds** are recorded as distinct evidence
+against the same allocation or obligation so the net position is reconstructable. Refund
+authority, partial-refund policy, and historical treatment are Founder decisions. No
+refund is modeled as automatic.
+
+### E.5 Retry and reconciliation procedures
+
+Reconciliation is the process of matching provider/manual evidence to obligations and
+recording the outcome. Its cadence, authority, and how disputes are escalated are
+Founder operational decisions. They are not encoded here.
+
+### E.6 Effect on projects already activated — and no automatic deactivation
+
+**This design introduces no deactivation path.** Consistent with the agreement track's
+boundary that a later commercial event must not, by itself, deactivate or rewrite
+historical evidence for an already activated project, a payment reversal, refund, failed
+attempt, or later commercial event likewise **must not silently trigger deactivation or
+rewrite historical evidence.**
+
+The effect of such an event on an activated project requires an **explicit
+Founder-approved policy**, not an automatic side effect. The proposed model therefore
+keeps **activation** (append-only, §F) and **payment status** (derived, §B.4) as
+separate auditable concerns: a later payment event changes payment status; it does not,
+by itself, change activation.
+
+If the Founder someday wants a deactivation or suspension concept, it is a
+**separate, explicit decision** — not a side effect of this design.
+
+---
+
+## F. Activation predicate (candidate, draft)
+
+### F.1 Activation as an internal gate
+
+Activation is an internal event recorded when the activation predicate is satisfied. It
+is not the same as acceptance, not the same as signing, and not a provider callback.
+
+### F.2 Candidate activation predicate (draft, subject to Founder review)
+
+1. The project's **current accepted proposal version** is the exact version referenced
+   by the effective payment configuration version being evaluated.
+2. The project's **current applicable signed agreement version** is the exact version
    referenced by the effective payment configuration version being evaluated.
-2. The project's **current applicable signed agreement version** is the exact
-   version referenced by the effective payment configuration version being
-   evaluated.
-3. The effective payment configuration version's required obligations are exactly
-   the obligations that belong to that configuration version, and all required
-   obligations are present in that version.
-4. The required obligations are satisfied according to the relevant payment,
-   allocation, and evidence rules, compared against each obligation's expected
-   amount and currency.
+3. The effective payment configuration version's required obligations are exactly the
+   obligations that belong to that configuration version, and all required obligations
+   are present in that version.
+4. The required obligations are satisfied according to the relevant payment, allocation,
+   and evidence rules, compared against each obligation's expected amount and currency.
 
-A configuration that references a stale accepted proposal or stale applicable
-signed agreement does not satisfy (1) or (2), and is therefore not eligible for
-activation.
+A configuration that references a stale accepted proposal or stale applicable signed
+agreement does not satisfy (1) or (2), and is therefore not eligible for activation.
 
 A configuration whose required-obligations set is incomplete or mismatched does not
 satisfy (3).
 
 An obligation that is due but not satisfied does not satisfy (4). A failed payment
-attempt does **not** by itself satisfy or void an obligation; it is an attempt
-outcome. Retry policy, dunning, and how many attempts are allowed are unresolved
-Founder decisions and are **not** encoded here.
+attempt does **not** by itself satisfy or void an obligation; it is an attempt outcome.
+Retry policy, dunning, and how many attempts are allowed are unresolved Founder
+decisions and are **not** encoded here.
 
 The activation predicate is evaluated against the validated current references and
-required obligations at evaluation time. The server-side activation operation
-revalidates this baseline at the point of activation, as described in §B.1.
+required obligations at evaluation time. The server-side activation operation revalidates
+this baseline at the point of activation, as described in §B.1.
 
-If the predicate is satisfied, the activation event is written atomically together
-with the validation context and its audit entry. If not, no activation event is
-written and no activating consequence occurs.
+If the predicate is satisfied, the activation event is written atomically together with
+the validation context and its audit entry. If not, no activation event is written and no
+activating consequence occurs.
 
-This predicate does not say what happens after activation. It only says what must
-be true before the activation event can be recorded.
+This predicate does not say what happens after activation. It only says what must be true
+before the activation event can be recorded.
+
+### F.3 Repeated evaluation, duplicates, concurrency, traceability
+
+- **Repeated evaluation is safe.** Because the activation record is append-only with a
+  one-per-project guard, re-evaluating the predicate after activation is a no-op, not a
+  second activation.
+- **Duplicate triggers** are absorbed by the same guard plus an idempotency key.
+- **Concurrent changes:** the predicate is evaluated and the activation written **inside
+  one transaction**, so a concurrent new proposal acceptance, new agreement version, or
+  new obligation cannot interleave to produce a partial activation; the snapshot is
+  consistent.
+- **Historical traceability:** because activation references the exact proposal/agreement
+  /obligation identifiers, a later reader can reconstruct precisely what was true at
+  activation — even though the derived "agreement completed" signal or payment state may
+  since have changed.
+
+### F.4 Automatic activation — how it could be safe, without authorizing it
+
+This design notes, **without authorizing or building it**, that a future automatic
+activator would have to: evaluate the predicate server-side only; write the activation
+atomically with its evidence; be idempotent under retries; never trust a client-supplied
+trigger; and never run in production until the applicable Founder decisions and production
+gates are approved. **This design authorizes none of that.**
 
 ---
 
-## F. Activation, staleness, and replacement (non-contradictory wording)
+## G. Authorization and audit
 
-- Activation binds to the exact current commercial baseline through the effective
-  payment configuration version, which must reference the exact current accepted
-  proposal version and the exact current applicable signed agreement version.
-- The effective configuration version must include all required obligations.
-- If the current accepted proposal or current applicable signed agreement changes,
-  any configuration version anchored to the prior versions becomes stale.
-- A stale configuration cannot satisfy the activation gate, because the activation
-  predicate requires the exact current references.
-- A replacement configuration is a new configuration version referencing the then
-  current baseline, with its own required obligations. It does not rewrite prior
-  configuration versions, prior obligations, or prior payment history.
-- Previously issued obligations are not silently mutated.
-- Payment evidence and payment history are append-only; later events do not erase
-  or rewrite earlier ones.
+### G.1 Proposed permissions (no new customer capabilities)
 
-These rules are proposed, draft, and subject to Founder review. They do not specify
-amendment, cancellation, price change, currency change, or any commercial
-replacement workflow. They only describe how a configuration can stop being current
-and how a replacement would be represented without corrupting history.
+| Action | Proposed actor | Rationale |
+| --- | --- | --- |
+| Payment **configuration** create/amend | Founder/internal capability only | Commercial/monetary configuration is Founder authority. |
+| Manual obligation determination (mark satisfied / adjust) | Founder/internal capability only, least-privileged | Highest misuse risk; never a customer capability. |
+| **Customer-visible payment status** read | Authorized customer with project access | Read-only status through existing project access. A customer may see what is owed/paid, never edit it. |
+| **Activation** (future automatic or manual) | Server-authoritative decision; manual override Founder-only | Must never be a client-supplied command. |
+
+**No customer role may mark an obligation as paid.** This design grants customers **no
+new write capability**; customers can at most read their own payment status through the
+existing project-access authorization.
+
+### G.2 Project isolation and the caller-supplied-identifier rule
+
+The existing pattern is that a caller-supplied identifier is **never** proof of access:
+a reference is resolved **within the caller's organization** and then access is checked
+server-side before any internal project id is used. Payment and activation operations
+reuse exactly this pattern: a reference is resolved and access re-checked server-side on
+**every** read and write.
+
+A customer cannot reach another project's payment configuration, obligations, evidence, or
+activation record by supplying an id or reference they were never granted. Authorization
+is not delegated to the caller.
+
+### G.3 Founder/internal authority stays distinct from customer authority
+
+Internal payment operations belong on the **internal surface**, authorized against the
+dedicated internal capability attached to a Person — never a customer route with hidden
+controls. Internal payment/activation fields are internal-only and never leak into
+customer projections.
+
+### G.4 Actor, preconditions, evidence, failure handling (per material transition)
+
+For **configuration**, **obligation issuance**, **evidence append / state change**,
+**manual determination**, and **activation**:
+
+- the actor is named (Founder/internal capability, authorized customer read, or trusted
+  reconciliation process);
+- the preconditions are named (baseline versions current, access re-checked, predicate
+  satisfied for activation);
+- the identifier-only audit evidence is named (type, actor, project, timestamp,
+  identifier metadata);
+- the failure handling is named (reject and record nothing partial, as in the
+  atomic-write patterns already used).
+
+Details are elaborated per slice in §I.
+
+### G.5 Audit integrity
+
+Every material transition appends an identifier-only `audit_events` row (type, actor,
+project, timestamp, identifier metadata) **in the same transaction** as the state change
+it describes — matching the existing contract where the audit append and the record write
+succeed or roll back together.
 
 ---
 
-## G. Proposed boundaries (non-implementation)
+## H. Security, privacy, and operational boundaries
 
-This section is deliberately non-implementation. It records proposed boundaries so
-later work does not accidentally expand scope.
+- **Least privilege:** only the Founder/internal capability configures payments or makes
+  manual determinations; customers get read-only status through existing access checks.
+- **Minimal stored evidence:** store obligation linkage, evidence-source kind, opaque
+  provider references, and derived state — **never** raw card numbers, security codes,
+  banking credentials, or provider secrets.
+- **Secret handling:** any future provider secret lives only in server-side environment
+  configuration, never in application records or this public repository.
+- **Audit integrity:** append-only events plus transactional coupling to state changes;
+  no in-place edits to evidence.
+- **Minimal evidence collection:** collect only what is needed to reconstruct why an
+  obligation was considered satisfied and who or what determined it. Do not hoard raw
+  provider payloads into cross-cutting metadata.
+- **Retention:** payment-evidence retention is **not** decided here; no retention period is
+  invented. It is left as an unresolved decision.
+- **Reconciliation & failure recovery:** derived state from append-only events allows
+  reconstruction after partial failures; reconciliation is idempotent.
+- **No compliance claim:** this design makes **no** legal or regulatory-compliance claim
+  (PCI, tax, consumer-protection, etc.). Provider-specific security requirements and legal
+  obligations remain for later legal/security review.
+
+---
+
+## I. Implementation and verification contract (proposed, not implemented)
+
+This is the **proposed** smallest later sequence. **Design approval ≠ implementation
+approval.** Nothing here is implemented by this document, and no first implementation may
+process real payments or activate live projects until the applicable business decisions
+and production gates are approved.
+
+Each slice is a thin vertical slice with its own acceptance criteria, delivered
+provider-neutrally against synthetic data first:
+
+1. **Payment configuration + obligations (provider-neutral, no real money).**
+   *Criteria:* Founder-only configuration create/amend with immutable baseline
+   references; obligation issuance; authorization tests (customer cannot configure);
+   project-isolation tests (IDOR regression restated, one project cannot reach another's
+   payment data); audit tests (identifier-only events); regression tests proving
+   proposal/agreement/stage behavior unchanged.
+
+2. **Payment evidence + obligation state machine (still synthetic).**
+   *Criteria:* append-only evidence; derived obligation state; amount/currency comparison
+   against the specific obligation; idempotency under duplicate events; atomic
+   evidence+state+audit writes (transaction tests); one-satisfaction guard under
+   concurrency; no overwrite of earlier evidence.
+
+3. **Customer read-only payment status.**
+   *Criteria:* authorized-customer read; project isolation (cannot read another project's
+   status); no new customer write capability; internal fields never exposed.
+
+4. **Activation predicate + activation record (manual Founder trigger first, not
+   automatic).**
+   *Criteria:* predicate gating tests (each of the four conditions, including stale
+   accepted-proposal/baseline rejection); stale signed-agreement-baseline rejection;
+   required-obligations membership enforcement; one-activation guard; atomic
+   activation-with-evidence; historical traceability test; regression proving
+   `customerStageFor` and stages unchanged; no automatic deactivation path introduced.
+
+5. **(Later, only after the applicable founder decisions + production gates) provider
+   integration and/or automatic activation.**
+   *Criteria:* provider verification (never trusting callbacks blindly); replay/forgery
+   protection; production gating; no live activation until explicitly authorized.
+
+**Cross-cutting and regression checks across all slices:** agreement
+creation/publication/signing, stale-baseline rejection, idempotency/replay, transaction
+consistency, audit integrity, proposal acceptance, and `customerStageFor` stage
+derivation must all continue to pass unchanged.
+
+---
+
+## J. Founder decisions required
+
+These are **questions for Founder review.** They are not answered here. Each row states
+the question, why it matters, options the governing documents already support or that are
+defensible from the existing direction, risks/consequences, what can be designed now
+without deciding it, and what it blocks if left unresolved.
+
+| # | Decision question | Why it matters | Options (where supported or defensible from existing direction) | Consequences / risks | Designable now without deciding | Blocks |
+| --- | --- | --- | --- | --- | --- | --- |
+| **J.1** | Pricing and commercial authority. | Sets what is owed and who may set it; this is a material business decision reserved to the Founder. | Not enumerated in governing docs — Founder defines. | Under/over-pricing; unauthorized discounts. | The obligation/config model with amounts as Founder-set data. | Implementation, production use. |
+| **J.2** | Payment schedule & permitted arrangements. | Determines obligation structure per project. | Requirements allow full upfront; deposit plus later payments; milestone-linked payments; another Founder-approved arrangement. | Rigid model vs. unsupported flexibility. | Config→obligations model open to all four shapes. | Implementation. |
+| **J.3** | Authoritative payment evidence and its verification. | The core of the activation predicate and obligation satisfaction. | Candidate sources: provider confirmation after verification; verified reconciliation; authorized manual record. This draft does not declare any source authoritative. | Trusting the wrong source; fraud; double-satisfaction. | Evidence model with source kind + idempotency, source-agnostic. | Implementation, provider activation, production use. |
+| **J.4** | Failed payments, retry policy, retry limits, dunning, and notifications. | Affects customers and whether failure blocks progress. | Not enumerated — Founder defines retries, retry limits, dunning, and customer notification. | Lost revenue vs. customer friction; silent "give up" behavior if left implicit. | `failed` as a payment-attempt outcome only; recorded failure events; no obligation-state meaning invented. | Implementation, production use. |
+| **J.5** | Reversals, chargebacks, and disputes. | Post-success events that can undo confirmed payments. | Not enumerated — Founder defines handling, escalation, and whether reversal changes what "satisfied" means for an activated project. | Financial loss; disputed activated projects; conflicting evidence. | Forward-only reversal events; no auto-deactivation; reconciliation recorded as an event. | Implementation, production use. |
+| **J.6** | Full and partial refunds — authority, policy, and historical treatment. | Who may refund, whether partial refunds are allowed, and how they are recorded. | Not enumerated — Founder defines authority and policy. This draft keeps refund as an event with an amount, and makes sure a partial refund cannot be mistaken for a complete refund. | Unauthorized refunds; unclear net position. | Partial-refund evidence model as forward events; no invented refund policy. | Implementation, production use. |
+| **J.7** | Tax treatment and responsibilities. | Collection, recording, and jurisdiction. | Not enumerated; the requirements defer taxes. | Non-compliance exposure (a legal matter, not designed here). | Amount/unit fields left Founder-defined; no tax logic invented. | Implementation, production use. |
+| **J.8** | Payment-provider selection and activation. | Determines the real integration and the trust boundary. | Not selected; design stays provider-neutral with opaque provider references. | Vendor lock-in; security posture; verification burden. | Opaque provider references; provider-neutral evidence model. | Provider activation, production use. |
+| **J.9** | Exact project-activation conditions and their trigger. | The precise predicate and whether activation is automatic or manual. | Requirements allow the trigger to vary by approved commercial configuration. This draft offers a four-condition candidate predicate and a manual-trigger-first plan. | Wrong gating; premature or late activation. | Four-condition predicate as a **candidate**; manual-trigger-first implementation plan. | Implementation (activation slice), production use. |
+| **J.10** | Who may make or override a manual payment-status determination. | Manual marks are the highest-misuse path. | Not enumerated — Founder defines the authorized actor(s). | Misattribution; fraud. | Founder-only, least-privileged, audited manual-determination model. | Implementation. |
+| **J.11** | Retention and treatment of payment evidence. | How long evidence is kept and how it is protected. | Not enumerated; mirrors the agreement track's deferral of retention. | Over- or under-retention. | Append-only evidence with retention left undefined. | Production use. |
+| **J.12** | Policy for payment events after activation. | Reversal/refund/failed event after a project is live — must not silently deactivate or rewrite history. | Not enumerated — Founder defines the explicit policy. | Silent deactivation risk if left implicit. | Separate activation (append-only) from payment status (derived); **no** deactivation path. | Production use; any future suspension concept. |
+
+**Technical-safety note (not a business decision):** keep activation **append-only and
+forward-only**, and keep payment status **derived from append-only events**, so that no
+later payment event can silently rewrite history or deactivate a project. The business
+policy for what that means after activation remains J.12.
+
+---
+
+## K. Proposed boundaries (non-implementation)
+
+This section is deliberately non-implementation. It records proposed boundaries so later
+work does not accidentally expand scope.
 
 Implementation excluded here:
 
@@ -484,118 +766,136 @@ Implementation excluded here:
 - no activation UI,
 - no customer-facing stage change,
 - no change to agreement behavior,
-- no change to `customerStageFor` output.
+- no change to `customerStageFor` output,
+- no automatic activation built or authorized now,
+- no manual activation built or authorized now,
+- no price, currency, tax, fee, refund, chargeback, retry, dunning, or post-activation
+  policy decided now.
 
-Also excluded: fee/tax/refund/chargeback/retry/dunning policy, invoicing,
-receipts, ledger export, and any post-activation behavior.
+Also excluded: deployment, provider activation, live customer data, and any commercial
+policy not already explicitly identified as unresolved.
 
-### G.1 Out of scope for this design gate
+### K.1 Status, approval, and production-use separation
 
-Same list as above, restated for clarity: provider choice, payment implementation,
-schemas, migrations, routes, services, UI, tests, deployment, provider activation,
-live customer data, and any commercial policy not already explicitly identified as
-unresolved.
+The following are separate, sequential gates. Passing one does **not** pass the next:
+
+1. **Design approval** — this document, reviewed and approved as a design by the Founder.
+2. **Implementation approval** — separate approval to build any slice at all.
+3. **Business/policy approval** — the unresolved decisions in §J resolved before the
+   relevant slice can be meaningful.
+4. **Provider selection and activation** — only after J.8 and the applicable security
+   review.
+5. **Production use** — only after all applicable gates, including production gating and
+   no live activation until explicitly authorized.
+
+This document is only step 1, and only as a draft for review. It passes none of the
+others.
 
 ---
 
-## H. Implications for current codebase probe (factual, not a design decision)
+## L. Implications for the current codebase (factual, not a design decision)
+
+This section records factual context only. It is not approval of any design.
 
 The codebase currently has:
 
-- a customer proposal surface that returns the current published proposal version
-  for a project the customer may access, and treats "no published proposal" and
-  "only drafts" as indistinguishable to the customer (`website/lib/platform/customer-proposals.ts`);
+- a customer proposal surface that returns the current published proposal version for a
+  project the customer may access, and treats "no published proposal" and "only drafts"
+  as indistinguishable to the customer (`website/lib/platform/customer-proposals.ts`);
 - an audit-events table used as a cross-cutting identifier-only metadata store
   (`website/lib/platform/sqlite-store.ts`);
 - existing proposal and agreement lifecycle and state concepts in the
   agreement/e-signature track.
 
-These are cited as factual context for the proposed model, not as approval of any
-design here.
+These are cited as context for the proposed model, not as endorsement.
 
 ---
 
-## I. Unresolved decisions (explicit list, draft)
+## M. What this document does and does not do
 
-The following are **unresolved Founder decisions**, not implicit model choices:
+**It does:**
 
-1. Whether `refunded` is an obligation state at all, and if so exactly what it
-   means versus partial refund versus reversal.
-2. Whether partial payments and partial refunds are allowed, and their exact
-   effect on obligation satisfaction.
-3. Whether `failed` is ever an obligation state, or only ever an attempt outcome.
-4. Retry limits, retry scheduling, dunning, and customer notification policy.
-5. Evidence verification mechanism details and acceptable sources.
-6. Exact list of permitted audit_events metadata fields.
-7. Whether provider source evidence and normalized events are stored separately or
-   in one combined ledger.
-8. Idempotency key scope beyond provider/source event identity.
-9. Handling of refunds/reversals in activation predicate semantics.
-10. Any post-activation consequences, if any.
-11. Any amendment/replacement/cancellation commercial workflow.
-12. Any currency, pricing, tax, fee, or refund policy.
+- propose a provider-neutral conceptual model linking the merged proposal/agreement
+  workflow to the future payment/activation stage;
+- preserve the five review corrections already delivered on this PR;
+- preserve the existing boundaries: approved sequence, version-bound baselines, separate
+  payment versus activation concerns, project-scoped authorization, identifier-only
+  transactional audit, and no change to `customerStageFor` or agreement behavior;
+- introduce **no** deactivation path, and state that a later payment event cannot silently
+  reverse activation;
+- leave the material Founder decisions in §J explicitly unresolved.
 
-This list is deliberately long. The point is to avoid hiding policy gaps inside
-the model.
+**It does not:**
 
----
-
-## J. Proposed Founder decisions (for review, not decided here)
-
-These are proposed, not decided. Each is a candidate Founder decision.
-
-- **J.1** Activate only against the exact current accepted proposal version and the
-  exact current applicable signed agreement version, through a payment
-  configuration version that references both.
-- **J.2** Treat stale configurations as ineligible for activation; do not silently
-  reuse them.
-- **J.3** Represent replacement configurations as new versions referencing the then
-  current baseline, with no silent mutation of prior obligations or payment history.
-- **J.4** Store expected monetary amount and currency on the obligation/configuration
-  where they are defined, and compare payment evidence amount/currency to that
-  specific obligation before counting payment as confirmed.
-- **J.5** Adopt one authoritative append-only internal record for derived
-  payment/obligation state, with provider source evidence either embedded or
-  referenced by stable identifier.
-- **J.6** Keep payment attempt outcomes distinct from obligation states and from
-  aggregate financial position.
-- **J.7** Preserve original payment and refund evidence as append-only; refund adds
-  a reversible record rather than erasing the original.
-- **J.8** Make `refunded`, if used, unambiguously not equivalent to a complete
-  refund unless exactly defined that way.
-- **J.9** Deduplicate repeated external events by provider/source event identity;
-  do not silently overwrite accepted evidence.
-- **J.10** Treat `audit_events` as identifier-only metadata; do not store monetary
-  amounts, currency, provider payloads, credentials, or sensitive financial content
-  there.
-- **J.11** Maintain transactional consistency among accepted events, derived
-  obligation state if materialized, and audit entries.
-- **J.12** Delay all retry, dunning, refund policy, tax, fee, currency, and
-  post-activation consequence decisions until separately approved.
+- select or activate a provider;
+- set pricing, taxes, refunds, charges, retries, dunning, or any payment policy;
+- authorize deployment, production use, or live customer-data processing;
+- change `customerStageFor`, customer-facing stages, or existing agreement behavior;
+- introduce any automatic activation or automatic deactivation;
+- claim legal validity or regulatory compliance;
+- answer any question in §J on the Founder's behalf.
 
 ---
 
-## Appendix: edits relative to the prior draft
+## Appendix: edits relative to the prior drafts on this PR
 
-The prior draft's §B.3 and §B.4 overlapped; this revision resolves that by making
-§B.3 the provider-neutral event evidence model and §B.4 the single-source-of-truth
-statement with explicit evidence-reference rules.
+**Relative to the original PR #50 draft (`8c8fb26`):**
 
-The prior draft conflated `failed` as an obligation state in §C.4 with
-"failed attempt leaves obligation due" in §E.1; this revision separates attempt
-outcome from obligation state and updates the lifecycle table, §C, §E.1, and
-cross-references accordingly.
+The original draft had more sections than the immediately preceding revised version: a
+status note and status section; a problem/scope section with the five-concept table and
+in/out scope; a proposed domain-model section with named conceptual records
+(`project_payment_configuration`, `payment_obligation`, `payment_evidence`, `payment_event`,
+`project_activation`) and the relationship to the existing audit store; a payment
+schedules and obligations section; a richer candidate lifecycle; a fuller evidence and
+reconciliation section; a dedicated failed/reversed/disputed/refunded section with an
+explicit no-automatic-deactivation statement; an exact activation predicate section with
+repeated-evaluation, concurrency, and traceability notes plus a non-authorization note on
+automatic activation; an authorization and audit section covering permissions, project
+isolation and the caller-supplied-identifier rule, founder/internal authority separation,
+actor/preconditions/evidence/failure handling, and audit integrity; a security/privacy and
+operational boundaries section; an implementation and verification contract section; a
+detailed Founder-decision table; and separate consequences, boundaries/exclusions, and
+status conclusions.
 
-The prior draft did not anchor activation to the exact current accepted proposal
-and applicable signed agreement versions; this revision adds that requirement in
-§B.1 and §E.1 and adds staleness/replacement semantics in §F.
+This revision restores that substance as the authoritative content of this document, while
+keeping the five corrections delivered in the prior revision.
 
-The prior draft did not clearly anchor expected amount/currency to obligations or
-describe allocation and partial-refund semantics; this revision adds that in
-§B.2, §D.2, §D.4, and §C.
+**Relative to the immediately preceding revised version (`e71f43f`):**
 
-The prior draft left the audit boundary underspecified; this revision makes
-§B.6 explicit that audit_events is identifier-only and excludes monetary amounts,
-currency, provider payloads, credentials, and sensitive financial content.
+- The document is reorganized so the restored sections are present and coherent with the
+  five corrections, rather than omitted.
+- Authorization and audit are restored as §G, including Founder/internal versus customer
+  authority, project-specific access checks on every operation, the rule that
+  caller-supplied project identifiers do not prove authorization, actor/preconditions/
+  evidence/failure handling for material transitions, and transactional coupling between
+  domain writes and audit records.
+- Security, privacy, and operational boundaries are restored as §H, including least
+  privilege, minimal evidence collection, secret handling, retention left unresolved,
+  reconciliation and failure recovery, and no unsupported compliance claim.
+- Implementation and verification contract is restored as §I, with a staged future
+  sequence, explicit acceptance criteria, and planned tests for authorization, project
+  isolation, idempotency/replay, transaction consistency, audit integrity, activation
+  gating, stale baseline rejection, concurrency, and regressions, plus the separation
+  between design approval, implementation approval, provider activation, and production use.
+- A detailed Founder-decision table (§J) is restored, covering pricing and commercial
+  authority; payment schedules; authoritative payment evidence; failed payments/retries;
+  reversals/chargebacks/disputes; full and partial refunds; tax treatment; provider
+  selection/activation; exact activation conditions; manual payment-status authority; evidence
+  retention; and post-activation payment-event policy, each with question, why it matters,
+  supported options, consequences/risks, what is designable now, and what it blocks.
+- The failed-state contradiction is removed: `failed` is no longer a candidate obligation
+  state, is defined as a payment-attempt outcome only, is absent from the lifecycle table
+  as an obligation state, and the unresolved-decisions list no longer asks whether `failed`
+  should be an obligation state. All examples, summaries, cross-references, and the appendix
+  express the same model.
+- The lifecycle-table note `Configuration/obstacle modeling only` is corrected so it reads as
+  a plain descriptive note about the `proposed` state rather than as a typo-like fragment.
+
+**What was deliberately not restored:**
+
+- No obsolete statements or old contradictions were restored just to match the earlier text.
+- No superseded wording that conflicted with the five corrections was preserved.
+- No implementation, schema, route, service, UI, or test was added or changed.
+- No provider, price, payment policy, legal conclusion, or new Founder decision was added.
 
 No implementation, schema, route, service, UI, or test was added or changed.
