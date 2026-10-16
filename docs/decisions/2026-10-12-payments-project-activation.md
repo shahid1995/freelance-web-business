@@ -175,18 +175,19 @@ The payment model has three related but distinct concepts, all internal:
 These are separate concepts so the financial position can be reconstructed without
 pretending that a single provider message magically satisfies an obligation.
 
-Provider source evidence is the verified external record: provider identifiers,
-provider outcome, provider timestamps, and the provider payload as received.
-This is the record that says **what the provider reported**. It is distinct from the
-internal normalized payment record, which is the internal representation derived
-from that evidence.
+Provider source evidence is the verified external record of **what the provider
+reported**: provider identifiers, provider outcome, and provider timestamps. An
+original provider payload may also arrive as external input, but receiving a payload
+does not mean the complete payload is retained. This is the record that says **what
+the provider reported**. It is distinct from the internal normalized payment record,
+which is the internal representation derived from that evidence.
 
-The provider may supply an original payload as external input. Default retention is
-limited to **verified, minimum-necessary evidence fields** and a **stable source
-reference** sufficient for reconciliation and traceability. Retaining a complete raw
-provider payload is not required by this design. Its necessity, access controls,
-protected storage, and retention must be decided separately before such retention is
-introduced.
+Default retention of provider evidence is limited to **verified, minimum-necessary
+evidence fields** and a **stable source reference** sufficient for reconciliation and
+traceability. Retaining a complete raw provider payload is not required by this
+design. If such retention is ever justified, its necessity, access controls,
+protected storage, and retention must be decided separately before it is introduced.
+Do not choose a provider or invent a retention period.
 
 Normalized business events are the internal records used for obligation/financial
 reasoning. They are derived from, and traceable to, the provider source evidence,
@@ -197,13 +198,6 @@ the cross-cutting audit metadata. (See §H.)
 
 `audit_events` remains identifier-only and must not contain raw provider payloads,
 monetary amounts, currency values, credentials, or sensitive financial content.
-
-**Minimum-necessary evidence:** the default design principle is to retain **verified,
-minimum-necessary evidence fields** and a **stable source reference** sufficient for
-reconciliation and traceability. If keeping a complete raw provider payload is ever
-justified, its necessity, access control, protected storage and retention must be
-decided separately. Do not copy raw payloads into `audit_events`. Do not choose a
-provider or invent a retention period.
 
 ### B.4 One authoritative source for payment/obligation state
 
@@ -464,10 +458,12 @@ reconciliation conflict to be handled explicitly, not by overwriting earlier rec
 
 **Concurrency controls:** the system must prevent replay or duplicate processing of
 the same payment event/allocation, and prevent the same funds from being counted
-more than once. The total of all allocations across all obligations must not exceed
-the verified transaction amount, and must not double-count any portion of the
-transaction. The system must track which portions of the transaction have been
-allocated and ensure that re-allocation of already-allocated funds is rejected.
+more than once. Allocation limits apply **per individual transaction**: for each
+verified transaction, the total of all allocations attributed to that transaction
+must not exceed that transaction's verified available funds, and no portion of the
+same funds may be allocated more than once. The system must track which portions of
+each transaction have been allocated and ensure that re-allocation of
+already-allocated funds is rejected.
 
 **Permit multiple legitimate allocations and partial payments:** multiple legitimate
 allocations and partial payments against an outstanding obligation are permitted
@@ -476,7 +472,9 @@ from multiple transactions, and a single transaction may be allocated across mul
 obligations, up to the verified amount of each transaction and the remaining balance
 of each obligation. Partial payments that fall short of the full expected amount are
 permitted where the approved policy allows them, and the remaining balance is
-carried forward.**Prevent duplicate project-activation records:** project activation must be gated on a derived "obligations-satisfied" signal that is computed from the immutable rows, never stored as a mutable project field. The activation predicate in §F.2 requires every required obligation to be satisfied against its own expected amount and currency. The "obligations-satisfied" signal must reflect that per-obligation evaluation: it becomes true only when each required obligation has been individually satisfied per the applicable approved policy. A project-wide aggregate must not substitute for checking every required obligation. The signal becomes true only when each required obligation's allocated amount meets or exceeds its expected amount/currency under the applicable policy, and the sum of all allocation totals does not exceed the verified transaction amount. Allocation replay and double-counting must be prevented. Legitimate partial payments and multiple allocations remain representable, with remaining balances tracked per obligation. The signal is a read-only commercial gate/condition, never a command, and duplicate activation records must be prevented independently of payment allocation controls.
+carried forward.
+
+**Prevent duplicate project-activation records:** project activation must be gated on a derived "obligations-satisfied" signal that is computed from the immutable rows, never stored as a mutable project field. The activation predicate in §F.2 requires every required obligation to be satisfied against its own expected amount and currency. The "obligations-satisfied" signal must reflect that per-obligation evaluation: it becomes true only when each required obligation has been individually evaluated against its own expected amount, expected currency, and remaining balance, and satisfied under the applicable approved policy. A project-wide aggregate must not substitute for checking every required obligation. Allocation limits are enforced per individual transaction: the allocations attributed to each verified transaction must stay within that transaction's verified available funds, with no replay or double-counting of any portion. A single obligation may receive legitimate allocations from multiple transactions where the approved policy allows them, and legitimate partial payments with per-obligation remaining balances remain representable. The signal is a read-only commercial gate/condition, never a command, and duplicate activation records must be prevented independently of payment allocation controls.
 
 ### D.6 Delayed, duplicated, out-of-order, conflicting events
 
