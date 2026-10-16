@@ -34,6 +34,8 @@ chargebacks, dunning, retry policy, invoicing style, receipts, ledger export,
 any consequence of activation, and any decision of pricing, currency, payment
 structure, provider choice, evidence authority, or what happens after activation.
 
+**Refund and chargeback policy** explicitly out of scope: their **policy, execution, and provider-specific processing** are out of scope. Their **conceptual representation as auditable, append-only events** remains within the design scope. No refund authority, eligibility rules, amounts, tax rules or effects on activation are invented.
+
 ---
 
 ## A. Purpose and the gap being closed
@@ -185,6 +187,13 @@ but they are not a second independent claim about the provider outcome.
 
 Do not copy raw provider payloads, credentials, or sensitive financial content into
 the cross-cutting audit metadata. (See §H.)
+
+**Minimum-necessary evidence:** the default design principle is to retain **verified,
+minimum-necessary evidence fields** and a **stable source reference** sufficient for
+reconciliation and traceability. If keeping a complete raw provider payload is ever
+justified, its necessity, access control, protected storage and retention must be
+decided separately. Do not copy raw payloads into `audit_events`. Do not choose a
+provider or invent a retention period.
 
 ### B.4 One authoritative source for payment/obligation state
 
@@ -442,6 +451,32 @@ This does **not** mean "last write wins" silently. If the same provider event is
 received again, the system should recognize the prior accepted outcome and not rewrite
 it. If different evidence conflicts with prior accepted evidence, that is a
 reconciliation conflict to be handled explicitly, not by overwriting earlier records.
+
+**Concurrency controls:** the system must prevent replay or duplicate processing of
+the same payment event/allocation, and prevent the same funds from being counted
+more than once. The total of all allocations across all obligations must not exceed
+the verified transaction amount, and must not double-count any portion of the
+transaction. The system must track which portions of the transaction have been
+allocated and ensure that re-allocation of already-allocated funds is rejected.
+
+**Permit multiple legitimate allocations and partial payments:** multiple legitimate
+allocations and partial payments against an outstanding obligation are permitted
+where the approved policy allows them. A single obligation may receive allocations
+from multiple transactions, and a single transaction may be allocated across multiple
+obligations, up to the verified amount of each transaction and the remaining balance
+of each obligation. Partial payments that fall short of the full expected amount are
+permitted where the approved policy allows them, and the remaining balance is
+carried forward.
+
+**Prevent duplicate project-activation records:** project activation must be gated on
+a derived "obligations-satisfied" signal that is computed from the immutable rows,
+never stored as a mutable project field. The signal becomes true only when the sum
+of all allocations across all obligations for a given project meets the approved
+policy threshold — but this policy decision is unresolved and must be a Founder
+decision. The signal must not be computable from a single allocation alone, nor from
+stored project state that could be out of sync with the append-only rows. The
+signal is a read-only commercial gate/condition, never a command, and duplicate
+activation records must be prevented independently of payment allocation controls.
 
 ### D.6 Delayed, duplicated, out-of-order, conflicting events
 
