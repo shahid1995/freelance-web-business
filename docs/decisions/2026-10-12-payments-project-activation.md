@@ -176,10 +176,17 @@ These are separate concepts so the financial position can be reconstructed witho
 pretending that a single provider message magically satisfies an obligation.
 
 Provider source evidence is the verified external record: provider identifiers,
-provider outcome, provider timestamps, and provider payload as received. This is
-the record that says **what the provider reported**. It is distinct from the
+provider outcome, provider timestamps, and the provider payload as received.
+This is the record that says **what the provider reported**. It is distinct from the
 internal normalized payment record, which is the internal representation derived
 from that evidence.
+
+The provider may supply an original payload as external input. Default retention is
+limited to **verified, minimum-necessary evidence fields** and a **stable source
+reference** sufficient for reconciliation and traceability. Retaining a complete raw
+provider payload is not required by this design. Its necessity, access controls,
+protected storage, and retention must be decided separately before such retention is
+introduced.
 
 Normalized business events are the internal records used for obligation/financial
 reasoning. They are derived from, and traceable to, the provider source evidence,
@@ -187,6 +194,9 @@ but they are not a second independent claim about the provider outcome.
 
 Do not copy raw provider payloads, credentials, or sensitive financial content into
 the cross-cutting audit metadata. (See §H.)
+
+`audit_events` remains identifier-only and must not contain raw provider payloads,
+monetary amounts, currency values, credentials, or sensitive financial content.
 
 **Minimum-necessary evidence:** the default design principle is to retain **verified,
 minimum-necessary evidence fields** and a **stable source reference** sufficient for
@@ -466,17 +476,7 @@ from multiple transactions, and a single transaction may be allocated across mul
 obligations, up to the verified amount of each transaction and the remaining balance
 of each obligation. Partial payments that fall short of the full expected amount are
 permitted where the approved policy allows them, and the remaining balance is
-carried forward.
-
-**Prevent duplicate project-activation records:** project activation must be gated on
-a derived "obligations-satisfied" signal that is computed from the immutable rows,
-never stored as a mutable project field. The signal becomes true only when the sum
-of all allocations across all obligations for a given project meets the approved
-policy threshold — but this policy decision is unresolved and must be a Founder
-decision. The signal must not be computable from a single allocation alone, nor from
-stored project state that could be out of sync with the append-only rows. The
-signal is a read-only commercial gate/condition, never a command, and duplicate
-activation records must be prevented independently of payment allocation controls.
+carried forward.**Prevent duplicate project-activation records:** project activation must be gated on a derived "obligations-satisfied" signal that is computed from the immutable rows, never stored as a mutable project field. The activation predicate in §F.2 requires every required obligation to be satisfied against its own expected amount and currency. The "obligations-satisfied" signal must reflect that per-obligation evaluation: it becomes true only when each required obligation has been individually satisfied per the applicable approved policy. A project-wide aggregate must not substitute for checking every required obligation. The signal becomes true only when each required obligation's allocated amount meets or exceeds its expected amount/currency under the applicable policy, and the sum of all allocation totals does not exceed the verified transaction amount. Allocation replay and double-counting must be prevented. Legitimate partial payments and multiple allocations remain representable, with remaining balances tracked per obligation. The signal is a read-only commercial gate/condition, never a command, and duplicate activation records must be prevented independently of payment allocation controls.
 
 ### D.6 Delayed, duplicated, out-of-order, conflicting events
 
