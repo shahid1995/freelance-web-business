@@ -31,8 +31,8 @@ Out of scope: provider integration, fees, taxes, refund and chargeback policy or
 This design gate defines the minimum internal model needed to reason about
 **payments** and **project activation** for projects whose commercial
 arrangement is captured by the existing accepted-proposal / signed-agreement
-baseline, without committing the repository to any provider, price, policy, or
-implementation.
+baseline, without selecting a provider, setting project-specific amount/currency
+values, resolving policies that remain open, or authorizing implementation.
 
 The platform has implemented, and merged, the commercial workflow up to agreement
 signing:
@@ -257,7 +257,7 @@ later customer-facing change would be a separate decision.
 
 ---
 
-## C. Payment obligations, schedules, and lifecycle (proposed only)
+## C. Payment obligations, schedules, and lifecycle (approved design; candidate states remain open)
 
 ### C.1 What the requirements already allow
 
@@ -855,7 +855,9 @@ These are cited as context for the proposed model, not as endorsement.
 **It does not:**
 
 - select or activate a provider;
-- set pricing, taxes, refunds, charges, retries, dunning, or any payment policy;
+- set any actual project-specific amount or currency value, taxes, refunds, charges,
+  retries, dunning, or other unresolved payment policy; pricing authority and the
+  initial supported schedule structures are recorded in §J.1–J.2;
 - authorize deployment, production use, or live customer-data processing;
 - change `customerStageFor`, customer-facing stages, or existing agreement behavior;
 - introduce any automatic activation or automatic deactivation;
@@ -923,6 +925,7 @@ keeping the five corrections delivered in the prior revision.
 - No obsolete statements or old contradictions were restored just to match the earlier text.
 - No superseded wording that conflicted with the five corrections was preserved.
 - No implementation, schema, route, service, UI, or test was added or changed.
-- No provider, price, payment policy, legal conclusion, or new Founder decision was added.
+- No provider was selected, no project-specific price/currency value or unresolved
+  payment policy was set, and no legal conclusion or unapproved Founder decision was added.
 
 No implementation, schema, route, service, UI, or test was added or changed.
