@@ -75,6 +75,7 @@ Current:
 - Proposal Foundation — Founder-only authoring of one proposal per project with immutable numbered versions and an explicit, audited publication act
 - Customer Proposal Review — an authorized customer reads the current published proposal version for their own project at /dashboard/projects/{reference}/proposal; strictly read-only, with no response action
 - Customer Proposal Response — two explicit, version-bound customer actions on the current published proposal version at /dashboard/projects/{reference}/proposal: Request Changes (any authorized customer with project access, required message up to 5,000 characters) and Accept Proposal (organization Owner/Admin only), recorded in append-only `proposal_responses` history and audited with identifiers only
+- Agreement and e-signature — Founder-only agreement authoring with immutable numbered versions bound to the exact accepted proposal version, plus Owner/Admin-only customer signing with append-only signature evidence; implemented and merged as PR #48 per docs/decisions/2026-10-07-agreement-e-signature.md (Status: Approved; Founder approval recorded 2026-10-07; Q1–Q3 resolved). No provider is selected or activated, and the feature is not deployed or activated for live customers. Legal validity, jurisdiction-specific requirements, document retention, and provider selection remain unresolved gates requiring separate Founder decisions (Q4–Q10)
 
 These are implemented and merged into main, but nothing is deployed or activated for live customers and no live customer data is processed.
 
@@ -82,7 +83,6 @@ These are implemented and merged into main, but nothing is deployed or activated
 
 The approved product requirements describe the rest of the customer and delivery journey. These capabilities are present in the approved requirements, but appearing there does not authorize them: each still requires an approved design and a separate implementation task.
 
-- agreement/e-signature
 - payments
 - automatic project activation
 - Delivery Onboarding
@@ -97,7 +97,7 @@ The approved product requirements describe the rest of the customer and delivery
 
 Each remains unimplemented until the applicable implementation decision is separately approved. An approved design does not itself authorize implementation.
 
-The agreement/e-signature design gate is Founder-approved in docs/decisions/2026-10-07-agreement-e-signature.md (Status: Approved; Founder approval recorded 2026-10-07). Q1–Q3 are now resolved: one authorized customer signer with no default Founder countersignature; exact accepted proposal-version binding with additional contractual terms permitted; and one primary agreement per project initially. The design is not implemented, no provider is selected, and no legal/provider production gate is resolved. Approval of the design and Q1–Q3 does not authorize deployment, provider activation, or production use.
+The agreement/e-signature design gate is Founder-approved in docs/decisions/2026-10-07-agreement-e-signature.md (Status: Approved; Founder approval recorded 2026-10-07). Q1–Q3 are resolved: one authorized customer signer with no default Founder countersignature; exact accepted proposal-version binding with additional contractual terms permitted; and one primary agreement per project initially. The approved design was implemented and merged as PR #48; no provider is selected, and no legal/provider production gate is resolved. Merging the implementation does not authorize deployment, provider activation, or production use, and does not resolve Q4–Q10.
 
 The payments/project-activation design gate is Founder-approved in docs/decisions/2026-10-12-payments-project-activation.md (approval recorded 2026-10-16). Founder decisions J.1–J.2 are resolved: the Founder sets amount and currency per project, with no public pricing catalogue or automatic pricing; the initial supported schedule structures are full upfront, deposit plus later payments, and milestone-linked payments. Implementation remains separately unapproved. A provider-neutral Payment Configuration + Obligations slice may be considered for separate implementation approval using synthetic/test data only. J.3–J.12 remain unresolved for later payment evidence, attempt/retry behavior, reversals/refunds/tax, provider selection, activation, manual status determinations, evidence retention, and post-activation policy. Design approval authorizes no provider selection or activation, live payments, deployment, or live customer-data processing.
 

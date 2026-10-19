@@ -74,6 +74,7 @@ Phase 4 current direction:
 - Customer Proposal Review (read-only customer view of the current published proposal for an authorized customer) — implemented and merged
 - No customer-platform slice is deployed or activated for live customers
 - Customer-facing commercial workflow beyond the Customer Proposal Review (request changes, acceptance) — implemented and merged (PR #45) per docs/decisions/2026-10-06-customer-proposal-response.md (Status: Accepted and implemented; Founder approval: Approved 2026-10-06). Not deployed and not available in production.
+- Agreement and e-signature (Founder agreement authoring with immutable versions bound to the accepted proposal, and Owner/Admin-only customer signing) — implemented and merged (PR #48) per docs/decisions/2026-10-07-agreement-e-signature.md (Status: Approved; Founder approval recorded 2026-10-07; Q1–Q3 resolved). Not deployed and not available in production; no provider is selected, and legal validity, jurisdiction requirements, document retention, and provider selection remain unresolved gates (Q4–Q10).
 - Delivery workspace and lifecycle integration — planned
 - Domain/hosting — deferred
 - Analytics — deferred
