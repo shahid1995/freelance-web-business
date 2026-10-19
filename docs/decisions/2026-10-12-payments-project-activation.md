@@ -285,7 +285,7 @@ The Founder selects the applicable structure for each project and sets its amoun
   reconstructed from unrelated records, and they are not adjusted by the system
   without an explicit Founder-approved policy.
 
-### C.3 Candidate obligation states (proposed only, draft)
+### C.3 Candidate obligation states (approved design; states remain candidates)
 
 These are **proposed** internal obligation states with distinct semantics. They are
 not agreement states, not customer-facing terms, and not a finalized policy. States
@@ -300,9 +300,9 @@ are illustrative of separate concerns, deliberately not collapsed.
 | `disputed` | The obligation is contested; no payment-relevant conclusion is assumed here. | Unresolved Founder decision what this implies. |
 | `reversed` | A prior satisfied obligation is reversed by a refund/reversal that the model treats as removing that satisfaction. | Reversal outcome; distinct from "refunded". |
 
-There is **no `failed` obligation state** in this draft. `failed` is a
+There is **no `failed` obligation state** in this design. `failed` is a
 **payment-attempt outcome**, not an obligation state. Section C.4 and the
-unresolved-decisions list in this draft make that explicit and remove the
+unresolved-decisions list in this design make that explicit and remove the
 remaining contradiction from the prior draft.
 
 Candidate states above overlap in naming with payment-attempt outcomes and with
@@ -402,7 +402,7 @@ A partial refund is a refund whose amount is less than the originally allocated 
 It does **not** mean the entire obligation is refunded.
 
 The `refunded` state, if used, must be defined so a partial refund cannot be mistaken
-for a complete refund of the obligation. In this draft, the safe approach is to keep
+for a complete refund of the obligation. In this design, the safe approach is to keep
 refund as an event and amount relative to the specific allocation or obligation, and to
 avoid using a single boolean `refunded` that implies complete satisfaction reversal
 unless the exact meaning is stated.
@@ -480,7 +480,7 @@ item names the decision the Founder must make; none is resolved here.
 A failed payment attempt records a `failed` **attempt outcome** and leaves the
 obligation in whatever state the model defines for not-yet-satisfied obligations. It
 does not, by itself, change the obligation into a `failed` obligation state, because
-this draft does not have one.
+this design does not have one.
 
 Whether a customer may **retry**, how many times, and whether repeated failure blocks
 anything are Founder decisions. The design only requires the failure be recorded as an
@@ -531,14 +531,14 @@ If the Founder someday wants a deactivation or suspension concept, it is a
 
 ---
 
-## F. Activation predicate (candidate, draft)
+## F. Activation predicate (candidate)
 
 ### F.1 Activation as an internal gate
 
 Activation is an internal event recorded when the activation predicate is satisfied. It
 is not the same as acceptance, not the same as signing, and not a provider callback.
 
-### F.2 Candidate activation predicate (draft, subject to Founder review)
+### F.2 Candidate activation predicate (candidate; conditions and trigger open per §J.9)
 
 1. The project's **current accepted proposal version** is the exact version referenced
    by the effective payment configuration version being evaluated.

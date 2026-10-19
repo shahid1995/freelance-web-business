@@ -10,7 +10,7 @@ Completed:
 - 0.4 Service catalog
 - 0.5 Repository and documentation conventions
 
-Pricing policy is a material business decision and will be documented separately when approved.
+Pricing policy is a material Founder decision. The Founder decisions recorded on 2026-10-16 in `docs/decisions/2026-10-12-payments-project-activation.md` (§J.1–J.2) already fix the pricing authority: the Founder sets the amount and currency for each project, with no public pricing catalogue and no automatic pricing. Those decisions set no actual amount, currency value, due date, or price for any particular project, and they remain subject to that per-project Founder selection. Any broader pricing policy not already decided remains subject to separate Founder approval and will be documented separately when approved.
 
 ## Phase 1 — Portfolio Foundation
 
