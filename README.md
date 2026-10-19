@@ -85,7 +85,7 @@ Phase 4 work does not authorize production deployment, live customer-data proces
 
 Portfolio and sales content remains evidence-based: no client work, results, credentials, ratings, or public claims are created unless they are real and verified.
 
-Pricing remains a separate material business decision and will be documented when the Founder approves the pricing phase/order.
+Pricing authority is recorded in the Founder-approved payments design (2026-10-16): the Founder sets each project's amount and currency; no public pricing catalogue or automatic pricing is approved. Those decisions do not set actual amounts, currency values, or due dates for any particular project, and do not settle broader pricing policy or phase/order-based pricing. Any broader pricing policy requires separate Founder approval.
 
 ## Repository map
 
