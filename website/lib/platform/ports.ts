@@ -31,6 +31,10 @@ import type {
   ProposalResponseInternal,
   ProposalVersionId,
   ProposalVersionInternal,
+  PaymentConfigVersionId,
+  PaymentConfigVersionInternal,
+  PaymentObligationId,
+  PaymentObligationInternal,
   Session,
 } from "./domain";
 
@@ -331,6 +335,60 @@ export interface PlatformStore {
   createAgreementSignature(input: AgreementSignatureInternal): AgreementSignatureInternal;
   findAgreementSignatureByKey(actionKey: string): AgreementSignatureInternal | null;
   listAgreementSignaturesByVersion(agreementVersionId: string): AgreementSignatureInternal[];
+
+  // --- payment configuration and obligations -------------------------------
+  /**
+   * The exact current **signed** agreement version whose baseline matches the
+   * current accepted proposal version, or null when none is signed.
+   *
+   * A narrow query rather than a reuse of `findCurrentAgreementVersion`: that
+   * method also returns a merely published version, and a published-but-unsigned
+   * agreement is not signed evidence. Payment configuration binding requires a
+   * signed version, so this filters on `status = 'signed'` and on the same
+   * "baseline matches the current accepted proposal" applicability rule, in one
+   * statement rather than a service-side filter.
+   */
+  findCurrentSignedAgreementVersion(
+    projectId: ProjectId,
+  ): AgreementVersionInternal | null;
+  /**
+   * Payment configuration versions for one project, oldest first.
+   *
+   * Ordered by the per-project version number so "the latest configuration" is
+   * the last element, matching how proposal and agreement versions are listed.
+   * Project-scoped: one project's versions are never mixed with another's.
+   */
+  listPaymentConfigVersions(projectId: ProjectId): PaymentConfigVersionInternal[];
+  /**
+   * Appends one immutable configuration version. Insert only — the port
+   * deliberately exposes no update and no delete method, so a version written
+   * once can never be overwritten or rebound to different baseline references.
+   */
+  createPaymentConfigVersion(
+    input: PaymentConfigVersionInternal,
+  ): PaymentConfigVersionInternal;
+  /**
+   * Obligations belonging to one exact configuration version, in `orderIndex`
+   * order. Membership is the version reference itself, so this read cannot
+   * return another version's obligations.
+   */
+  listPaymentObligationsByVersion(
+    paymentConfigVersionId: PaymentConfigVersionId,
+  ): PaymentObligationInternal[];
+  /**
+   * Every obligation belonging to one project, ordered by owning version and
+   * position.
+   *
+   * Project-scoped on purpose: it is the read that lets a caller prove all of a
+   * project's obligations are its own — and that a rollback left none behind —
+   * without reaching across projects.
+   */
+  listPaymentObligationsByProject(projectId: ProjectId): PaymentObligationInternal[];
+  /**
+   * Appends one immutable payment obligation. Insert only, for the same
+   * append-only reason as the configuration version.
+   */
+  createPaymentObligation(input: PaymentObligationInternal): PaymentObligationInternal;
 
   // --- project access ------------------------------------------------------
   findProjectAccess(projectId: ProjectId, personId: string): ProjectAccess | null;

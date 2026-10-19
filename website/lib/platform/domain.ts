@@ -19,6 +19,8 @@ export type ProjectIntakeId = string;
 export type ChallengeId = string;
 export type SessionId = string;
 export type AuditEventId = string;
+export type PaymentConfigVersionId = string;
+export type PaymentObligationId = string;
 
 /**
  * Internal business roles. `owner` is the first user of an organization;
@@ -97,6 +99,23 @@ export type FounderDecision = (typeof FOUNDER_DECISIONS)[number];
 export function isFounderDecision(value: unknown): value is FounderDecision {
   return (
     typeof value === "string" && (FOUNDER_DECISIONS as readonly string[]).includes(value)
+  );
+}
+
+export const PAYMENT_SCHEDULE_STRUCTURES = [
+  "full_upfront",
+  "deposit_plus_later",
+  "milestone_linked",
+] as const;
+
+export type PaymentScheduleStructure = (typeof PAYMENT_SCHEDULE_STRUCTURES)[number];
+
+export function isPaymentScheduleStructure(
+  value: unknown,
+): value is PaymentScheduleStructure {
+  return (
+    typeof value === "string" &&
+    (PAYMENT_SCHEDULE_STRUCTURES as readonly string[]).includes(value)
   );
 }
 
@@ -185,6 +204,70 @@ export interface AgreementVersionInternal {
   createdByPersonId: PersonId;
   createdAt: number;
   publishedAt: number | null;
+}
+
+/**
+ * One immutable payment configuration version for a project.
+ *
+ * Created by the Founder for a specific project. The baseline proposal and
+ * agreement version references are immutable once written: a change to the
+ * configuration creates a new version rather than mutating this one.
+ *
+ * `totalAmount` and the obligations' `expectedAmount` are stored as decimal
+ * strings (never floats) so the Founder-entered values round-trip exactly,
+ * regardless of how many decimal places the currency uses.
+ */
+export interface PaymentConfigVersionInternal {
+  id: PaymentConfigVersionId;
+  projectId: ProjectId;
+  organizationId: OrganizationId;
+  /** Per-project, gapless version number. 1 for the first configuration. */
+  versionNumber: number;
+  scheduleStructure: PaymentScheduleStructure;
+  /** Exact Founder-supplied project total, as a decimal string. */
+  totalAmount: string;
+  /** Founder-supplied ISO 4217 currency code. */
+  currency: string;
+  /** The exact current accepted proposal version this configuration binds to. */
+  proposalId: ProposalId;
+  proposalVersionId: ProposalVersionId;
+  proposalVersionNumber: number;
+  /** The exact current signed agreement version this configuration binds to. */
+  agreementId: AgreementId;
+  agreementVersionId: AgreementVersionId;
+  agreementVersionNumber: number;
+  createdByPersonId: PersonId;
+  createdAt: number;
+}
+
+/**
+ * One payment obligation belonging to exactly one configuration version.
+ *
+ * Append-only: there is no update or delete path. A new configuration creates
+ * new obligations; existing ones are never reassigned to a different version.
+ *
+ * There is deliberately no status, due date, or payable-state column: state
+ * transitions and the trigger for becoming payable are unresolved Founder
+ * decisions (payments decision, sections C.3 and C.4).
+ */
+export interface PaymentObligationInternal {
+  id: PaymentObligationId;
+  paymentConfigVersionId: PaymentConfigVersionId;
+  projectId: ProjectId;
+  organizationId: OrganizationId;
+  /** 1-based position within the owning configuration version. */
+  orderIndex: number;
+  /** Exact Founder-supplied expected amount, as a decimal string. */
+  expectedAmount: string;
+  currency: string;
+  /**
+   * Opaque scope/milestone version reference for milestone-linked schedules.
+   * Null for other schedule structures. This is an identifier only — there is
+   * no milestone subsystem in this slice.
+   */
+  scopeOrMilestoneRef: string | null;
+  createdByPersonId: PersonId;
+  createdAt: number;
 }
 
 /** One immutable Q1-A customer signature record. */
@@ -497,4 +580,8 @@ export type AuditEventType =
   | "agreement.created"
   | "agreement_version.created"
   | "agreement_version.published"
-  | "agreement.signed";
+  | "agreement.signed"
+  // Payment configuration. Metadata carries identifiers only — never amounts,
+  // currencies, or any other commercial content (payments decision, section B.6).
+  | "payment_config_version.created"
+  | "payment_obligation.created";

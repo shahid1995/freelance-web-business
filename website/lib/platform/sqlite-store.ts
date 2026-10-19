@@ -31,6 +31,10 @@ import {
   type InternalQualificationState,
   type Membership,
   type Organization,
+  type PaymentConfigVersionId,
+  type PaymentConfigVersionInternal,
+  type PaymentObligationInternal,
+  type PaymentScheduleStructure,
   type Person,
   type PersonId,
   type ProjectAccess,
@@ -358,6 +362,73 @@ CREATE INDEX IF NOT EXISTS agreement_signatures_by_version
   ON agreement_signatures (agreement_version_id, created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS agreement_signatures_once
   ON agreement_signatures (agreement_version_id);
+
+-- Payment configuration versions. Append-only: rows are created once and are
+-- never updated or deleted (payments decision, sections B.1 and B.5), so a
+-- baseline reference is immutable once written and a change to the configuration
+-- creates a new version rather than editing this one.
+--
+-- total_amount (and expected_amount on the obligations below) is stored as a
+-- TEXT decimal string rather than a number: no floating-point arithmetic ever
+-- touches it, the Founder-entered digits round-trip exactly, and nothing assumes
+-- a currency has exactly two decimal places. There is deliberately no due-date
+-- column and no obligation-status column: schedule timing and state transitions
+-- are unresolved Founder decisions (payments decision, sections C.3 and C.4).
+CREATE TABLE IF NOT EXISTS payment_config_versions (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  -- Per-project, 1-based, gapless. UNIQUE makes overwriting an earlier version
+  -- number impossible at the database level, not merely discouraged in the service.
+  version_number INTEGER NOT NULL,
+  schedule_structure TEXT NOT NULL
+    CHECK (schedule_structure IN ('full_upfront', 'deposit_plus_later', 'milestone_linked')),
+  total_amount TEXT NOT NULL
+    CHECK (length(total_amount) > 0 AND total_amount NOT GLOB '*[^0-9.]*'),
+  currency TEXT NOT NULL
+    CHECK (length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'),
+  -- The exact current accepted proposal version this configuration binds to.
+  proposal_id TEXT NOT NULL REFERENCES proposals(id),
+  proposal_version_id TEXT NOT NULL REFERENCES proposal_versions(id),
+  proposal_version_number INTEGER NOT NULL,
+  -- The exact current signed agreement version this configuration binds to.
+  agreement_id TEXT NOT NULL REFERENCES agreements(id),
+  agreement_version_id TEXT NOT NULL REFERENCES agreement_versions(id),
+  agreement_version_number INTEGER NOT NULL,
+  created_by_person_id TEXT NOT NULL REFERENCES people(id),
+  created_at INTEGER NOT NULL,
+  UNIQUE (project_id, version_number)
+);
+CREATE INDEX IF NOT EXISTS payment_config_versions_by_project
+  ON payment_config_versions (project_id, version_number);
+
+-- Obligations belonging to exactly one configuration version. Append-only for
+-- the same reason as the version above: previously issued obligations are never
+-- reassigned, mutated, or deleted when a new configuration version is created.
+-- Membership in a configuration version IS this reference, so ownership is
+-- unambiguous and a read scoped by it cannot cross versions.
+CREATE TABLE IF NOT EXISTS payment_obligations (
+  id TEXT PRIMARY KEY,
+  payment_config_version_id TEXT NOT NULL REFERENCES payment_config_versions(id),
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  -- 1-based position from the Founder's explicit ordering. UNIQUE makes a
+  -- duplicate or missing position within a version impossible.
+  order_index INTEGER NOT NULL CHECK (order_index >= 1),
+  expected_amount TEXT NOT NULL
+    CHECK (length(expected_amount) > 0 AND expected_amount NOT GLOB '*[^0-9.]*'),
+  currency TEXT NOT NULL
+    CHECK (length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'),
+  -- Opaque scope/milestone version reference for milestone-linked schedules;
+  -- NULL for the other two structures. There is deliberately no milestone
+  -- subsystem behind it in this slice (payments decision, section C.2).
+  scope_or_milestone_ref TEXT,
+  created_by_person_id TEXT NOT NULL REFERENCES people(id),
+  created_at INTEGER NOT NULL,
+  UNIQUE (payment_config_version_id, order_index)
+);
+CREATE INDEX IF NOT EXISTS payment_obligations_by_version
+  ON payment_obligations (payment_config_version_id, order_index);
 
 CREATE TABLE IF NOT EXISTS rate_limits (
   bucket TEXT PRIMARY KEY,
@@ -1472,6 +1543,153 @@ export class SqlitePlatformStore implements PlatformStore {
       "SELECT * FROM agreement_signatures WHERE agreement_version_id = ? ORDER BY created_at ASC, id ASC",
       agreementVersionId,
     ).map((row) => this.toAgreementSignature(row));
+  }
+
+  // --- payment configuration and obligations -------------------------------
+
+  private toPaymentConfigVersion(row: Row): PaymentConfigVersionInternal {
+    return {
+      id: text(row, "id"),
+      projectId: text(row, "project_id"),
+      organizationId: text(row, "organization_id"),
+      versionNumber: int(row, "version_number"),
+      scheduleStructure: text(row, "schedule_structure") as PaymentScheduleStructure,
+      totalAmount: text(row, "total_amount"),
+      currency: text(row, "currency"),
+      proposalId: text(row, "proposal_id"),
+      proposalVersionId: text(row, "proposal_version_id"),
+      proposalVersionNumber: int(row, "proposal_version_number"),
+      agreementId: text(row, "agreement_id"),
+      agreementVersionId: text(row, "agreement_version_id"),
+      agreementVersionNumber: int(row, "agreement_version_number"),
+      createdByPersonId: text(row, "created_by_person_id"),
+      createdAt: int(row, "created_at"),
+    };
+  }
+
+  private toPaymentObligation(row: Row): PaymentObligationInternal {
+    return {
+      id: text(row, "id"),
+      paymentConfigVersionId: text(row, "payment_config_version_id"),
+      projectId: text(row, "project_id"),
+      organizationId: text(row, "organization_id"),
+      orderIndex: int(row, "order_index"),
+      expectedAmount: text(row, "expected_amount"),
+      currency: text(row, "currency"),
+      scopeOrMilestoneRef: nullableText(row, "scope_or_milestone_ref"),
+      createdByPersonId: text(row, "created_by_person_id"),
+      createdAt: int(row, "created_at"),
+    };
+  }
+
+  findCurrentSignedAgreementVersion(projectId: ProjectId): AgreementVersionInternal | null {
+    // The same applicability rule as findCurrentAgreementVersion (the version's
+    // proposal baseline must be the current accepted proposal version), narrowed
+    // to a signed version. A merely published version is never signed evidence,
+    // which is why this is its own query rather than a status check beside the
+    // existing lookup.
+    const row = this.get(
+      "SELECT av.* FROM agreement_versions av " +
+        "JOIN agreements a ON a.id = av.agreement_id " +
+        "WHERE a.project_id = ? AND av.status = 'signed' " +
+        "AND av.proposal_version_id = (" +
+        "SELECT pv.id FROM proposal_versions pv " +
+        "JOIN proposal_responses pr ON pr.proposal_version_id = pv.id AND pr.action = 'accepted' " +
+        "JOIN proposals p ON p.id = pv.proposal_id " +
+        "WHERE p.project_id = ? ORDER BY pv.version_number DESC LIMIT 1" +
+        ") ORDER BY av.version_number DESC LIMIT 1",
+      projectId,
+      projectId,
+    );
+    return row ? this.toAgreementVersion(row) : null;
+  }
+
+  listPaymentConfigVersions(projectId: ProjectId): PaymentConfigVersionInternal[] {
+    return this.all(
+      "SELECT * FROM payment_config_versions WHERE project_id = ? ORDER BY version_number ASC",
+      projectId,
+    ).map((row) => this.toPaymentConfigVersion(row));
+  }
+
+  createPaymentConfigVersion(
+    input: PaymentConfigVersionInternal,
+  ): PaymentConfigVersionInternal {
+    this.run(
+      `INSERT INTO payment_config_versions
+         (id, project_id, organization_id, version_number, schedule_structure,
+          total_amount, currency, proposal_id, proposal_version_id, proposal_version_number,
+          agreement_id, agreement_version_id, agreement_version_number,
+          created_by_person_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      input.id,
+      input.projectId,
+      input.organizationId,
+      input.versionNumber,
+      input.scheduleStructure,
+      input.totalAmount,
+      input.currency,
+      input.proposalId,
+      input.proposalVersionId,
+      input.proposalVersionNumber,
+      input.agreementId,
+      input.agreementVersionId,
+      input.agreementVersionNumber,
+      input.createdByPersonId,
+      input.createdAt,
+    );
+    const stored = this.get(
+      "SELECT * FROM payment_config_versions WHERE id = ?",
+      input.id,
+    );
+    if (!stored) {
+      throw new Error("Payment configuration version was not readable immediately after creation.");
+    }
+    return this.toPaymentConfigVersion(stored);
+  }
+
+  listPaymentObligationsByVersion(
+    paymentConfigVersionId: PaymentConfigVersionId,
+  ): PaymentObligationInternal[] {
+    return this.all(
+      "SELECT * FROM payment_obligations WHERE payment_config_version_id = ? " +
+        "ORDER BY order_index ASC, id ASC",
+      paymentConfigVersionId,
+    ).map((row) => this.toPaymentObligation(row));
+  }
+
+  listPaymentObligationsByProject(projectId: ProjectId): PaymentObligationInternal[] {
+    return this.all(
+      "SELECT * FROM payment_obligations WHERE project_id = ? " +
+        "ORDER BY payment_config_version_id ASC, order_index ASC, id ASC",
+      projectId,
+    ).map((row) => this.toPaymentObligation(row));
+  }
+
+  createPaymentObligation(input: PaymentObligationInternal): PaymentObligationInternal {
+    this.run(
+      `INSERT INTO payment_obligations
+         (id, payment_config_version_id, project_id, organization_id, order_index,
+          expected_amount, currency, scope_or_milestone_ref, created_by_person_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      input.id,
+      input.paymentConfigVersionId,
+      input.projectId,
+      input.organizationId,
+      input.orderIndex,
+      input.expectedAmount,
+      input.currency,
+      input.scopeOrMilestoneRef,
+      input.createdByPersonId,
+      input.createdAt,
+    );
+    const stored = this.get(
+      "SELECT * FROM payment_obligations WHERE id = ?",
+      input.id,
+    );
+    if (!stored) {
+      throw new Error("Payment obligation was not readable immediately after creation.");
+    }
+    return this.toPaymentObligation(stored);
   }
 
   // --- internal capabilities ------------------------------------------------
