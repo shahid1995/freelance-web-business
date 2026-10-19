@@ -1,6 +1,6 @@
 # Payments and Project Activation — Design Gate
 
-Status: **Draft — pending Founder review. Not approved for implementation.**
+Status: **Design approved — Founder approval recorded 2026-10-16. Implementation not approved.**
 Author: product/design review
 Date: 2026-10-12
 Supersedes: none
@@ -10,29 +10,17 @@ Related: agreement/e-signature design gate (separate track); PR #50 branch `docs
 
 ## 0. Status and scope (authoritative, read first)
 
-This is a **proposal only**. It is not approved, not accepted, not signed off, and
-does not authorize implementation, production use, provider onboarding, migration,
-schema change, route addition, UI work, or any customer-visible behavior. It does
-not choose a payment provider, pricing, currency, tax treatment, refund policy,
-retry/dunning policy, or any post-activation consequence.
+This is the **Founder-approved provider-neutral design**. Founder approval for the design was recorded on 2026-10-16. This approval does **not** authorize implementation, production use, provider onboarding or activation, migration, schema change, route addition, UI work, or any customer-visible behavior.
 
-Nothing in this document changes the current commercial baseline, the current
-accepted-proposal behavior, the current signed-agreement behavior, agreement
-states, customer-facing stages, or `customerStageFor` and the resulting
-customer-facing stage output. Any future implementation would require separate
-approval and, where relevant, separate decisions.
+The approved commercial decisions recorded in §J.1–J.2 are that the Founder sets each project's amount and currency, with no public pricing catalogue or automatic pricing, and that the three initial schedule structures are full upfront, deposit plus later payments, and milestone-linked payments. This document sets no actual project amount or currency value.
 
-All draft framing here must remain draft until a Founder explicitly approves it.
+Nothing in this document changes the current commercial baseline, the current accepted-proposal behavior, the current signed-agreement behavior, agreement states, customer-facing stages, or `customerStageFor` and the resulting customer-facing stage output. Any future implementation requires separate approval and, where relevant, separate decisions.
 
-This draft is being revised for Founder and independent engineering review. It
-keeps the five review corrections already delivered on this PR, restores the
-useful substance of the original draft sections that were reorganized away, and
-removes the remaining failed-state contradiction.
+Design approval is complete. Implementation, provider selection/activation, production use, and live customer-data processing remain separately gated. Candidate states and predicates remain candidates where the document says so; unresolved Founder policies are not assumed.
 
-Out of scope for this doc: provider integration, fees, taxes, refunds,
-chargebacks, dunning, retry policy, invoicing style, receipts, ledger export,
-any consequence of activation, and any decision of pricing, currency, payment
-structure, provider choice, evidence authority, or what happens after activation.
+This approved design preserves the five review corrections, the useful conceptual sections of the original proposal, and the distinction between payment-attempt outcomes and obligation states.
+
+Out of scope: provider integration, fees, taxes, refund and chargeback policy or execution, dunning, retry policy, invoicing style, receipts, ledger export, and any consequence of activation. The document does not set project-specific amount/currency values or due dates, choose a provider, settle evidence authority, or decide what happens after activation. The initial schedule types and pricing authority are recorded in §J.1–J.2; the Founder still selects the applicable structure for each project.
 
 **Refund and chargeback policy** explicitly out of scope: their **policy, execution, and provider-specific processing** are out of scope. Their **conceptual representation as auditable, append-only events** remains within the design scope. No refund authority, eligibility rules, amounts, tax rules or effects on activation are invented.
 
@@ -43,8 +31,8 @@ structure, provider choice, evidence authority, or what happens after activation
 This design gate defines the minimum internal model needed to reason about
 **payments** and **project activation** for projects whose commercial
 arrangement is captured by the existing accepted-proposal / signed-agreement
-baseline, without committing the repository to any provider, price, policy, or
-implementation.
+baseline, without selecting a provider, setting project-specific amount/currency
+values, resolving policies that remain open, or authorizing implementation.
 
 The platform has implemented, and merged, the commercial workflow up to agreement
 signing:
@@ -126,10 +114,7 @@ applicable signed agreement version, and that all required obligations still
 belong to that configuration version. Activation is not valid against a snapshot
 taken earlier.
 
-This section is a proposed design rule, draft and subject to Founder review. It
-does not decide amendment, cancellation, replacement, price changes, currency
-changes, obligation changes, activation-trigger choice, or post-activation
-commercial behavior.
+This is an approved design rule within the design gate. It does not decide amendment, cancellation, replacement, changes to an issued obligation, activation-trigger choice, or post-activation commercial behavior; those matters remain subject to the applicable separate decisions.
 
 ### B.2 Obligations (what must be paid)
 
@@ -147,11 +132,7 @@ the obligation is defined, not reconstructed from unrelated records.
 Obligations are identified by stable internal identifiers. The obligation identity
 is separate from the payment evidence that may later satisfy it.
 
-The set of obligations, their ordering, the schedule that tells the system when each
-obligation is payable, and the exact expected amounts and currencies are all derived
-from whichever commercial structure the Founder eventually approves. This draft does
-not choose one structure, does not select a currency, and does not invent amounts or
-schedules.
+The set of obligations, their ordering, and the due schedule depend on the project structure the Founder selects from the three initial structures recorded in §J.2. The Founder sets the exact amount and currency per project as recorded in §J.1. This design does not invent monetary values or due dates. Project-level schedule timing, post-issuance edits, and the policy governing partial payments remain subject to the applicable explicit decisions.
 
 This section deliberately does not define refund policy, partial-payment policy,
 overpayment handling, late fees, taxes, retry policy, or anything that changes the
@@ -276,24 +257,19 @@ later customer-facing change would be a separate decision.
 
 ---
 
-## C. Payment obligations, schedules, and lifecycle (proposed only)
+## C. Payment obligations, schedules, and lifecycle (approved design; candidate states remain open)
 
 ### C.1 What the requirements already allow
 
-The requirements allow several possible commercial structures for what a project owes
-and when. This design **does not select one** and **invents no monetary values or
-schedules**.
+The requirements allow several possible commercial structures for what a project owes and when. The Founder has decided that the initial design supports these three structures; this does not choose one for any particular project or invent monetary values or due dates.
 
-For example, a project could be arranged as:
+The initial supported structures are:
 
 - full amount up front;
 - a deposit plus later payments;
-- milestone-linked payments tied to approved scope or milestone versions;
-- another Founder-approved arrangement.
+- milestone-linked payments tied to approved scope or milestone versions.
 
-The model is deliberately open to each. Which structure applies to a given project,
-and the currency, amounts, due timing, and whether obligations can be edited after
-issuance, are all separate Founder decisions.
+The Founder selects the applicable structure for each project and sets its amount and currency. Due timing, whether obligations can be edited after issuance, and other commercial policies remain subject to their applicable decisions. Any additional payment structure requires separate Founder approval.
 
 ### C.2 What can stay configurable and provider-neutral
 
@@ -309,7 +285,7 @@ issuance, are all separate Founder decisions.
   reconstructed from unrelated records, and they are not adjusted by the system
   without an explicit Founder-approved policy.
 
-### C.3 Candidate obligation states (proposed only, draft)
+### C.3 Candidate obligation states (approved design; states remain candidates)
 
 These are **proposed** internal obligation states with distinct semantics. They are
 not agreement states, not customer-facing terms, and not a finalized policy. States
@@ -324,9 +300,9 @@ are illustrative of separate concerns, deliberately not collapsed.
 | `disputed` | The obligation is contested; no payment-relevant conclusion is assumed here. | Unresolved Founder decision what this implies. |
 | `reversed` | A prior satisfied obligation is reversed by a refund/reversal that the model treats as removing that satisfaction. | Reversal outcome; distinct from "refunded". |
 
-There is **no `failed` obligation state** in this draft. `failed` is a
+There is **no `failed` obligation state** in this design. `failed` is a
 **payment-attempt outcome**, not an obligation state. Section C.4 and the
-unresolved-decisions list in this draft make that explicit and remove the
+unresolved-decisions list in this design make that explicit and remove the
 remaining contradiction from the prior draft.
 
 Candidate states above overlap in naming with payment-attempt outcomes and with
@@ -426,7 +402,7 @@ A partial refund is a refund whose amount is less than the originally allocated 
 It does **not** mean the entire obligation is refunded.
 
 The `refunded` state, if used, must be defined so a partial refund cannot be mistaken
-for a complete refund of the obligation. In this draft, the safe approach is to keep
+for a complete refund of the obligation. In this design, the safe approach is to keep
 refund as an event and amount relative to the specific allocation or obligation, and to
 avoid using a single boolean `refunded` that implies complete satisfaction reversal
 unless the exact meaning is stated.
@@ -504,7 +480,7 @@ item names the decision the Founder must make; none is resolved here.
 A failed payment attempt records a `failed` **attempt outcome** and leaves the
 obligation in whatever state the model defines for not-yet-satisfied obligations. It
 does not, by itself, change the obligation into a `failed` obligation state, because
-this draft does not have one.
+this design does not have one.
 
 Whether a customer may **retry**, how many times, and whether repeated failure blocks
 anything are Founder decisions. The design only requires the failure be recorded as an
@@ -555,14 +531,14 @@ If the Founder someday wants a deactivation or suspension concept, it is a
 
 ---
 
-## F. Activation predicate (candidate, draft)
+## F. Activation predicate (candidate)
 
 ### F.1 Activation as an internal gate
 
 Activation is an internal event recorded when the activation predicate is satisfied. It
 is not the same as acceptance, not the same as signing, and not a provider callback.
 
-### F.2 Candidate activation predicate (draft, subject to Founder review)
+### F.2 Candidate activation predicate (candidate; conditions and trigger open per §J.9)
 
 1. The project's **current accepted proposal version** is the exact version referenced
    by the effective payment configuration version being evaluated.
@@ -751,27 +727,40 @@ derivation must all continue to pass unchanged.
 
 ---
 
-## J. Founder decisions required
+## J. Founder decisions — resolved and outstanding
 
-These are **questions for Founder review.** They are not answered here. Each row states
-the question, why it matters, options the governing documents already support or that are
-defensible from the existing direction, risks/consequences, what can be designed now
-without deciding it, and what it blocks if left unresolved.
+This is the live register of Founder decisions. **J.1 and J.2 are resolved** by Founder approval recorded on 2026-10-16 and are summarised below. **J.3–J.12 remain unresolved**; they must not be silently decided by this design or by an implementation agent. Each row records the question, why it matters, decision/options, consequences/risks, what can be designed now, and what remains blocked.
 
 | # | Decision question | Why it matters | Options (where supported or defensible from existing direction) | Consequences / risks | Designable now without deciding | Blocks |
 | --- | --- | --- | --- | --- | --- | --- |
-| **J.1** | Pricing and commercial authority. | Sets what is owed and who may set it; this is a material business decision reserved to the Founder. | Not enumerated in governing docs — Founder defines. | Under/over-pricing; unauthorized discounts. | The obligation/config model with amounts as Founder-set data. | Implementation, production use. |
-| **J.2** | Payment schedule & permitted arrangements. | Determines obligation structure per project. | Requirements allow full upfront; deposit plus later payments; milestone-linked payments; another Founder-approved arrangement. | Rigid model vs. unsupported flexibility. | Config→obligations model open to all four shapes. | Implementation. |
-| **J.3** | Authoritative payment evidence and its verification. | The core of the activation predicate and obligation satisfaction. | Candidate sources: provider confirmation after verification; verified reconciliation; authorized manual record. This draft does not declare any source authoritative. | Trusting the wrong source; fraud; double-satisfaction. | Evidence model with source kind + idempotency, source-agnostic. | Implementation, provider activation, production use. |
-| **J.4** | Failed payments, retry policy, retry limits, dunning, and notifications. | Affects customers and whether failure blocks progress. | Not enumerated — Founder defines retries, retry limits, dunning, and customer notification. | Lost revenue vs. customer friction; silent "give up" behavior if left implicit. | `failed` as a payment-attempt outcome only; recorded failure events; no obligation-state meaning invented. | Implementation, production use. |
-| **J.5** | Reversals, chargebacks, and disputes. | Post-success events that can undo confirmed payments. | Not enumerated — Founder defines handling, escalation, and whether reversal changes what "satisfied" means for an activated project. | Financial loss; disputed activated projects; conflicting evidence. | Forward-only reversal events; no auto-deactivation; reconciliation recorded as an event. | Implementation, production use. |
-| **J.6** | Full and partial refunds — authority, policy, and historical treatment. | Who may refund, whether partial refunds are allowed, and how they are recorded. | Not enumerated — Founder defines authority and policy. This draft keeps refund as an event with an amount, and makes sure a partial refund cannot be mistaken for a complete refund. | Unauthorized refunds; unclear net position. | Partial-refund evidence model as forward events; no invented refund policy. | Implementation, production use. |
-| **J.7** | Tax treatment and responsibilities. | Collection, recording, and jurisdiction. | Not enumerated; the requirements defer taxes. | Non-compliance exposure (a legal matter, not designed here). | Amount/unit fields left Founder-defined; no tax logic invented. | Implementation, production use. |
+| **J.1** | Pricing and commercial authority. | Sets what is owed and who may set it; this is a material business decision reserved to the Founder. | **Resolved — Founder approval recorded 2026-10-16:** Founder sets the amount and currency per project; no public pricing catalogue or automatic pricing. | Under/over-pricing; unauthorized discounts. | Founder-entered per-project amount/currency fields anchored to the applicable commercial baseline. | Does not block the initial configuration/obligation slice once separately authorized; production use remains gated by other decisions. |
+| **J.2** | Payment schedule & permitted arrangements. | Determines obligation structure per project. | **Resolved — Founder approval recorded 2026-10-16:** initial supported structures are full upfront, deposit plus later payments, and milestone-linked payments. Any additional structure requires separate Founder approval. | Rigid model vs. unsupported flexibility. | Provider-neutral configuration and obligations covering the three initial structures; the Founder selects the structure per project. | Does not block the initial configuration/obligation slice once separately authorized; additional structures and later slices remain gated as applicable. |
+| **J.3** | Authoritative payment evidence and its verification. | The core of the activation predicate and obligation satisfaction. | Candidate sources: provider confirmation after verification; verified reconciliation; authorized manual record. This design does not declare any source authoritative. | Trusting the wrong source; fraud; double-satisfaction. | Evidence model with source kind + idempotency, source-agnostic. | Payment-evidence/state-machine slice, provider activation, production use; not the initial configuration/obligation-only slice. |
+| **J.4** | Failed payments, retry policy, retry limits, dunning, and notifications. | Affects customers and whether failure blocks progress. | Not enumerated — Founder defines retries, retry limits, dunning, and customer notification. | Lost revenue vs. customer friction; silent "give up" behavior if left implicit. | `failed` as a payment-attempt outcome only; recorded failure events; no obligation-state meaning invented. | Payment-attempt/retry/notification behavior and production payment use; not the initial configuration/obligation-only slice. |
+| **J.5** | Reversals, chargebacks, and disputes. | Post-success events that can undo confirmed payments. | Not enumerated — Founder defines handling, escalation, and whether reversal changes what "satisfied" means for an activated project. | Financial loss; disputed activated projects; conflicting evidence. | Forward-only reversal events; no auto-deactivation; reconciliation recorded as an event. | Reversal/chargeback/dispute behavior and production use; not the initial configuration/obligation-only slice. |
+| **J.6** | Full and partial refunds — authority, policy, and historical treatment. | Who may refund, whether partial refunds are allowed, and how they are recorded. | Not enumerated — Founder defines authority and policy. This design keeps refund as an event with an amount, and makes sure a partial refund cannot be mistaken for a complete refund. | Unauthorized refunds; unclear net position. | Partial-refund evidence model as forward events; no invented refund policy. | Refund handling and production use; not the initial configuration/obligation-only slice. |
+| **J.7** | Tax treatment and responsibilities. | Collection, recording, and jurisdiction. | Not enumerated; the requirements defer taxes. | Non-compliance exposure (a legal matter, not designed here). | Amount/unit fields left Founder-defined; no tax logic invented. | Tax-related payment processing and production use; not the initial configuration/obligation-only slice. |
 | **J.8** | Payment-provider selection and activation. | Determines the real integration and the trust boundary. | Not selected; design stays provider-neutral with opaque provider references. | Vendor lock-in; security posture; verification burden. | Opaque provider references; provider-neutral evidence model. | Provider activation, production use. |
-| **J.9** | Exact project-activation conditions and their trigger. | The precise predicate and whether activation is automatic or manual. | Requirements allow the trigger to vary by approved commercial configuration. This draft offers a four-condition candidate predicate and a manual-trigger-first plan. | Wrong gating; premature or late activation. | Four-condition predicate as a **candidate**; manual-trigger-first implementation plan. | Implementation (activation slice), production use. |
-| **J.10** | Who may make or override a manual payment-status determination. | Manual marks are the highest-misuse path. | Not enumerated — Founder defines the authorized actor(s). | Misattribution; fraud. | Founder-only, least-privileged, audited manual-determination model. | Implementation. |
-| **J.11** | Retention and treatment of payment evidence. | How long evidence is kept and how it is protected. | Not enumerated; mirrors the agreement track's deferral of retention. | Over- or under-retention. | Append-only evidence with retention left undefined. | Production use. |
-| **J.12** | Policy for payment events after activation. | Reversal/refund/failed event after a project is live — must not silently deactivate or rewrite history. | Not enumerated — Founder defines the explicit policy. | Silent deactivation risk if left implicit. | Separate activation (append-only) from payment status (derived); **no** deactivation path. | Production use; any future suspension concept. |
+| **J.9** | Exact project-activation conditions and their trigger. | The precise predicate and whether activation is automatic or manual. | Requirements allow the trigger to vary by approved commercial configuration. This design offers a four-condition candidate predicate and a manual-trigger-first plan. | Wrong gating; premature or late activation. | Four-condition predicate as a **candidate**; manual-trigger-first implementation plan. | Activation implementation and production activation; not the initial configuration/obligation-only slice. |
+| **J.10** | Who may make or override a manual payment-status determination. | Manual marks are the highest-misuse path. | Not enumerated — Founder defines the authorized actor(s). | Misattribution; fraud. | Founder-only, least-privileged, audited manual-determination model. | Any manual payment-status determination or override; not the initial configuration/obligation-only slice. |
+| **J.11** | Retention and treatment of payment evidence. | How long evidence is kept and how it is protected. | Not enumerated; mirrors the agreement track's deferral of retention. | Over- or under-retention. | Append-only evidence with retention left undefined. | Production evidence retention/use; not the initial configuration/obligation-only slice. |
+| **J.12** | Policy for payment events after activation. | Reversal/refund/failed event after a project is live — must not silently deactivate or rewrite history. | Not enumerated — Founder defines the explicit policy. | Silent deactivation risk if left implicit. | Separate activation (append-only) from payment status (derived); **no** deactivation path. | Any defined post-activation response policy and production use; not the initial configuration/obligation-only slice. |
+
+### Initial slice readiness and remaining blockers
+
+The Founder decisions in J.1 and J.2 are resolved as of 2026-10-16. A first **provider-neutral Payment Configuration + Obligations** implementation slice may be considered for separate implementation approval, limited to synthetic/test data. Its scope should be Founder-only creation/amendment of configuration versions, per-project amount/currency inputs, obligation issuance for the three supported schedule structures, and tests for current-baseline binding, authorization, project isolation, immutability, and identifier-only transactional audit.
+
+That initial slice must exclude payment evidence ingestion or verification, real payment attempts, retry/refund/reversal/dispute handling, provider integration, customer payment UI, activation records or triggers, deployment, and all live customer-data processing. This paragraph is a readiness assessment, **not implementation authorization**.
+
+The remaining Founder decisions block the relevant later slices:
+- **J.3** must be resolved before implementing authoritative payment evidence and payment-state transitions.
+- **J.4–J.7** must be resolved before implementing the applicable retry/failure, reversal/dispute, refund, or tax-related payment behaviors.
+- **J.8** and the applicable security review must be resolved before provider integration or activation.
+- **J.9** must be resolved before implementing project activation or its trigger.
+- **J.10** must be resolved before any manual payment-status determination or override is built.
+- **J.11** must be resolved before production payment-evidence retention/use.
+- **J.12** must be resolved before defining post-activation payment-event behavior or any future suspension/deactivation concept.
+- Production use additionally requires applicable legal/security review, retention/deletion decisions, production gates, and separate explicit Founder authorization.
 
 **Technical-safety note (not a business decision):** keep activation **append-only and
 forward-only**, and keep payment status **derived from append-only events**, so that no
@@ -802,8 +791,10 @@ Implementation excluded here:
 - no change to `customerStageFor` output,
 - no automatic activation built or authorized now,
 - no manual activation built or authorized now,
-- no price, currency, tax, fee, refund, chargeback, retry, dunning, or post-activation
-  policy decided now.
+- no actual project-specific amount or currency value, tax, fee, refund, chargeback,
+  retry, dunning, or post-activation policy is set by this document.
+- the three initial schedule structures and per-project pricing authority are recorded
+  in §J.1–J.2; the applicable structure remains Founder-selected per project.
 
 Also excluded: deployment, provider activation, live customer data, and any commercial
 policy not already explicitly identified as unresolved.
@@ -821,8 +812,11 @@ The following are separate, sequential gates. Passing one does **not** pass the 
 5. **Production use** — only after all applicable gates, including production gating and
    no live activation until explicitly authorized.
 
-This document is only step 1, and only as a draft for review. It passes none of the
-others.
+This document satisfies gate 1: the design was approved by the Founder on 2026-10-16.
+J.1 and J.2 are resolved for the initial provider-neutral configuration/obligation
+slice. Gate 2 (implementation approval), applicable later business/policy gates,
+provider selection/activation, and production use have **not** been approved. This
+status statement does not authorize implementation.
 
 ---
 
@@ -856,12 +850,14 @@ These are cited as context for the proposed model, not as endorsement.
   transactional audit, and no change to `customerStageFor` or agreement behavior;
 - introduce **no** deactivation path, and state that a later payment event cannot silently
   reverse activation;
-- leave the material Founder decisions in §J explicitly unresolved.
+- record J.1 and J.2 as resolved by Founder approval on 2026-10-16 and leave J.3–J.12 unresolved until separately decided.
 
 **It does not:**
 
 - select or activate a provider;
-- set pricing, taxes, refunds, charges, retries, dunning, or any payment policy;
+- set any actual project-specific amount or currency value, taxes, refunds, charges,
+  retries, dunning, or other unresolved payment policy; pricing authority and the
+  initial supported schedule structures are recorded in §J.1–J.2;
 - authorize deployment, production use, or live customer-data processing;
 - change `customerStageFor`, customer-facing stages, or existing agreement behavior;
 - introduce any automatic activation or automatic deactivation;
@@ -929,6 +925,7 @@ keeping the five corrections delivered in the prior revision.
 - No obsolete statements or old contradictions were restored just to match the earlier text.
 - No superseded wording that conflicted with the five corrections was preserved.
 - No implementation, schema, route, service, UI, or test was added or changed.
-- No provider, price, payment policy, legal conclusion, or new Founder decision was added.
+- No provider was selected, no project-specific price/currency value or unresolved
+  payment policy was set, and no legal conclusion or unapproved Founder decision was added.
 
 No implementation, schema, route, service, UI, or test was added or changed.
