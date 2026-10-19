@@ -10,7 +10,7 @@ Completed:
 - 0.4 Service catalog
 - 0.5 Repository and documentation conventions
 
-Pricing policy is a material business decision and will be documented separately when approved.
+Pricing policy is a material Founder decision. The Founder decisions recorded on 2026-10-16 in `docs/decisions/2026-10-12-payments-project-activation.md` (§J.1–J.2) already fix the pricing authority: the Founder sets the amount and currency for each project, with no public pricing catalogue and no automatic pricing. Those decisions set no actual amount, currency value, due date, or price for any particular project, and they remain subject to that per-project Founder selection. Any broader pricing policy not already decided remains subject to separate Founder approval and will be documented separately when approved.
 
 ## Phase 1 — Portfolio Foundation
 
@@ -95,9 +95,11 @@ The approved product requirements describe the rest of the customer and delivery
 - closure
 - notifications
 
-Each of these remains a future design and implementation step until its own implementation decision is approved.
+Each remains unimplemented until the applicable implementation decision is separately approved. An approved design does not itself authorize implementation.
 
 The agreement/e-signature design gate is Founder-approved in docs/decisions/2026-10-07-agreement-e-signature.md (Status: Approved; Founder approval recorded 2026-10-07). Q1–Q3 are resolved: one authorized customer signer with no default Founder countersignature; exact accepted proposal-version binding with additional contractual terms permitted; and one primary agreement per project initially. The approved design was implemented and merged as PR #48; no provider is selected, and no legal/provider production gate is resolved. Merging the implementation does not authorize deployment, provider activation, or production use, and does not resolve Q4–Q10.
+
+The payments/project-activation design gate is Founder-approved in docs/decisions/2026-10-12-payments-project-activation.md (approval recorded 2026-10-16). Founder decisions J.1–J.2 are resolved: the Founder sets amount and currency per project, with no public pricing catalogue or automatic pricing; the initial supported schedule structures are full upfront, deposit plus later payments, and milestone-linked payments. Implementation remains separately unapproved. A provider-neutral Payment Configuration + Obligations slice may be considered for separate implementation approval using synthetic/test data only. J.3–J.12 remain unresolved for later payment evidence, attempt/retry behavior, reversals/refunds/tax, provider selection, activation, manual status determinations, evidence retention, and post-activation policy. Design approval authorizes no provider selection or activation, live payments, deployment, or live customer-data processing.
 
 ### Planned or deferred
 

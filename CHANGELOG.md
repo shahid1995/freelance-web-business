@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-16
+
+### Payments and project activation — design approval and Founder decisions
+- Recorded Founder approval of the provider-neutral payments/project-activation design in `docs/decisions/2026-10-12-payments-project-activation.md`; implementation remains separately unapproved.
+- Resolved pricing authority: the Founder sets the amount and currency per project. No public pricing catalogue or automatic pricing is approved.
+- Resolved the three initial supported schedule structures: full upfront, deposit plus later payments, and milestone-linked payments. The applicable structure remains Founder-selected per project.
+- Identified the first candidate implementation slice as provider-neutral Payment Configuration + Obligations using synthetic/test data only, pending separate implementation authorization. It excludes evidence ingestion/verification, real payment attempts, provider integration, activation, deployment, and live customer data.
+- J.3–J.12 remain unresolved blockers for their applicable later slices: evidence authority/verification; retry/failure/dunning; reversals/disputes; refunds; tax; provider selection; exact activation conditions/trigger; manual payment-status authority; evidence retention; and post-activation policy. No provider or production action is authorized.
+- Consistency correction: removed leftover "draft" labels from the approved design status and reworded them to "candidate" wording, so §C.3 and §F/§F.2 read as part of the approved design while their obligation states, activation conditions, and trigger remain open per §J.3–J.12. Also clarified the `docs/project-map.md` pricing statement so it no longer reads as denying the already-recorded 2026-10-16 Founder decisions (§J.1–J.2). This changes no decision, adds no approval, and authorizes no implementation.
+
 ## 2026-10-08
 
 ### Agreement and e-signature (implementation slice)
