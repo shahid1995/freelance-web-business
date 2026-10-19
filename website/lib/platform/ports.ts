@@ -338,15 +338,22 @@ export interface PlatformStore {
 
   // --- payment configuration and obligations -------------------------------
   /**
-   * The exact current **signed** agreement version whose baseline matches the
-   * current accepted proposal version, or null when none is signed.
+   * The exact current **signed** agreement version, or null when the current
+   * applicable agreement version is not signed.
    *
-   * A narrow query rather than a reuse of `findCurrentAgreementVersion`: that
-   * method also returns a merely published version, and a published-but-unsigned
-   * agreement is not signed evidence. Payment configuration binding requires a
-   * signed version, so this filters on `status = 'signed'` and on the same
-   * "baseline matches the current accepted proposal" applicability rule, in one
-   * statement rather than a service-side filter.
+   * "Current applicable" uses the same rule as `findCurrentAgreementVersion`:
+   * the highest published-or-signed version whose proposal baseline is the
+   * current accepted proposal version. Only that version is then required to be
+   * signed.
+   *
+   * The distinction matters: if a newer applicable version has been published
+   * but not yet signed, the answer is null — there is no signed *current*
+   * version — rather than falling back to an older signed version that the
+   * newer one supersedes. A published-but-unsigned agreement is never signed
+   * evidence, so payment configuration binding must not silently bind to the
+   * superseded signature. Drafts never affect the answer: they are not
+   * applicable versions at all, so a draft cannot invalidate a valid signed
+   * baseline.
    */
   findCurrentSignedAgreementVersion(
     projectId: ProjectId,

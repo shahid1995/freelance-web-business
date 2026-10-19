@@ -1583,21 +1583,32 @@ export class SqlitePlatformStore implements PlatformStore {
   }
 
   findCurrentSignedAgreementVersion(projectId: ProjectId): AgreementVersionInternal | null {
-    // The same applicability rule as findCurrentAgreementVersion (the version's
-    // proposal baseline must be the current accepted proposal version), narrowed
-    // to a signed version. A merely published version is never signed evidence,
-    // which is why this is its own query rather than a status check beside the
-    // existing lookup.
+    // Resolves the current applicable version with the same rule as
+    // findCurrentAgreementVersion (highest published-or-signed version whose
+    // proposal baseline is the current accepted proposal), then requires *that*
+    // version to be signed.
+    //
+    // The order matters: filtering to signed versions inside the candidate set
+    // would fall back to an older signed version whenever a newer applicable
+    // version has been published but not yet signed, even though the newer
+    // version is the current applicable one. Resolving applicability first and
+    // checking signed status in the outer query returns null in that case —
+    // there is no signed current applicable version, only a superseded one.
+    //
+    // Drafts are excluded from candidacy by the subquery's status filter, so an
+    // unpublished draft cannot invalidate a previously valid signed baseline.
     const row = this.get(
-      "SELECT av.* FROM agreement_versions av " +
+      "SELECT current_version.* FROM (" +
+        "SELECT av.* FROM agreement_versions av " +
         "JOIN agreements a ON a.id = av.agreement_id " +
-        "WHERE a.project_id = ? AND av.status = 'signed' " +
+        "WHERE a.project_id = ? AND av.status IN ('published', 'signed') " +
         "AND av.proposal_version_id = (" +
         "SELECT pv.id FROM proposal_versions pv " +
         "JOIN proposal_responses pr ON pr.proposal_version_id = pv.id AND pr.action = 'accepted' " +
         "JOIN proposals p ON p.id = pv.proposal_id " +
         "WHERE p.project_id = ? ORDER BY pv.version_number DESC LIMIT 1" +
-        ") ORDER BY av.version_number DESC LIMIT 1",
+        ") ORDER BY av.version_number DESC LIMIT 1" +
+        ") AS current_version WHERE current_version.status = 'signed'",
       projectId,
       projectId,
     );

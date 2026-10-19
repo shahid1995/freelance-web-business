@@ -389,6 +389,129 @@ describe("payment configuration and obligations", () => {
     assert.equal(harness.platform.store.listPaymentConfigVersions(owner.projectId).length, 1);
   });
 
+  it("does not fall back to an older signed agreement while a newer applicable version is published but unsigned", async () => {
+    const harness = await createProposalHarness();
+    const owner = await publishedOwner(harness);
+    acceptCurrentProposal(harness, owner);
+
+    // 1-2. A current accepted proposal exists, and agreement version 1 is
+    // created and signed against it.
+    createAgreementVersion(harness, owner.personId, owner.projectId, 1);
+    harness.platform.customerAgreements.sign({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 1,
+      actionKey: generateActionKey(),
+    });
+
+    // A configuration created while version 1 is the current applicable
+    // agreement binds to it and reads as current.
+    const created = createConfig(harness, owner);
+    const boundVersion = created.versions[0]!;
+    assert.equal(boundVersion.stale, false);
+    assert.equal(boundVersion.agreementVersionNumber, 1);
+    const boundObligations = structuredClone(
+      harness.platform.store.listPaymentObligationsByVersion(boundVersion.id),
+    );
+    const auditBefore = structuredClone(paymentAuditEvents(harness, owner.projectId));
+
+    // 3. Agreement version 2 is created and published against the same
+    // accepted proposal, but left unsigned.
+    createAgreementVersion(harness, owner.personId, owner.projectId, 2);
+    const applicable = harness.platform.store.findCurrentAgreementVersion(owner.projectId);
+    assert.equal(applicable?.versionNumber, 2);
+    assert.equal(applicable?.status, "published");
+
+    // The current applicable version is published but unsigned, so there is no
+    // signed *current* version — and the superseded signed version 1 must not
+    // stand in for it.
+    assert.equal(harness.platform.store.findCurrentSignedAgreementVersion(owner.projectId), null);
+
+    // 4. A new configuration is rejected rather than accepted against the
+    // older signature.
+    expectRejectedWithMessage(
+      () => createVersionRaw(harness, configInput(owner)),
+      /published but not signed/i,
+    );
+
+    // The rejected attempt left versions, obligations, and audit rows unchanged.
+    const versionsAfter = harness.platform.store.listPaymentConfigVersions(owner.projectId);
+    assert.equal(versionsAfter.length, 1);
+    assert.deepEqual(
+      harness.platform.store.listPaymentObligationsByVersion(boundVersion.id),
+      boundObligations,
+    );
+    assert.deepEqual(paymentAuditEvents(harness, owner.projectId), auditBefore);
+
+    // 5. The existing configuration is now stale: version 2 superseded
+    // version 1 as the current applicable agreement, and version 2 is unsigned.
+    const read = harness.platform.paymentConfigurations.read(owner.personId, owner.projectId);
+    assert.equal(read.versions.length, 1);
+    assert.equal(read.versions[0]!.id, boundVersion.id);
+    assert.equal(read.versions[0]!.stale, true);
+    // Its stored references are unchanged — stale, not silently rebound.
+    assert.equal(read.versions[0]!.agreementVersionId, boundVersion.agreementVersionId);
+    assert.equal(read.versions[0]!.agreementVersionNumber, 1);
+  });
+
+  it("keeps a signed baseline valid while a newer draft exists, and revalidates once the newer version is signed", async () => {
+    const harness = await createProposalHarness();
+    const owner = await ownerWithSignedBaseline(harness);
+    const created = createConfig(harness, owner);
+    const boundVersion = created.versions[0]!;
+    assert.equal(boundVersion.stale, false);
+
+    // An unpublished draft is not an applicable agreement version, so it cannot
+    // invalidate the previously valid signed baseline.
+    harness.platform.agreements.createVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      additionalTerms: agreementContent,
+    });
+    const signedWithDraft = harness.platform.store.findCurrentSignedAgreementVersion(
+      owner.projectId,
+    );
+    assert.equal(signedWithDraft?.versionNumber, 1);
+    assert.equal(
+      harness.platform.paymentConfigurations.read(owner.personId, owner.projectId).versions[0]!
+        .stale,
+      false,
+    );
+
+    // Publishing version 2 makes it the current applicable agreement, so the
+    // configuration becomes stale and creation is refused while it is unsigned.
+    harness.platform.agreements.publishVersion({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 2,
+    });
+    assert.equal(harness.platform.store.findCurrentSignedAgreementVersion(owner.projectId), null);
+    expectRejectedWithMessage(
+      () => createVersionRaw(harness, configInput(owner)),
+      /published but not signed/i,
+    );
+
+    // Signing version 2 restores a valid current signed baseline: creation is
+    // accepted again, bound to version 2, and the version 1 configuration stays
+    // stale against its own historical reference.
+    harness.platform.customerAgreements.sign({
+      personId: owner.personId,
+      projectId: owner.projectId,
+      versionNumber: 2,
+      actionKey: generateActionKey(),
+    });
+    assert.equal(
+      harness.platform.store.findCurrentSignedAgreementVersion(owner.projectId)?.versionNumber,
+      2,
+    );
+    const afterSigning = createConfig(harness, owner);
+    assert.equal(afterSigning.versions.length, 2);
+    assert.equal(afterSigning.versions[1]!.agreementVersionNumber, 2);
+    assert.equal(afterSigning.versions[1]!.stale, false);
+    assert.equal(afterSigning.versions[0]!.id, boundVersion.id);
+    assert.equal(afterSigning.versions[0]!.stale, true);
+  });
+
   it("rejects a stale baseline reference and never silently rebinds an existing version", async () => {
     const harness = await createProposalHarness();
     const owner = await ownerWithSignedBaseline(harness);
