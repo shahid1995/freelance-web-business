@@ -1,6 +1,6 @@
 # Payments and Project Activation — Design Gate
 
-Status: **Design approved — Founder approval recorded 2026-10-16. Implementation not approved.**
+Status: **Design approved — Founder approval recorded 2026-10-16. Implementation separately approved only for the limited initial provider-neutral Payment Configuration + Obligations slice (synthetic/test data only; delivered by PR #54). Later slices, provider selection/activation, and production use remain not approved.**
 Author: product/design review
 Date: 2026-10-12
 Supersedes: none
@@ -766,9 +766,9 @@ This is the live register of Founder decisions. **J.1 and J.2 are resolved** by 
 
 ### Initial slice readiness and remaining blockers
 
-The Founder decisions in J.1 and J.2 are resolved as of 2026-10-16, and the single-currency rule in J.13 is resolved as of 2026-10-20. A first **provider-neutral Payment Configuration + Obligations** implementation slice may be considered for separate implementation approval, limited to synthetic/test data. Its scope should be Founder-only creation/amendment of configuration versions, per-project amount/currency inputs, obligation issuance for the three supported schedule structures subject to the single-currency rule in §J.13, and tests for current-baseline binding, authorization, project isolation, immutability, identifier-only transactional audit, and currency consistency.
+The Founder decisions in J.1 and J.2 are resolved as of 2026-10-16, and the single-currency rule in J.13 is resolved as of 2026-10-20. A first **provider-neutral Payment Configuration + Obligations** implementation slice has received separate implementation approval for that limited slice only, and is being delivered by PR #54, limited to synthetic/test data. Its scope is Founder-only creation/amendment of configuration versions, per-project amount/currency inputs, obligation issuance for the three supported schedule structures subject to the single-currency rule in §J.13, and tests for current-baseline binding, authorization, project isolation, immutability, identifier-only transactional audit, and currency consistency.
 
-That initial slice must exclude payment evidence ingestion or verification, real payment attempts, retry/refund/reversal/dispute handling, provider integration, customer payment UI, activation records or triggers, deployment, and all live customer-data processing. This paragraph is a readiness assessment, **not implementation authorization**.
+That initial slice must exclude payment evidence ingestion or verification, real payment attempts, retry/refund/reversal/dispute handling, provider integration, customer payment UI, activation records or triggers, deployment, and all live customer-data processing. This paragraph remains a readiness assessment; implementation authorization exists **only** for the separately approved initial slice recorded in §K.1, and no later slice is approved by this document.
 
 The remaining Founder decisions block the relevant later slices:
 - **J.3** must be resolved before implementing authoritative payment evidence and payment-state transitions.
@@ -831,10 +831,15 @@ The following are separate, sequential gates. Passing one does **not** pass the 
    no live activation until explicitly authorized.
 
 This document satisfies gate 1: the design was approved by the Founder on 2026-10-16.
-J.1 and J.2 are resolved for the initial provider-neutral configuration/obligation
-slice. Gate 2 (implementation approval), applicable later business/policy gates,
-provider selection/activation, and production use have **not** been approved. This
-status statement does not authorize implementation.
+J.1, J.2, and J.13 are resolved for the initial provider-neutral configuration/obligation
+slice. Gate 2 (implementation approval) **has been separately approved for that initial
+slice only**, limited to synthetic/test data and delivered by PR #54. Gate 2 approval for
+any later slice has **not** been granted, and the applicable later business/policy gates,
+provider selection/activation, and production use have **not** been approved. The initial
+slice approval authorizes no payment provider selection or activation, no live payment
+processing or live customer data, no payment evidence/state machine, no project activation
+implementation, and no deployment or production use. Later slices remain subject to their
+applicable Founder decisions and separate approval.
 
 ---
 
@@ -962,3 +967,15 @@ No implementation, schema, route, service, UI, or test was added or changed.
 - In the initial slice the rule is enforced during input validation, before the write
   transaction opens, so a rejected configuration writes no version, no obligations, and
   no audit events. That is a factual note about the code, not an approval statement.
+
+**Update recorded 2026-10-20 (PR #54) — implementation-approval status correction:**
+
+- The document status and §K.1 now record that gate 2 (implementation approval) has been
+  separately approved for the initial provider-neutral Payment Configuration + Obligations
+  slice only — limited to synthetic/test data — and that the initial slice is delivered by
+  PR #54.
+- That approval authorizes no payment provider selection or activation, no live payment
+  processing or live customer data, no payment evidence/state machine, no project
+  activation implementation, and no deployment or production use. J.3–J.12 remain
+  unresolved; later slices remain subject to their applicable Founder decisions and
+  separate approval. §J.13 is unchanged.
