@@ -12,7 +12,7 @@ Related: agreement/e-signature design gate (separate track); PR #50 branch `docs
 
 This is the **Founder-approved provider-neutral design**. Founder approval for the design was recorded on 2026-10-16. This approval does **not** authorize implementation, production use, provider onboarding or activation, migration, schema change, route addition, UI work, or any customer-visible behavior.
 
-The approved commercial decisions recorded in §J.1–J.2 are that the Founder sets each project's amount and currency, with no public pricing catalogue or automatic pricing, and that the three initial schedule structures are full upfront, deposit plus later payments, and milestone-linked payments. This document sets no actual project amount or currency value.
+The approved commercial decisions recorded in §J.1–J.2 are that the Founder sets each project's amount and currency, with no public pricing catalogue or automatic pricing, and that the three initial schedule structures are full upfront, deposit plus later payments, and milestone-linked payments. A further Founder decision recorded on 2026-10-20 (§J.13) fixes that one payment configuration uses exactly one currency: every obligation belonging to that configuration uses the configuration's project-level currency, and mixed-currency obligations and automatic currency conversion are not supported in this initial implementation. This document sets no actual project amount or currency value.
 
 Nothing in this document changes the current commercial baseline, the current accepted-proposal behavior, the current signed-agreement behavior, agreement states, customer-facing stages, or `customerStageFor` and the resulting customer-facing stage output. Any future implementation requires separate approval and, where relevant, separate decisions.
 
@@ -128,6 +128,16 @@ obligation's **expected monetary amount** and **currency** as the expected value
 for that obligation. These are the values a payment must be compared against when
 determining whether that specific obligation is satisfied. They are stored where
 the obligation is defined, not reconstructed from unrelated records.
+
+**One payment configuration uses exactly one currency** (Founder decision recorded
+2026-10-20, §J.13). Every obligation belonging to that configuration version uses the
+same currency as the configuration's project-level currency; a configuration whose
+obligations disagree with it is rejected before anything is written. Mixed-currency
+obligations and automatic currency conversion are not supported in this initial
+implementation: no exchange rate is applied, no amount is rounded or re-scaled to make
+two currencies comparable, and the exact decimal text entered for an amount is
+preserved as entered. This supersedes any reading of the surrounding text as allowing
+each obligation to choose a currency of its own.
 
 Obligations are identified by stable internal identifiers. The obligation identity
 is separate from the payment evidence that may later satisfy it.
@@ -283,7 +293,9 @@ The Founder selects the applicable structure for each project and sets its amoun
   provider references**, never a chosen provider's field names.
 - Amounts and currencies are stored where the obligation is defined. They are not
   reconstructed from unrelated records, and they are not adjusted by the system
-  without an explicit Founder-approved policy.
+  without an explicit Founder-approved policy. Within one configuration version
+  there is exactly one currency — the configuration's project-level currency —
+  and every obligation of that configuration uses it (§J.13).
 
 ### C.3 Candidate obligation states (approved design; states remain candidates)
 
@@ -335,6 +347,11 @@ The **choice of structure per project**, the **currency/unit**, the **amounts**,
 can be edited after issuance, and whether late or failed obligations block anything are
 all Founder decisions. The design holds the model open for each of them without
 presuming an answer.
+
+Which currency a project uses remains the Founder's decision (§J.1). What is no longer
+open is that a single configuration uses exactly one of them: every obligation uses the
+configuration's project-level currency, with no mixed-currency obligation set and no
+automatic conversion (§J.13).
 
 ---
 
@@ -729,7 +746,7 @@ derivation must all continue to pass unchanged.
 
 ## J. Founder decisions — resolved and outstanding
 
-This is the live register of Founder decisions. **J.1 and J.2 are resolved** by Founder approval recorded on 2026-10-16 and are summarised below. **J.3–J.12 remain unresolved**; they must not be silently decided by this design or by an implementation agent. Each row records the question, why it matters, decision/options, consequences/risks, what can be designed now, and what remains blocked.
+This is the live register of Founder decisions. **J.1 and J.2 are resolved** by Founder approval recorded on 2026-10-16, and **J.13 is resolved** by Founder approval recorded on 2026-10-20; all three are summarised below. **J.3–J.12 remain unresolved**; they must not be silently decided by this design or by an implementation agent. Each row records the question, why it matters, decision/options, consequences/risks, what can be designed now, and what remains blocked.
 
 | # | Decision question | Why it matters | Options (where supported or defensible from existing direction) | Consequences / risks | Designable now without deciding | Blocks |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -745,10 +762,11 @@ This is the live register of Founder decisions. **J.1 and J.2 are resolved** by 
 | **J.10** | Who may make or override a manual payment-status determination. | Manual marks are the highest-misuse path. | Not enumerated — Founder defines the authorized actor(s). | Misattribution; fraud. | Founder-only, least-privileged, audited manual-determination model. | Any manual payment-status determination or override; not the initial configuration/obligation-only slice. |
 | **J.11** | Retention and treatment of payment evidence. | How long evidence is kept and how it is protected. | Not enumerated; mirrors the agreement track's deferral of retention. | Over- or under-retention. | Append-only evidence with retention left undefined. | Production evidence retention/use; not the initial configuration/obligation-only slice. |
 | **J.12** | Policy for payment events after activation. | Reversal/refund/failed event after a project is live — must not silently deactivate or rewrite history. | Not enumerated — Founder defines the explicit policy. | Silent deactivation risk if left implicit. | Separate activation (append-only) from payment status (derived); **no** deactivation path. | Any defined post-activation response policy and production use; not the initial configuration/obligation-only slice. |
+| **J.13** | Currency consistency between a configuration and its own obligations. | Mixed-currency obligations would make the aggregate financial position meaningless and would imply a conversion policy this platform does not have. | **Resolved — Founder approval recorded 2026-10-20 (PR #54):** one payment configuration uses exactly one currency, and every obligation belonging to that configuration uses the configuration's project-level currency. Mixed-currency obligations and automatic currency conversion are not supported in this initial implementation. | Multi-currency schedules cannot be expressed — deliberately, until separately decided. | Per-obligation currency compared against the normalized configuration currency and rejected on mismatch before anything is persisted; exact decimal strings preserved, with tests covering acceptance, mismatch rejection, normalization, and no persistence on rejection. | Any mixed-currency obligation set and any automatic currency conversion; the currency value itself remains Founder-set per §J.1. |
 
 ### Initial slice readiness and remaining blockers
 
-The Founder decisions in J.1 and J.2 are resolved as of 2026-10-16. A first **provider-neutral Payment Configuration + Obligations** implementation slice may be considered for separate implementation approval, limited to synthetic/test data. Its scope should be Founder-only creation/amendment of configuration versions, per-project amount/currency inputs, obligation issuance for the three supported schedule structures, and tests for current-baseline binding, authorization, project isolation, immutability, and identifier-only transactional audit.
+The Founder decisions in J.1 and J.2 are resolved as of 2026-10-16, and the single-currency rule in J.13 is resolved as of 2026-10-20. A first **provider-neutral Payment Configuration + Obligations** implementation slice may be considered for separate implementation approval, limited to synthetic/test data. Its scope should be Founder-only creation/amendment of configuration versions, per-project amount/currency inputs, obligation issuance for the three supported schedule structures subject to the single-currency rule in §J.13, and tests for current-baseline binding, authorization, project isolation, immutability, identifier-only transactional audit, and currency consistency.
 
 That initial slice must exclude payment evidence ingestion or verification, real payment attempts, retry/refund/reversal/dispute handling, provider integration, customer payment UI, activation records or triggers, deployment, and all live customer-data processing. This paragraph is a readiness assessment, **not implementation authorization**.
 
@@ -850,7 +868,7 @@ These are cited as context for the proposed model, not as endorsement.
   transactional audit, and no change to `customerStageFor` or agreement behavior;
 - introduce **no** deactivation path, and state that a later payment event cannot silently
   reverse activation;
-- record J.1 and J.2 as resolved by Founder approval on 2026-10-16 and leave J.3–J.12 unresolved until separately decided.
+- record J.1 and J.2 as resolved by Founder approval on 2026-10-16, record J.13 as resolved by Founder approval on 2026-10-20, and leave J.3–J.12 unresolved until separately decided.
 
 **It does not:**
 
@@ -929,3 +947,18 @@ keeping the five corrections delivered in the prior revision.
   payment policy was set, and no legal conclusion or unapproved Founder decision was added.
 
 No implementation, schema, route, service, UI, or test was added or changed.
+
+**Update recorded 2026-10-20 (PR #54) — the single-currency rule:**
+
+- A new Founder decision, **J.13**, records that one payment configuration uses exactly
+  one currency: every obligation belonging to that configuration uses the
+  configuration's project-level currency. Mixed-currency obligations and automatic
+  currency conversion are not supported in this initial implementation.
+- §0, §B.2, §C.2, and §C.4 now state that rule where they describe currencies, so the
+  earlier wording — which let each obligation carry its own currency without saying
+  they must agree — is no longer ambiguous.
+- §J.13 is recorded as resolved; J.3–J.12 remain unresolved. No exchange rate,
+  conversion rule, fee, or other commercial policy was introduced.
+- In the initial slice the rule is enforced during input validation, before the write
+  transaction opens, so a rejected configuration writes no version, no obligations, and
+  no audit events. That is a factual note about the code, not an approval statement.

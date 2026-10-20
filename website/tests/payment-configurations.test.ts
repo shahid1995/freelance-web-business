@@ -759,6 +759,146 @@ describe("payment configuration and obligations", () => {
     assert.equal(paymentAuditEvents(harness, owner.projectId).length, 0);
   });
 
+  it("accepts a configuration whose obligations all use the configuration currency, in any letter case", async () => {
+    const harness = await createProposalHarness();
+    const owner = await ownerWithSignedBaseline(harness);
+
+    // One payment configuration, one currency. The lowercase configuration
+    // currency and the mixed-case obligation currencies are the same code after
+    // the service's existing normalization, so the whole set is accepted and
+    // stored uppercase — case never decides the outcome.
+    const view = createConfig(harness, owner, {
+      scheduleStructure: "deposit_plus_later",
+      totalAmount: "2700.00",
+      currency: "usd",
+      obligations: [
+        { expectedAmount: "600.25", currency: "usd" },
+        { expectedAmount: "900.25", currency: "USD" },
+        { expectedAmount: "1199.50", currency: "uSd" },
+      ],
+    });
+
+    const version = view.versions[0]!;
+    assert.equal(version.currency, "USD");
+    assert.deepEqual(
+      version.obligations.map((obligation) => [
+        obligation.orderIndex,
+        obligation.expectedAmount,
+        obligation.currency,
+      ]),
+      [
+        [1, "600.25", "USD"],
+        [2, "900.25", "USD"],
+        [3, "1199.50", "USD"],
+      ],
+    );
+
+    // The stored rows carry that one currency, and the exact decimal text is
+    // untouched — no re-scaling to two decimal places, no numeric parsing.
+    const stored = harness.platform.store.listPaymentObligationsByVersion(version.id);
+    assert.deepEqual(
+      stored.map((obligation) => obligation.currency),
+      ["USD", "USD", "USD"],
+    );
+    assert.deepEqual(
+      stored.map((obligation) => obligation.expectedAmount),
+      ["600.25", "900.25", "1199.50"],
+    );
+    assert.equal(harness.platform.store.listPaymentConfigVersions(owner.projectId).length, 1);
+  });
+
+  it("rejects an obligation whose currency differs from the configuration currency and writes nothing", async () => {
+    const harness = await createProposalHarness();
+    const owner = await ownerWithSignedBaseline(harness);
+
+    // A valid configuration first, so every rejected attempt below has real
+    // persisted state it must leave untouched.
+    const created = createConfig(harness, owner, {
+      scheduleStructure: "deposit_plus_later",
+      totalAmount: "1500.00",
+      currency: "USD",
+      obligations: [
+        { expectedAmount: "600.00", currency: "USD" },
+        { expectedAmount: "900.00", currency: "USD" },
+      ],
+    });
+    const createdVersion = created.versions[0]!;
+    const versionsBefore = structuredClone(
+      harness.platform.store.listPaymentConfigVersions(owner.projectId),
+    );
+    const obligationsBefore = structuredClone(
+      harness.platform.store.listPaymentObligationsByVersion(createdVersion.id),
+    );
+    const auditBefore = structuredClone(paymentAuditEvents(harness, owner.projectId));
+
+    const cases: Array<[string, Record<string, unknown>, RegExp]> = [
+      [
+        "the only obligation in another currency",
+        { currency: "USD", obligations: [{ expectedAmount: "100.00", currency: "EUR" }] },
+        /Obligation 1's currency \(EUR\) must match the project currency \(USD\)/,
+      ],
+      [
+        "a later obligation in another currency",
+        {
+          currency: "USD",
+          obligations: [
+            { expectedAmount: "100.00", currency: "USD" },
+            { expectedAmount: "200.00", currency: "EUR" },
+          ],
+        },
+        /Obligation 2's currency \(EUR\) must match the project currency \(USD\)/,
+      ],
+      [
+        "a lowercase configuration currency against another currency",
+        { currency: "usd", obligations: [{ expectedAmount: "100.00", currency: "EUR" }] },
+        /Obligation 1's currency \(EUR\) must match the project currency \(USD\)/,
+      ],
+      [
+        "a lowercase obligation currency against another currency",
+        { currency: "USD", obligations: [{ expectedAmount: "100.00", currency: "eur" }] },
+        /Obligation 1's currency \(EUR\) must match the project currency \(USD\)/,
+      ],
+      [
+        "the configuration in another currency than its obligation",
+        { currency: "EUR", obligations: [{ expectedAmount: "100.00", currency: "USD" }] },
+        /Obligation 1's currency \(USD\) must match the project currency \(EUR\)/,
+      ],
+      [
+        "a milestone-linked obligation in another currency",
+        {
+          scheduleStructure: "milestone_linked",
+          totalAmount: "300.00",
+          currency: "USD",
+          obligations: [
+            {
+              expectedAmount: "300.00",
+              currency: "EUR",
+              scopeOrMilestoneRef: "scope-version-alpha",
+            },
+          ],
+        },
+        /Obligation 1's currency \(EUR\) must match the project currency \(USD\)/,
+      ],
+    ];
+
+    for (const [label, patch, pattern] of cases) {
+      expectRejectedWithMessage(() => createConfig(harness, owner, patch), pattern);
+    }
+
+    // Nothing was converted, appended, or audited: the configuration versions,
+    // the existing obligations, and the payment audit trail are unchanged.
+    assert.deepEqual(
+      harness.platform.store.listPaymentConfigVersions(owner.projectId),
+      versionsBefore,
+    );
+    assert.deepEqual(
+      harness.platform.store.listPaymentObligationsByVersion(createdVersion.id),
+      obligationsBefore,
+    );
+    assert.deepEqual(paymentAuditEvents(harness, owner.projectId), auditBefore);
+    assert.equal(harness.platform.store.listPaymentObligationsByProject(owner.projectId).length, 2);
+  });
+
   it("keeps obligation membership and project association unambiguous", async () => {
     const harness = await createProposalHarness();
     const owner = await ownerWithSignedBaseline(harness);

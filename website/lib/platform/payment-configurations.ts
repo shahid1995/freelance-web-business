@@ -24,6 +24,11 @@
  *   installment count, or a hidden schedule from the chosen structure, and no
  *   sum is reconciled against the project total: both would be new commercial
  *   policy (J.1–J.2 deliberately leave the breakdown to explicit Founder input).
+ * - **One currency per configuration.** Every obligation uses the
+ *   configuration's own project currency. A mixed-currency obligation set is
+ *   rejected, never converted: no exchange rate, no rounding, and no
+ *   re-scaling of an exact decimal string (Founder decision recorded
+ *   2026-10-20).
  *
  * No customer route, view, or projection imports this module.
  */
@@ -214,10 +219,20 @@ interface NormalizedObligation {
  * obligation must carry its opaque scope/milestone reference (that is what the
  * structure means, J.2), and for the other two structures a reference is
  * rejected rather than silently ignored because nothing would ever read it.
+ *
+ * It also enforces the Founder's single-currency rule (recorded 2026-10-20): one
+ * payment configuration uses exactly one currency, so every obligation must
+ * carry the configuration's own currency. Both sides are already normalized by
+ * `normalizeCurrency`, so the comparison is a plain string equality on the
+ * stored uppercase form — case never decides it, and nothing is converted,
+ * rounded, or re-scaled to make two currencies comparable. A mismatch is a
+ * rejection, not a conversion, and it is raised here — during input
+ * normalization, before the write transaction is opened.
  */
 function normalizeObligations(
   raw: unknown,
   scheduleStructure: PaymentScheduleStructure,
+  configurationCurrency: string,
 ): NormalizedObligation[] {
   if (!Array.isArray(raw)) {
     throw new ValidationError("The obligations must be supplied as a list.");
@@ -248,6 +263,11 @@ function normalizeObligations(
 
     const expectedAmount = normalizeAmount(record.expectedAmount, `Obligation ${position}'s amount`);
     const currency = normalizeCurrency(record.currency, `Obligation ${position}'s currency`);
+    if (currency !== configurationCurrency) {
+      throw new ValidationError(
+        `Obligation ${position}'s currency (${currency}) must match the project currency (${configurationCurrency}). One payment configuration uses exactly one currency.`,
+      );
+    }
 
     const rawScopeReference = record.scopeOrMilestoneRef;
     let scopeOrMilestoneRef: string | null = null;
@@ -331,8 +351,9 @@ export class PaymentConfigurationService {
    *    depends on route visibility, organization membership, or a
    *    caller-supplied id (section G.2).
    * 2. **All commercial input validation** happens before the transaction
-   *    opens, so malformed amounts, currencies, schedules, or obligations are
-   *    rejected before persistence is even attempted.
+   *    opens, so malformed amounts, currencies, schedules, or obligations —
+   *    and any obligation whose currency differs from the configuration's
+   *    own currency — are rejected before persistence is even attempted.
    * 3. **Baseline validation runs inside the write transaction** (section B.1):
    *    an accepted proposal must exist, a signed agreement applicable to that
    *    exact proposal must exist, and the caller's expected references must
@@ -351,7 +372,7 @@ export class PaymentConfigurationService {
     const scheduleStructure = parseScheduleStructure(input.scheduleStructure);
     const totalAmount = normalizeAmount(input.totalAmount, "The project amount");
     const currency = normalizeCurrency(input.currency, "The project currency");
-    const obligations = normalizeObligations(input.obligations, scheduleStructure);
+    const obligations = normalizeObligations(input.obligations, scheduleStructure, currency);
     const expectedProposalVersionId = parseBaselineReference(
       input.expectedProposalVersionId,
       "accepted proposal version",
