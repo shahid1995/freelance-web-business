@@ -24,7 +24,6 @@ import { FounderWorkspaceService } from "./internal";
 import { IntakeService } from "./intake";
 import { LocalEmailSink } from "./local-email";
 import { OrganizationService } from "./organizations";
-import { PaymentConfigurationService } from "./payment-configurations";
 import { ProjectService } from "./projects";
 import { ProposalService } from "./proposals";
 import { SessionService, sessionCookieSettings } from "./sessions";
@@ -46,11 +45,6 @@ export interface Platform {
   proposals: ProposalService;
   /** Founder-only agreement authoring. Never mounted into the customer workspace. */
   agreements: AgreementService;
-  /**
-   * Founder-only payment configuration and obligation authoring. Never mounted
-   * into the customer workspace; no customer service or projection consults it.
-   */
-  paymentConfigurations: PaymentConfigurationService;
   /** Customer-facing agreement reading/signing, using project access and Owner/Admin authority. */
   customerAgreements: CustomerAgreementService;
   /**
@@ -145,12 +139,6 @@ export async function createPlatform(
       founderEmailHashes: config.founderEmailHashes,
     }),
     proposals: new ProposalService({
-      store: resolvedStore,
-      clock,
-      newId,
-      founderEmailHashes: config.founderEmailHashes,
-    }),
-    paymentConfigurations: new PaymentConfigurationService({
       store: resolvedStore,
       clock,
       newId,
