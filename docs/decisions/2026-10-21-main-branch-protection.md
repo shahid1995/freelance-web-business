@@ -9,7 +9,7 @@
 
 ## 1. Purpose and authority
 
-This proposal defines a minimum, practical protection policy for `main` in the public repository `shahid1995/freelance-web-business`.
+This approved policy defines a minimum, practical protection policy for `main` in the public repository `shahid1995/freelance-web-business`.
 
 The Founder remains the final authority. GitHub is the sole system of record. The Founder has approved the recommended starting decisions in §5 and §13 and authorised implementation. Actual configuration must still pass the activation-time checks below; no setting may be reported active until live verification confirms it.
 
@@ -70,11 +70,11 @@ Viable for a single repository and straightforward for standard settings. It can
 
 ### Option C — One repository ruleset targeting `main`
 
-**Recommended for Founder consideration.** Rulesets are visible to readers, can be put into different enforcement states where supported, and can be layered without relying on a single matching classic branch-protection rule. Current repository metadata showed no rulesets. See [About rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets) and [Available rules for rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets).
+**Approved choice, subject to feature availability.** Rulesets are visible to readers, can be put into different enforcement states where supported, and can be layered without relying on a single matching classic branch-protection rule. Current repository metadata showed no rulesets. See [About rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets) and [Available rules for rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets).
 
-Choose either Option B or C for the first implementation; do not configure both redundantly. The recommendation is a single ruleset targeting only `main`, subject to confirmation that the required controls are available in this repository's GitHub plan and account UI.
+Choose either Option B or C for the first implementation; do not configure both redundantly. The approved approach is a single ruleset targeting only `main`, subject to confirmation that the required controls are available in this repository's GitHub plan and account UI.
 
-## 5. Recommended minimum policy
+## 5. Founder-approved minimum policy
 
 The Founder-approved minimum policy is:
 
@@ -93,7 +93,7 @@ This policy creates a PR trail without pretending that a lone Founder can supply
 
 Routine changes should be made on an isolated topic branch and proposed to `main` through a pull request, consistent with [repository conventions](../conventions/repository-and-documentation.md).
 
-The proposed rule should reject ordinary direct updates to `main`, subject to the chosen mechanism's documented bypass behaviour. No bypass actors should be configured initially. Any emergency exception must require a separate explicit Founder decision, a recorded reason, and subsequent review of the resulting commit.
+The rule should reject ordinary direct updates to `main`, subject to the chosen mechanism's documented bypass behaviour. No bypass actors should be configured initially. Any emergency exception must require a separate explicit Founder decision, a recorded reason, and subsequent review of the resulting commit.
 
 Do not validate the rule by attempting a direct push to `main`. Use the settings UI/API for read-only verification and, if needed, a separately authorised disposable test branch for enforcement testing.
 
@@ -113,13 +113,13 @@ The approved candidate list below is based on observed check-run names and workf
 
 Before choosing a required check, verify the **exact check-run context** in GitHub's selector for the target branch, not merely the workflow display name. Require only checks which are expected on every relevant pull request, reliably report success/failure, and cannot be silently skipped by path filters.
 
-The Website CI path-filter issue should be handled as its own scoped change before Website CI becomes a required check. This proposal must not modify that workflow.
+The Website CI path-filter issue should be handled as its own scoped change before Website CI becomes a required check. This policy does not authorise modifying that workflow as part of the ruleset implementation.
 
 ## 8. Approval, administrator enforcement, and bypass
 
 The operating model currently has a single Founder with final authority. GitHub does not treat the author's own approval as an independent review, so requiring one approval by default could make routine work impossible without producing a genuine independent reviewer.
 
-Recommended initial policy:
+Founder-approved initial policy:
 
 - Require a PR, but set the minimum independent approval count to zero for now.
 - Apply the PR and required-check rules to the repository owner/admin where the selected mechanism allows that choice.
@@ -130,9 +130,9 @@ Recommended initial policy:
 
 ## 9. Other safeguards evaluated
 
-- **Force pushes:** recommend blocking them on `main`.
-- **Branch deletion:** recommend blocking deletion of `main`.
-- **Conversation resolution:** recommend requiring open PR review conversations to be resolved before merge.
+- **Force pushes:** block them on `main`.
+- **Branch deletion:** block deletion of `main`.
+- **Conversation resolution:** require open PR review conversations to be resolved before merge.
 - **Up-to-date branches:** defer initially. Revisit after the required-check set is reliable and concurrent PRs create meaningful stale-base risk; strict freshness can require repeated CI runs and create avoidable friction in a single-Founder workflow.
 - **Linear history:** defer. The repository currently allows merge commits, rebase, and squash. If linear history is desired, explicitly decide whether to disable merge commits and use squash or rebase, rather than enabling a rule without aligning merge-method settings.
 - **Signed commits:** defer until the Founder has verified a sustainable signing setup for local commits and any relevant automation.
@@ -160,7 +160,7 @@ Founder approval is recorded above. The remaining live-configuration and post-ac
 
 ## 11. Post-activation verification plan
 
-Only after separate approval and actual activation:
+After actual activation:
 
 1. Re-read the live rule/ruleset and confirm it targets `main`, has the agreed enforcement status, required checks, approval count, and bypass configuration.
 2. Create a controlled documentation-only PR and confirm the selected required checks are present and completed. This is especially important for path-filter behaviour.
@@ -182,7 +182,7 @@ If a policy blocks legitimate work:
 4. If rollback is necessary, the Founder or explicitly authorised administrator may switch the ruleset to a non-enforcing state or restore the prior branch rule as supported by GitHub. Record the previous and new values and the reason.
 5. Re-enable enforcement only after the failed condition is understood and verification passes.
 
-No rollback or live setting change is authorised by this proposal.
+Rollback remains a separate settings change and requires explicit Founder authorisation.
 
 ## 13. Open Founder decisions (13)
 
@@ -204,7 +204,7 @@ The Founder approved the following decisions on 2026-10-21. These decisions auth
 | Q12 | Conversation resolution, stale approvals, signed commits | Require conversation resolution; defer stale-approval and signing rules | Resolution is low friction; approvals and signing need a real independent reviewer and tested signing process |
 | Q13 | Force-push/deletion and linear history | Block force pushes and deletion; defer linear history | Preserve `main`; decide merge-method changes separately |
 
-Founder answers should be recorded in GitHub before activation. A future implementation PR must not infer approval merely because this proposal is merged.
+The Founder approval record above authorises implementation of this policy. Merging this document is not evidence that settings are active; actual activation must be proven by re-reading the live ruleset and branch state.
 
 ## 14. Evidence, references, and limitations
 
@@ -228,7 +228,7 @@ Founder answers should be recorded in GitHub before activation. A future impleme
 
 ### Limitations
 
-This proposal is based on repository files and GitHub metadata/check-run evidence available at preparation time. The current branch object reports `main` as not protected and the rulesets endpoint returned an empty list, but the dedicated branch-protection detail endpoint was inaccessible to the connected integration. The GitHub settings UI must be checked directly before activation. Required-check selection and enforcement have not been tested because no settings were changed.
+This policy record is based on repository files and GitHub metadata/check-run evidence available at preparation time. The current branch object reports `main` as not protected and the rulesets endpoint returned an empty list, but the dedicated branch-protection detail endpoint was inaccessible to the connected integration. The GitHub settings UI must be checked directly before activation. Required-check selection and enforcement have not been tested because no settings were changed.
 
 The successful checks on PR #55 and its merge commit do not constitute runtime API security testing or prove that every external app check will always run. The classic status endpoint's `pending` state with no status contexts must be distinguished from the separately successful Check Runs API results. The exact status-check configuration remains an activation-time verification requirement.
 
