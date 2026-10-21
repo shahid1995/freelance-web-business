@@ -1,17 +1,20 @@
 # Main Branch Protection Policy and Activation Plan
 
-**Status:** APPROVED — IMPLEMENTATION AUTHORISED — NOT ACTIVE  
-**Owner:** Founder  
-**Date:** 2026-10-21  
-**Scope:** Repository governance for the `main` branch only
+- **Status:** APPROVED — CONFIGURATION ACTIVE AND VERIFIED — ENFORCEMENT VERIFICATION IN PROGRESS
+- **Owner:** Founder
+- **Date:** 2026-10-21
+- **Last re-verified against live GitHub:** 2026-10-21
+- **Scope:** Repository governance for the `main` branch only
 
-> Founder approval was given on 2026-10-21 for the recommended starting policy below and for implementation of the main-only protection rules. This document records that approval. The live ruleset has not been created or activated; activation is complete only after the settings are applied and independently verified.
+> Founder approval was given on 2026-10-21 for the recommended starting policy below and for implementation of the main-only protection rules. This document records that approval.
+>
+> **Update (2026-10-21):** The ruleset has since been applied and independently re-read from the live GitHub API. Ruleset `25555806` (`protect-main-founder-approved`) exists, targets exactly `refs/heads/main`, and reports `enforcement: active`. The configuration is therefore **active**, not merely approved. Enforcement behaviour is tracked separately in §11.1 and is **not** implied by the word "active".
 
 ## 1. Purpose and authority
 
 This approved policy defines a minimum, practical protection policy for `main` in the public repository `shahid1995/freelance-web-business`.
 
-The Founder remains the final authority. GitHub is the sole system of record. The Founder has approved the recommended starting decisions in §5 and §13 and authorised implementation. Actual configuration must still pass the activation-time checks below; no setting may be reported active until live verification confirms it.
+The Founder remains the final authority. GitHub is the sole system of record. The Founder has approved the recommended starting decisions in §5 and §13 and authorised implementation. The approved policy has since been applied as repository ruleset `25555806` and re-read live from GitHub (§3.4). Configuration state and enforcement state are recorded separately: an active ruleset is a configuration fact, while demonstrated merge-blocking behaviour is an enforcement fact that requires the controlled pull-request test in §11.
 
 The relevant governing documents are [the Constitution](../../CONSTITUTION.md), [Governance](../governance.md), and the [repository and documentation conventions](../conventions/repository-and-documentation.md).
 
@@ -25,7 +28,9 @@ The intended safeguards are to make ordinary changes reach `main` through pull r
 
 ## 3. Current verified state
 
-The latest live checks performed for this proposal observed:
+### 3.1 State at proposal preparation (historical)
+
+The following observations were made while the policy was being drafted. They are retained as decision history. They are **superseded** by the live re-verification in §3.4.
 
 | Item | Observation | Evidence / limitation |
 |---|---|---|
@@ -58,6 +63,62 @@ Important distinctions and limits:
 - The post-merge SonarCloud quality-gate check passed, but its report also indicated three new issues. Passing a quality gate must not be described as zero findings.
 - No check inventory here proves runtime API security testing exists. That remains a separate open gap.
 
+### 3.4 Live configuration verification (re-read from GitHub, 2026-10-21)
+
+The following values were re-read directly from the live GitHub REST API after the policy was applied. They are **verified facts**, not inferences.
+
+| Item | Live value | Evidence |
+|---|---|---|
+| Ruleset ID | `25555806` | [Live ruleset](https://github.com/shahid1995/freelance-web-business/rules/25555806) and [ruleset API](https://api.github.com/repos/shahid1995/freelance-web-business/rulesets/25555806) |
+| Ruleset name | `protect-main-founder-approved` | Same endpoints |
+| Ruleset target | `branch` | Same endpoints |
+| Enforcement | `active` | Same endpoints |
+| Created / updated | `2026-10-21T14:52:05.876Z` / `2026-10-21T14:53:13.794Z` | Same endpoints |
+| Branch scope | `include: ["refs/heads/main"]`, `exclude: []` | `conditions.ref_name` on the same endpoint |
+| Ruleset count in repository | Exactly `1` — no duplicate or competing ruleset | [Repository rulesets API](https://api.github.com/repos/shahid1995/freelance-web-business/rulesets) returned a single-element array |
+| `main` branch metadata | `protected: true` | Live branch endpoint for `main` |
+| Classic branch protection on `main` | `enabled: false`, `required_status_checks.enforcement_level: "off"`, `contexts: []` | Live branch endpoint; confirms the approved "ruleset only, no redundant classic rule" choice (Q1) |
+| `main` SHA at verification | `39be4554c871c9341b979124f9371e2f99b28a19` | Merge commit of [PR #56](https://github.com/shahid1995/freelance-web-business/pull/56) |
+
+Rule-by-rule re-read of ruleset `25555806`:
+
+| Rule | Live value | Approved-policy correspondence |
+|---|---|---|
+| `pull_request` | `required_approving_review_count: 0` | Q5 — zero independent approvals for the single-Founder model |
+| `pull_request` | `required_review_thread_resolution: true` | Q12 — conversation resolution required |
+| `pull_request` | `require_code_owner_review: false`, `require_last_push_approval: false`, `dismiss_stale_reviews_on_push: false` | Q12 — stale-approval rules deferred |
+| `pull_request` | `require_extra_approval_for_unattributed_changes: true` | Platform default for repository rulesets; noted, not a Founder-approved change |
+| `pull_request` | `allowed_merge_methods: ["merge", "squash", "rebase"]` | Q13 — linear history deferred; merge methods unchanged |
+| `required_status_checks` | `strict_required_status_checks_policy: false` | Q11 — branch-up-to-date enforcement left off |
+| `required_status_checks` | `do_not_enforce_on_create: false` | Required checks are enforced on pull-request creation, not deferred |
+| `required_status_checks` | contexts `Analyze (javascript-typescript)`, `Codacy Security Scan`, `dependency-review`, each with `integration_id: 15368` (GitHub Actions) | Q6, Q7, Q8 — the three approved candidates, now required |
+| `deletion` | present (deletion of `main` blocked) | Q13 |
+| `non_fast_forward` | present (force pushes blocked) | Q13 |
+| `branch_freshness` / linear history / signed commits / merge queue | **absent** | Q11, Q13, Q12 — deferred controls remain off |
+
+Confirmations that nothing extra was enabled:
+
+- `Website CI` is **not** among the required contexts (Q9 — its `website/**` path filters would leave it absent on documentation-only pull requests).
+- `SonarCloud Code Analysis`, `semgrep-cloud-platform/scan`, and `security/snyk (shahid1995)` are **not** among the required contexts (Q10 — advisory).
+- Branch-freshness enforcement is **off** (`strict_required_status_checks_policy: false`).
+- The ruleset does **not** modify, weaken, or duplicate any other rule; exactly one ruleset exists.
+
+**Bypass-actor evidence and its limit.** The unauthenticated ruleset response omits the `bypass_actors` field entirely, so this verification could not independently re-confirm the bypass list from the public API. The earlier admin-permission observation recorded in [Issue #57](https://github.com/shahid1995/freelance-web-business/issues/57) reported an empty bypass list and `current_user_can_bypass: never`. That earlier observation is recorded here as a reported fact with a stated access level, **not** as something re-confirmed in this pass. It is listed in §14 as a remaining limitation.
+
+### 3.5 Check-run inventory on the verified `main` SHA
+
+Check runs on `main` at `39be4554c871c9341b979124f9371e2f99b28a19`:
+
+| Check run | Status | Producing app | Run / job link |
+|---|---|---|---|
+| `Analyze (javascript-typescript)` | completed / success | GitHub Actions (`15368`) | [run 39618314693, job 119284805672](https://github.com/shahid1995/freelance-web-business/actions/runs/39618314693/job/119284805672) |
+| `Codacy Security Scan` | completed / success | GitHub Actions (`15368`) | [run 39618314512, job 119284803707](https://github.com/shahid1995/freelance-web-business/actions/runs/39618314512/job/119284803707) |
+| `SonarCloud Code Analysis` | completed / success | SonarQube Cloud (`12526`) | [run 119290389197](https://github.com/shahid1995/freelance-web-business/runs/119290389197) |
+
+The classic commit-status endpoint for the same commit reports `state: pending` with `total_count: 0` — the same distinction recorded at proposal time. It is not evidence of failure; the Check Runs API shows the three runs above completed successfully.
+
+**Important consequence for enforcement testing.** The `dependency-review` workflow is triggered by `pull_request` only. It therefore does **not** run on the merge commit, and the merge commit carries only two of the three required contexts. All three required contexts are only observable on a pull request. This is the reason the controlled test in §11 uses a pull request rather than a push.
+
 ## 4. Options considered
 
 ### Option A — Leave `main` unprotected
@@ -70,9 +131,9 @@ Viable for a single repository and straightforward for standard settings. It can
 
 ### Option C — One repository ruleset targeting `main`
 
-**Approved choice, subject to feature availability.** Rulesets are visible to readers, can be put into different enforcement states where supported, and can be layered without relying on a single matching classic branch-protection rule. Current repository metadata showed no rulesets. See [About rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets) and [Available rules for rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets).
+**Approved choice, subject to feature availability.** Rulesets are visible to readers, can be put into different enforcement states where supported, and can be layered without relying on a single matching classic branch-protection rule. Rulesets are now available and in use: ruleset `25555806` is active on `refs/heads/main`, and the classic branch-protection subobject for `main` reports `enabled: false`, so the two mechanisms are not duplicating each other. See [About rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets) and [Available rules for rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets).
 
-Choose either Option B or C for the first implementation; do not configure both redundantly. The approved approach is a single ruleset targeting only `main`, subject to confirmation that the required controls are available in this repository's GitHub plan and account UI.
+Choose either Option B or C for the first implementation; do not configure both redundantly. The approved approach is a single ruleset targeting only `main`, subject to confirmation that the required controls are available in this repository's GitHub plan and account UI. **Outcome:** Option C was chosen and implemented. Ruleset `25555806` is the single ruleset in the repository, and the classic branch-protection subobject for `main` reports `enabled: false`, so the two mechanisms were not configured redundantly.
 
 ## 5. Founder-approved minimum policy
 
@@ -81,7 +142,7 @@ The Founder-approved minimum policy is:
 1. Target only the exact `main` branch.
 2. Require a pull request before merging.
 3. Do not add a bypass actor or administrator bypass exception in the initial policy; confirm the selected GitHub mechanism enforces the rule for the repository owner/admin as intended.
-4. Initially require the three candidate checks listed in §7 only after the check-name and reliable-run preflight is reconfirmed on representative PRs. If any selected context is missing, ambiguous, skipped, or unreliable, do not activate the rule until resolved.
+4. Initially require the three candidate checks listed in §7 only after the check-name and reliable-run preflight is reconfirmed on representative PRs. If any selected context is missing, ambiguous, skipped, or unreliable, do not activate the rule until resolved. **Outcome:** the preflight was reconfirmed (§3.4, §3.5) and the three contexts are now required. If a selected context later proves missing or unreliable, the rule is to investigate that specific condition rather than to weaken an unrelated control (§12).
 5. Require all review conversations to be resolved before merge.
 6. Explicitly block force pushes and branch deletion.
 7. Do not require an independent approval in the current single-Founder model. Revisit that decision if a genuine independent reviewer becomes available.
@@ -95,21 +156,23 @@ Routine changes should be made on an isolated topic branch and proposed to `main
 
 The rule should reject ordinary direct updates to `main`, subject to the chosen mechanism's documented bypass behaviour. No bypass actors should be configured initially. Any emergency exception must require a separate explicit Founder decision, a recorded reason, and subsequent review of the resulting commit.
 
+The pull-request requirement is configured: ruleset `25555806` contains a `pull_request` rule and `main` reports `protected: true`. Whether it actually rejects an ordinary direct update has **not** been demonstrated — no direct push to `main` was attempted, by design. See §11.1.
+
 Do not validate the rule by attempting a direct push to `main`. Use the settings UI/API for read-only verification and, if needed, a separately authorised disposable test branch for enforcement testing.
 
 ## 7. Required status checks: exact candidates and limits
 
-The approved candidate list below is based on observed check-run names and workflow definitions. These checks are not yet required on `main`; the exact contexts must still be selected and verified during activation.
+The approved candidate list below is based on observed check-run names and workflow definitions. **The first three entries are now required on `main`** by ruleset `25555806`, using the exact contexts shown, each tied to GitHub Actions integration ID `15368`. The remaining entries are advisory and were deliberately not made hard gates.
 
-| Exact observed check-run name | Source | Recommendation | Reason / qualification |
+| Exact observed check-run name | Source | Current status | Reason / qualification |
 |---|---|---|---|
-| `Analyze (javascript-typescript)` | `CodeQL Advanced` workflow in `codeql.yml` | Candidate for required | Runs on pull requests to `main`; observed successful on PR #55 and on the merge commit |
-| `Codacy Security Scan` | `codacy.yml` workflow | Candidate for required | Runs on pull requests to `main`; observed successful on PR #55 and on the merge commit |
-| `dependency-review` | `dependency-review.yml` workflow | Candidate for required | Runs on pull requests to `main`; observed successful on PR #55; it is a PR check, not expected to run on a normal push to `main` |
-| `Website CI` / its actual job check | `ci.yml` | **Do not require yet** | Path filters mean it may be absent on docs-only PRs. First adjust its reporting design in a separate reviewed change, or implement a stable always-running gate |
-| `SonarCloud Code Analysis` | SonarQube Cloud GitHub App | Advisory until further verified | Seen on PR #55 and the merge commit; latest main report passed the quality gate but reported three new issues |
-| `semgrep-cloud-platform/scan` | Semgrep app integration | Advisory until further verified | Successful result observed on PR #55; repeatability across PR types has not been established |
-| `security/snyk (shahid1995)` | Snyk commit-status context | Advisory until further verified | Successful status observed on PR #55; classic status API reporting on the merge commit had no individual status entries |
+| `Analyze (javascript-typescript)` | `CodeQL Advanced` workflow in `codeql.yml` | **Required** (Q6) | Runs on pull requests to `main`; successful on PR #55, on the merge commit, and on `main` at `39be4554` |
+| `Codacy Security Scan` | `codacy.yml` workflow | **Required** (Q7) | Runs on pull requests to `main`; successful on PR #55, on the merge commit, and on `main` at `39be4554` |
+| `dependency-review` | `dependency-review.yml` workflow | **Required** (Q8) | Runs on pull requests to `main`; successful on PR #55. Pull-request trigger only — it does not run on a push or merge to `main` |
+| `Website CI` / its actual job check | `ci.yml` | **Not required** (Q9) | Path filters mean it may be absent on docs-only PRs. First adjust its reporting design in a separate reviewed change, or implement a stable always-running gate |
+| `SonarCloud Code Analysis` | SonarQube Cloud GitHub App | Advisory (Q10) | Seen on PR #55 and on `main` at `39be4554`; latest main report passed the quality gate but reported three new issues |
+| `semgrep-cloud-platform/scan` | Semgrep app integration | Advisory (Q10) | Successful result observed on PR #55; repeatability across PR types has not been established |
+| `security/snyk (shahid1995)` | Snyk commit-status context | Advisory (Q10) | Successful status observed on PR #55; classic status API reporting on the merge commit had no individual status entries |
 
 Before choosing a required check, verify the **exact check-run context** in GitHub's selector for the target branch, not merely the workflow display name. Require only checks which are expected on every relevant pull request, reliably report success/failure, and cannot be silently skipped by path filters.
 
@@ -139,54 +202,77 @@ Founder-approved initial policy:
 - **Merge queue / deployment requirements:** not recommended now. No evidence in this scope establishes sufficient concurrency or an authorized staging-deployment gate.
 - **Secret scanning and runtime API security:** separate controls and workstreams; do not conflate them with branch protection.
 
-## 10. Activation checklist (Founder approval recorded; settings still inactive)
+## 10. Activation checklist (Founder approval recorded; configuration applied and re-read)
 
-Before anyone enables settings:
+Before anyone enables settings (the settings have since been applied; each item below reflects its verification state, and items that are still open are left unchecked):
 
 - [x] Founder approved one repository ruleset targeting `main`, subject to confirmation that the needed controls are available in the repository's GitHub plan and settings UI.
-- [ ] Re-fetch current `main` SHA and verify this proposal is still based on an appropriate current state.
-- [ ] Open GitHub repository settings in a write-authorised account and verify current branch protection and rulesets directly; capture the configuration state for the audit record.
-- [ ] Confirm the rule targets exactly `main`, with no unintended branch pattern.
-- [ ] Confirm the PR requirement applies to administrators/owner or explicitly document the approved exception.
-- [ ] Confirm the bypass list is empty unless the Founder has separately approved a named, justified exception.
-- [ ] On representative recent PRs, confirm each selected required context has its intended exact name and reliably completes.
-- [ ] Resolve the Website CI path-filter/reporting issue before considering it required.
-- [ ] Decide approval count, conversation resolution, branch freshness, deletion/force-push, and linear-history choices.
-- [ ] If an evaluation-only enforcement mode is available, use it first and review reported violations before activating blocking enforcement.
-- [ ] Record the exact ruleset/rule values, activation time, authorising Founder decision, and rollback procedure.
-- [ ] Do not deploy or change provider settings; branch protection is a repository governance change only.
+- [x] Re-fetch current `main` SHA and verify this proposal is still based on an appropriate current state. Verified: `main` is at `39be4554c871c9341b979124f9371e2f99b28a19` (merge commit of PR #56), the commit that carried this policy record onto `main`.
+- [x] Open GitHub repository settings in a write-authorised account and verify current branch protection and rulesets directly; capture the configuration state for the audit record. Verified from the live rulesets and branch endpoints — see §3.4.
+- [x] Confirm the rule targets exactly `main`, with no unintended branch pattern. Verified: `include: ["refs/heads/main"]`, `exclude: []`, and exactly one ruleset exists in the repository.
+- [x] Confirm the PR requirement applies to administrators/owner or explicitly document the approved exception. Verified: the ruleset defines a `pull_request` rule with no bypass actor, and `main` reports `protected: true`. See the bypass-evidence limit in §3.4 and §14.
+- [x] Confirm the bypass list is empty unless the Founder has separately approved a named, justified exception. Verified by the earlier admin-permission observation recorded in Issue #57; **not** independently re-confirmable from the public API in this pass. Tracked in §14.
+- [x] On representative recent PRs, confirm each selected required context has its intended exact name and reliably completes. Verified: the exact contexts in §3.4 match the observed check-run names, and all three completed successfully on PR #55, on the merge commit, and on `main` at `39be4554`.
+- [ ] Resolve the Website CI path-filter/reporting issue before considering it required. **Still open** — `Website CI` is not required and no workflow change has been made.
+- [x] Decide approval count, conversation resolution, branch freshness, deletion/force-push, and linear-history choices. Verified live: zero approvals, conversation resolution on, branch freshness off, deletion and force-push blocked, linear history off, signed commits and merge queue absent.
+- [ ] If an evaluation-only enforcement mode is available, use it first and review reported violations before activating blocking enforcement. **Superseded** — the ruleset was activated directly; no evaluation-mode report exists to review. Recorded here as a fact, not an outstanding recommendation.
+- [x] Record the exact ruleset/rule values, activation time, authorising Founder decision, and rollback procedure. Ruleset `25555806`, `protect-main-founder-approved`, created `2026-10-21T14:52:05.876Z`, updated `2026-10-21T14:53:13.794Z`; full rule table in §3.4; rollback in §12.
+- [x] Do not deploy or change provider settings; branch protection is a repository governance change only. No deployment, provider change, or application change was made.
+- [ ] Demonstrate enforcement behaviour with a controlled pull request (see §11). **Outstanding** — see §11.1 for what was attempted and what remains unverified.
 
-Founder approval is recorded above. The remaining live-configuration and post-activation verification items must stay incomplete until they are actually performed and evidenced.
+The configuration items above are supported by live evidence. The enforcement item remains incomplete until a controlled pull request demonstrates the merge-blocking behaviour, and until then no statement in this document may describe enforcement as verified.
 
-## 11. Post-activation verification plan
+## 11. Post-activation verification plan and record
 
 After actual activation:
 
-1. Re-read the live rule/ruleset and confirm it targets `main`, has the agreed enforcement status, required checks, approval count, and bypass configuration.
-2. Create a controlled documentation-only PR and confirm the selected required checks are present and completed. This is especially important for path-filter behaviour.
-3. Create a controlled PR that changes website source in a separately authorised change and confirm Website CI runs if/when it becomes a required check.
-4. Confirm an intentionally incomplete test PR cannot be merged while a required check is missing or failed. Do not merge the test PR.
-5. Never test direct-push blocking by attempting a push to the production `main` branch. If proof of rejection is needed, use a separately authorised disposable branch/ruleset with equivalent controls.
-6. Record observed outcomes, GitHub URLs, any skipped check, and any mismatch between the Checks API and classic status API.
-7. Re-fetch the main branch and active rules/rulesets after testing to confirm no unintended branch or repository changes occurred.
+1. Re-read the live rule/ruleset and confirm it targets `main`, has the agreed enforcement status, required checks, approval count, and bypass configuration. **Done** — see §3.4.
+2. Create a controlled documentation-only PR and confirm the selected required checks are present and completed. This is especially important for path-filter behaviour. **In progress** — see §11.1.
+3. Create a controlled PR that changes website source in a separately authorised change and confirm Website CI runs if/when it becomes a required check. **Not performed** — out of scope for the current pass; `Website CI` is not a required check.
+4. Confirm an intentionally incomplete test PR cannot be merged while a required check is missing or failed. Do not merge the test PR. **Partially addressed** — see §11.1. A deliberately failing required check was **not** introduced; introducing an artificial failure or changing required checks was not authorised, so that condition remains untested.
+5. Never test direct-push blocking by attempting a push to the production `main` branch. If proof of rejection is needed, use a separately authorised disposable branch/ruleset with equivalent controls. **Respected** — no push to `main` was attempted at any point.
+6. Record observed outcomes, GitHub URLs, any skipped check, and any mismatch between the Checks API and classic status API. **Ongoing** — see §11.1 and §14.
+7. Re-fetch the main branch and active rules/rulesets after testing to confirm no unintended branch or repository changes occurred. **Done for configuration**; to be repeated after the controlled pull request.
+
+### 11.1 Controlled enforcement test — record
+
+**Test design.** A documentation-only, non-mergeable temporary artifact was added on an isolated branch based on the freshly verified `main` SHA, so that a pull request against `main` could be observed while the three required contexts were pending and after they completed.
+
+| Item | Value |
+|---|---|
+| Test branch | `test/ruleset-enforcement-2026-10-21` |
+| Branch base | `origin/main` at `39be4554c871c9341b979124f9371e2f99b28a19` |
+| Head SHA | `4ed472edac5f16b2e570fd0f7787353014761c12` |
+| Only changed file | `docs/decisions/2026-10-21-main-ruleset-enforcement-test.md` (added, 31 lines) — a temporary, clearly labelled artifact with no secrets, no business claims, and no application change |
+| Diff vs `main` | `status: ahead`, `ahead_by: 1`, `behind_by: 0`, 1 commit, 1 file added, 0 deletions |
+| Test pull request | **Not yet created** — see the blocker below |
+| Merge performed | **No.** The test pull request is to remain unmerged throughout, and is to be closed without merging once evidence is captured |
+
+**Blocker encountered.** The verification environment has read-only access to the public GitHub REST API and authenticated access to git push, but no GitHub API credential capable of creating a pull request, commenting on an issue, or closing a pull request. The test branch was pushed successfully and is live on GitHub; creating the pull request from it was not possible from this environment. The controlled test therefore remains **outstanding**, and no enforcement claim is made anywhere in this document.
+
+**What is not yet demonstrated.** Whether the active ruleset actually blocks a merge on `main` while a required context is pending, and how the pull request's reported merge state changes once all three required contexts complete successfully. This is distinct from the configuration facts in §3.4, which are verified.
+
+**Observed corroborating (not conclusive) signal.** The one pull request already open against `main` is [PR #53](https://github.com/shahid1995/freelance-web-business/pull/53), whose head SHA `91fffbeb08c5a6b24834442bb4c1c1b5726a6cb7` predates the `codacy.yml` workflow and therefore carries `Codacy Static Code Analysis` (a different app) rather than the required `Codacy Security Scan` context. Its head commit's check runs are `Codacy Static Code Analysis`, `CodeQL`, `SonarCloud Code Analysis`, `Gitar`, `semgrep-cloud-platform/scan`, `Analyze (javascript-typescript)`, and `dependency-review` — all successful, and **none named `Codacy Security Scan`**. This shows the required context genuinely can be absent for an existing pull request. It is **not** a substitute for the controlled test: the pull request's reported merge state could not be read at the required fidelity from the unauthenticated API, and no merge was attempted.
 
 ## 12. Rollback plan
 
-Rollback is also a settings change and therefore requires separate Founder authorisation.
+Rollback is also a settings change and therefore requires separate Founder authorisation. **No rollback has been performed, and none is authorised by this document.**
+
+The concrete object to roll back is repository ruleset `25555806` (`protect-main-founder-approved`), which is the only ruleset in the repository. The classic branch-protection object for `main` is already `enabled: false` with no required contexts, so there is no second control to restore.
 
 If a policy blocks legitimate work:
 
 1. Identify the exact blocking rule/check and preserve its run URL and error text.
 2. Determine whether the cause is an incorrect context name, an expected path-filtered job, a true failed check, a branch that is behind, or a permission/bypass mismatch.
 3. Prefer fixing the workflow/check reporting in a separate reviewed PR over weakening unrelated safeguards.
-4. If rollback is necessary, the Founder or explicitly authorised administrator may switch the ruleset to a non-enforcing state or restore the prior branch rule as supported by GitHub. Record the previous and new values and the reason.
+4. If rollback is necessary, the Founder or explicitly authorised administrator may switch ruleset `25555806` to a non-enforcing state or delete it, as supported by GitHub. Record the previous and new values and the reason. The recorded pre-rollback values are in §3.4 and must be captured before any change.
 5. Re-enable enforcement only after the failed condition is understood and verification passes.
 
 Rollback remains a separate settings change and requires explicit Founder authorisation.
 
 ## 13. Open Founder decisions (13)
 
-The Founder approved the following decisions on 2026-10-21. These decisions authorise implementation, but do not prove that any GitHub setting is active.
+The Founder approved the following decisions on 2026-10-21. These decisions authorise implementation, and the resulting configuration has since been applied and re-read live (§3.4). Approval and activation are recorded facts; demonstrated enforcement behaviour is tracked separately in §11.1 and is not yet established.
 
 | ID | Decision | Founder-approved decision | Why / condition |
 |---|---|---|---|
@@ -204,13 +290,16 @@ The Founder approved the following decisions on 2026-10-21. These decisions auth
 | Q12 | Conversation resolution, stale approvals, signed commits | Require conversation resolution; defer stale-approval and signing rules | Resolution is low friction; approvals and signing need a real independent reviewer and tested signing process |
 | Q13 | Force-push/deletion and linear history | Block force pushes and deletion; defer linear history | Preserve `main`; decide merge-method changes separately |
 
-The Founder approval record above authorises implementation of this policy. Merging this document is not evidence that settings are active; actual activation must be proven by re-reading the live ruleset and branch state.
+The Founder approval record above authorises implementation of this policy, and the implementation has since been applied and re-read live as ruleset `25555806`. Merging this document was not evidence that settings are active; the live re-read in §3.4 is. Enforcement behaviour remains outstanding per §11.1.
 
 ## 14. Evidence, references, and limitations
 
 ### Repository evidence
 
-- [Current main merge commit](https://github.com/shahid1995/freelance-web-business/commit/1b2e12484542923d5124839c81800fe6202bd88c)
+- [Current main merge commit](https://github.com/shahid1995/freelance-web-business/commit/39be4554c871c9341b979124f9371e2f99b28a19) — `main` at `39be4554c871c9341b979124f9371e2f99b28a19`
+- [Policy approval PR #56](https://github.com/shahid1995/freelance-web-business/pull/56) — merged, merge commit `39be4554c871c9341b979124f9371e2f99b28a19`
+- [Live ruleset 25555806](https://github.com/shahid1995/freelance-web-business/rules/25555806)
+- [Tracking issue #57](https://github.com/shahid1995/freelance-web-business/issues/57)
 - [Scanner retirement decision](2026-10-21-scanner-workflow-retirement.md)
 - [Website CI workflow](../../.github/workflows/ci.yml)
 - [CodeQL Advanced workflow](../../.github/workflows/codeql.yml)
@@ -218,6 +307,10 @@ The Founder approval record above authorises implementation of this policy. Merg
 - [Dependency Review workflow](../../.github/workflows/dependency-review.yml)
 - [GitHub checks on the scanner-retirement PR](https://github.com/shahid1995/freelance-web-business/pull/55)
 - [Repository rulesets endpoint](https://api.github.com/repos/shahid1995/freelance-web-business/rulesets)
+- [Live ruleset detail endpoint](https://api.github.com/repos/shahid1995/freelance-web-business/rulesets/25555806)
+- [CodeQL run on `main` at `39be4554`](https://github.com/shahid1995/freelance-web-business/actions/runs/39618314693/job/119284805672)
+- [Codacy run on `main` at `39be4554`](https://github.com/shahid1995/freelance-web-business/actions/runs/39618314512/job/119284803707)
+- [SonarCloud run on `main` at `39be4554`](https://github.com/shahid1995/freelance-web-business/runs/119290389197)
 
 ### GitHub documentation
 
@@ -228,8 +321,14 @@ The Founder approval record above authorises implementation of this policy. Merg
 
 ### Limitations
 
-This policy record is based on repository files and GitHub metadata/check-run evidence available at preparation time. The current branch object reports `main` as not protected and the rulesets endpoint returned an empty list, but the dedicated branch-protection detail endpoint was inaccessible to the connected integration. The GitHub settings UI must be checked directly before activation. Required-check selection and enforcement have not been tested because no settings were changed.
+**Configuration verification (re-read 2026-10-21).** The live ruleset detail, the repository rulesets list, the `main` branch object, the `main` commit, and the check runs on `main` were all read directly from the GitHub REST API. The dedicated classic branch-protection detail endpoint (`/branches/main/protection`) requires authentication and was not readable; the classic protection state was instead read from the branch object's `protection` subobject, which reported `enabled: false`.
 
-The successful checks on PR #55 and its merge commit do not constitute runtime API security testing or prove that every external app check will always run. The classic status endpoint's `pending` state with no status contexts must be distinguished from the separately successful Check Runs API results. The exact status-check configuration remains an activation-time verification requirement.
+**Not independently re-confirmable in this pass.** The ruleset response available to this verification omitted the `bypass_actors` field, so the empty bypass list and `current_user_can_bypass: never` are carried forward from the earlier admin-permission observation recorded in Issue #57 rather than re-confirmed here. This is stated as a limitation, not as a fresh verification.
 
-**Final state:** APPROVED — IMPLEMENTATION AUTHORISED — NOT ACTIVE. The policy is approved, but no branch protection/ruleset settings have yet been changed. No workflow, application source, deployment, or production data has been changed.
+**Enforcement not yet demonstrated.** See §11.1. The ruleset reports `active`, but the merge-blocking behaviour under a pending required check has not been observed. No claim of verified enforcement is made in this document. The controlled test pull request could not be created from the verification environment for lack of a GitHub API credential, and the test branch has been left in place for the next authorised attempt.
+
+**Deliberately untested conditions.** No deliberately failing required check was introduced, so the "a required check that fails blocks the merge" condition is untested. No direct push to `main` was attempted, so direct-push rejection is untested by design. `Website CI` path-filter behaviour was not exercised, and `Website CI` is not a required check.
+
+**Scope of the check inventory.** The successful checks on PR #55, on the merge commit, and on `main` at `39be4554` do not constitute runtime API security testing or prove that every external app check will always run. The classic status endpoint's `pending` state with no status contexts must be distinguished from the separately successful Check Runs API results. The `dependency-review` context is produced only on pull requests, so a push or merge to `main` will never carry all three required contexts.
+
+**Final state:** APPROVED — CONFIGURATION ACTIVE AND VERIFIED — ENFORCEMENT VERIFICATION OUTSTANDING. The policy is approved, the Founder has authorised implementation, and the configuration is live and independently re-read as repository ruleset `25555806` (`protect-main-founder-approved`), active on `refs/heads/main` with the three approved required contexts. Whether that configuration actually blocks a merge while a required check is pending has **not** yet been demonstrated; see §11.1. No pull request has been merged, no direct push to `main` was made, no workflow, application source, deployment, or production data has been changed, and the ruleset was neither modified nor duplicated during this verification.
