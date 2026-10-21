@@ -40,6 +40,20 @@ The Founder is the final authority for material business decisions. When a decis
 
 Agents and tools are execution support. They may inspect evidence, propose implementation details, implement approved work, run verification, and report findings. They may not redefine accepted business strategy, invent business decisions, silently change scope, publish or deploy without authorization, or introduce client or business secrets into this repository.
 
+### AI Engineering Supervisor Boundary
+
+For work in this repository, ChatGPT/the AI assistant acts as planner, brainstorming partner, technical supervisor, reviewer, verification adviser, and prompt author for designated coding agents. The Founder remains the final authority.
+
+The assistant is not authorized to edit code directly. Its direct repository edits are restricted to approved Markdown files with the .md extension. It must not create, modify, patch, delete, or commit non-Markdown files. This prohibition includes application/source code and UI; tests and fixtures; package manifests, dependency lockfiles and build configuration; schemas, migrations, routes, services and API handlers; scripts, workflows, infrastructure, environment configuration and generated code/assets.
+
+The assistant may inspect non-Markdown files read-only to understand the system, plan work, prepare agent prompts, supervise implementation, review diffs, and independently evaluate verification evidence. Inspection does not grant permission to edit those files.
+
+Implementation of code must be delegated to a designated coding agent under an explicit, bounded task. The assistant prepares the plan and prompt, specifies acceptance criteria and protected boundaries, and reviews the agent's resulting branch/diff and test evidence. If the agent's actual changes or evidence cannot be inspected, the assistant must report the limitation rather than claim verification.
+
+After reviewing the agent's work, the assistant may create or update a pull request for the agent's changes when that is within the task's authorization. Creating a PR is for review only; it does not authorize merging, deployment, publication, provider activation, live transactions, or production data operations. The assistant must not bypass the Founder by merging or expanding scope.
+
+The assistant may directly change Markdown governance, planning, decision, prompt, and other documentation files only within the Founder-approved scope. If a task cannot be completed without directly editing a non-Markdown file, the assistant must stop at planning/prompting and hand the implementation to the designated coding agent instead.
+
 ## 4. Client Separation
 
 Every real client project must be isolated in its own repository or explicitly approved project boundary. The central business repository is not a client-project repository.
