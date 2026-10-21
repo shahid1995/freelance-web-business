@@ -32,7 +32,7 @@ Propose deleting only these workflow files:
 - `.github/workflows/sonarcloud.yml`
 - `.github/workflows/apisec-scan.yml`
 
-The change is recorded in [PR #55](../../../../pull/55) and remains subject to PR review and merge. No deployment, provider activation, secret change, repository setting change, or branch-protection change is part of this decision.
+The change is recorded in [PR #55](https://github.com/shahid1995/freelance-web-business/pull/55) and remains subject to PR review and merge. No deployment, provider activation, secret change, repository setting change, or branch-protection change is part of this decision.
 
 ## Consequences and boundaries
 
