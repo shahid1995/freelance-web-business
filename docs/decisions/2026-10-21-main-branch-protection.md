@@ -1,6 +1,6 @@
 # Main Branch Protection Policy and Activation Plan
 
-- **Status:** APPROVED — CONFIGURATION ACTIVE AND VERIFIED — ENFORCEMENT VERIFICATION IN PROGRESS
+- **Status:** APPROVED — CONFIGURATION ACTIVE AND VERIFIED — ENFORCEMENT VERIFIED
 - **Owner:** Founder
 - **Date:** 2026-10-21
 - **Last re-verified against live GitHub:** 2026-10-21
@@ -8,13 +8,13 @@
 
 > Founder approval was given on 2026-10-21 for the recommended starting policy below and for implementation of the main-only protection rules. This document records that approval.
 >
-> **Update (2026-10-21):** The ruleset has since been applied and independently re-read from the live GitHub API. Ruleset `25555806` (`protect-main-founder-approved`) exists, targets exactly `refs/heads/main`, and reports `enforcement: active`. The configuration is therefore **active**, not merely approved. Enforcement behaviour is tracked separately in §11.1 and is **not** implied by the word "active".
+> **Update (2026-10-21):** The ruleset has since been applied and independently re-read from the live GitHub API. Ruleset `25555806` (`protect-main-founder-approved`) exists, targets exactly `refs/heads/main`, and reports `enforcement: active`. The configuration is therefore **active**, not merely approved. Merge-blocking behaviour was then demonstrated separately by a controlled pull request and is recorded in §11.1; it is **not** implied by the word "active" alone.
 
 ## 1. Purpose and authority
 
 This approved policy defines a minimum, practical protection policy for `main` in the public repository `shahid1995/freelance-web-business`.
 
-The Founder remains the final authority. GitHub is the sole system of record. The Founder has approved the recommended starting decisions in §5 and §13 and authorised implementation. The approved policy has since been applied as repository ruleset `25555806` and re-read live from GitHub (§3.4). Configuration state and enforcement state are recorded separately: an active ruleset is a configuration fact, while demonstrated merge-blocking behaviour is an enforcement fact that requires the controlled pull-request test in §11.
+The Founder remains the final authority. GitHub is the sole system of record. The Founder has approved the recommended starting decisions in §5 and §13 and authorised implementation. The approved policy has since been applied as repository ruleset `25555806` and re-read live from GitHub (§3.4). Configuration state and enforcement state are recorded separately: an active ruleset is a configuration fact, while merge-blocking behaviour is an enforcement fact, demonstrated by the controlled pull-request test recorded in §11.1.
 
 The relevant governing documents are [the Constitution](../../CONSTITUTION.md), [Governance](../governance.md), and the [repository and documentation conventions](../conventions/repository-and-documentation.md).
 
@@ -78,6 +78,7 @@ The following values were re-read directly from the live GitHub REST API after t
 | Ruleset count in repository | Exactly `1` — no duplicate or competing ruleset | [Repository rulesets API](https://api.github.com/repos/shahid1995/freelance-web-business/rulesets) returned a single-element array |
 | `main` branch metadata | `protected: true` | Live branch endpoint for `main` |
 | Classic branch protection on `main` | `enabled: false`, `required_status_checks.enforcement_level: "off"`, `contexts: []` | Live branch endpoint; confirms the approved "ruleset only, no redundant classic rule" choice (Q1) |
+| Ruleset evaluation against `main` | GitHub reports all four rules of ruleset `25555806` as applying to `refs/heads/main`: `deletion`, `non_fast_forward`, `pull_request`, `required_status_checks` | [Rules branch evaluation endpoint](https://api.github.com/repos/shahid1995/freelance-web-business/rules/branches/main) |
 | `main` SHA at verification | `39be4554c871c9341b979124f9371e2f99b28a19` | Merge commit of [PR #56](https://github.com/shahid1995/freelance-web-business/pull/56) |
 
 Rule-by-rule re-read of ruleset `25555806`:
@@ -156,7 +157,7 @@ Routine changes should be made on an isolated topic branch and proposed to `main
 
 The rule should reject ordinary direct updates to `main`, subject to the chosen mechanism's documented bypass behaviour. No bypass actors should be configured initially. Any emergency exception must require a separate explicit Founder decision, a recorded reason, and subsequent review of the resulting commit.
 
-The pull-request requirement is configured: ruleset `25555806` contains a `pull_request` rule and `main` reports `protected: true`. Whether it actually rejects an ordinary direct update has **not** been demonstrated — no direct push to `main` was attempted, by design. See §11.1.
+The pull-request requirement is configured: ruleset `25555806` contains a `pull_request` rule and `main` reports `protected: true`. Whether it actually rejects an ordinary direct update has **not** been demonstrated — no direct push to `main` was attempted, by design. See §11.1 and §14.
 
 Do not validate the rule by attempting a direct push to `main`. Use the settings UI/API for read-only verification and, if needed, a separately authorised disposable test branch for enforcement testing.
 
@@ -218,41 +219,64 @@ Before anyone enables settings (the settings have since been applied; each item 
 - [ ] If an evaluation-only enforcement mode is available, use it first and review reported violations before activating blocking enforcement. **Superseded** — the ruleset was activated directly; no evaluation-mode report exists to review. Recorded here as a fact, not an outstanding recommendation.
 - [x] Record the exact ruleset/rule values, activation time, authorising Founder decision, and rollback procedure. Ruleset `25555806`, `protect-main-founder-approved`, created `2026-10-21T14:52:05.876Z`, updated `2026-10-21T14:53:13.794Z`; full rule table in §3.4; rollback in §12.
 - [x] Do not deploy or change provider settings; branch protection is a repository governance change only. No deployment, provider change, or application change was made.
-- [ ] Demonstrate enforcement behaviour with a controlled pull request (see §11). **Outstanding** — see §11.1 for what was attempted and what remains unverified.
+- [x] Demonstrate enforcement behaviour with a controlled pull request (see §11). **Done** — see §11.1. A pending required check was shown to cause GitHub to refuse the merge, and a pull request missing a required context was shown to be reported `blocked`. The deliberately-failing-check variant remains untested (§14).
 
-The configuration items above are supported by live evidence. The enforcement item remains incomplete until a controlled pull request demonstrates the merge-blocking behaviour, and until then no statement in this document may describe enforcement as verified.
+The configuration items above are supported by live evidence, and the enforcement item is supported by the controlled pull-request record in §11.1. Statements in this document describing enforcement as verified are limited to the conditions actually observed.
 
 ## 11. Post-activation verification plan and record
 
 After actual activation:
 
 1. Re-read the live rule/ruleset and confirm it targets `main`, has the agreed enforcement status, required checks, approval count, and bypass configuration. **Done** — see §3.4.
-2. Create a controlled documentation-only PR and confirm the selected required checks are present and completed. This is especially important for path-filter behaviour. **In progress** — see §11.1.
+2. Create a controlled documentation-only PR and confirm the selected required checks are present and completed. This is especially important for path-filter behaviour. **Done** — PR #58, a documentation-only change, reported all three required contexts and completed them successfully. See §11.1.
 3. Create a controlled PR that changes website source in a separately authorised change and confirm Website CI runs if/when it becomes a required check. **Not performed** — out of scope for the current pass; `Website CI` is not a required check.
-4. Confirm an intentionally incomplete test PR cannot be merged while a required check is missing or failed. Do not merge the test PR. **Partially addressed** — see §11.1. A deliberately failing required check was **not** introduced; introducing an artificial failure or changing required checks was not authorised, so that condition remains untested.
+4. Confirm an intentionally incomplete test PR cannot be merged while a required check is missing or failed. Do not merge the test PR. **Done for the pending and missing cases; not for the failing case** — see §11.1. A pending required check was refused by GitHub with an explicit rule-violation message, and a pull request whose head is missing a required context is reported `blocked`. A deliberately *failing* required check was **not** introduced; creating an artificial failure or altering the required-check list was not authorised, so that one variant remains untested.
 5. Never test direct-push blocking by attempting a push to the production `main` branch. If proof of rejection is needed, use a separately authorised disposable branch/ruleset with equivalent controls. **Respected** — no push to `main` was attempted at any point.
-6. Record observed outcomes, GitHub URLs, any skipped check, and any mismatch between the Checks API and classic status API. **Ongoing** — see §11.1 and §14.
-7. Re-fetch the main branch and active rules/rulesets after testing to confirm no unintended branch or repository changes occurred. **Done for configuration**; to be repeated after the controlled pull request.
+6. Record observed outcomes, GitHub URLs, any skipped check, and any mismatch between the Checks API and classic status API. **Done** — see §11.1 and §14. No required context was skipped on the test pull request. The mismatch noted at proposal time still stands: the classic status endpoint reports `pending` with no status contexts while the Check Runs API shows the three runs completed successfully.
+7. Re-fetch the main branch and active rules/rulesets after testing to confirm no unintended branch or repository changes occurred. **Done** — the ruleset was re-read after the controlled test and was unchanged (`updated_at` still `2026-10-21T14:53:13.794Z`), still the only ruleset, still targeting `refs/heads/main`; `main` is still at `39be4554c871c9341b979124f9371e2f99b28a19`, and no pull request was merged.
 
 ### 11.1 Controlled enforcement test — record
 
-**Test design.** A documentation-only, non-mergeable temporary artifact was added on an isolated branch based on the freshly verified `main` SHA, so that a pull request against `main` could be observed while the three required contexts were pending and after they completed.
+**Test design.** A documentation-only, non-mergeable temporary artifact was added on an isolated branch based on the freshly verified `main` SHA, so that a pull request against `main` could be observed while the three required contexts were pending, and then a merge could be attempted and observed to be refused.
 
 | Item | Value |
 |---|---|
 | Test branch | `test/ruleset-enforcement-2026-10-21` |
 | Branch base | `origin/main` at `39be4554c871c9341b979124f9371e2f99b28a19` |
-| Head SHA | `4ed472edac5f16b2e570fd0f7787353014761c12` |
-| Only changed file | `docs/decisions/2026-10-21-main-ruleset-enforcement-test.md` (added, 31 lines) — a temporary, clearly labelled artifact with no secrets, no business claims, and no application change |
-| Diff vs `main` | `status: ahead`, `ahead_by: 1`, `behind_by: 0`, 1 commit, 1 file added, 0 deletions |
-| Test pull request | **Not yet created** — see the blocker below |
-| Merge performed | **No.** The test pull request is to remain unmerged throughout, and is to be closed without merging once evidence is captured |
+| Head SHAs used | `4ed472edac5f16b2e570fd0f7787353014761c12` (first push), then `511826d0cd9aff7291d5c577131f2ed3d6a558d5` (second push, used for the merge attempt) |
+| Only changed file | `docs/decisions/2026-10-21-main-ruleset-enforcement-test.md` — a temporary, clearly labelled artifact with no secrets, no customer data, no business or policy claims, and no application change |
+| Diff vs `main` | Documentation only, 1 file added, 0 deletions, no application, workflow, or configuration file touched |
+| Test pull request | [PR #58](https://github.com/shahid1995/freelance-web-business/pull/58) — opened, then **closed without merging** (`state: closed`, `merged: false`, `closed_at: 2026-10-21T17:01:02Z`) |
+| Merge performed | **No.** Exactly one merge attempt was made, and it was refused. The pull request was closed unmerged, as the plan required |
+| Test branch disposition | Left in place, with the evidence comment on PR #58, so the record stays inspectable. The branch and its artifact are safe to delete; the artifact must never be merged |
 
-**Blocker encountered.** The verification environment has read-only access to the public GitHub REST API and authenticated access to git push, but no GitHub API credential capable of creating a pull request, commenting on an issue, or closing a pull request. The test branch was pushed successfully and is live on GitHub; creating the pull request from it was not possible from this environment. The controlled test therefore remains **outstanding**, and no enforcement claim is made anywhere in this document.
+**Result: enforcement confirmed for the pending and missing conditions.**
 
-**What is not yet demonstrated.** Whether the active ruleset actually blocks a merge on `main` while a required context is pending, and how the pull request's reported merge state changes once all three required contexts complete successfully. This is distinct from the configuration facts in §3.4, which are verified.
+**1. A pending required check blocks the merge (decisive).** One merge attempt was made while the required checks were in flight, on head SHA `511826d0cd9aff7291d5c577131f2ed3d6a558d5`. GitHub refused it with an explicit rule-violation message:
 
-**Observed corroborating (not conclusive) signal.** The one pull request already open against `main` is [PR #53](https://github.com/shahid1995/freelance-web-business/pull/53), whose head SHA `91fffbeb08c5a6b24834442bb4c1c1b5726a6cb7` predates the `codacy.yml` workflow and therefore carries `Codacy Static Code Analysis` (a different app) rather than the required `Codacy Security Scan` context. Its head commit's check runs are `Codacy Static Code Analysis`, `CodeQL`, `SonarCloud Code Analysis`, `Gitar`, `semgrep-cloud-platform/scan`, `Analyze (javascript-typescript)`, and `dependency-review` — all successful, and **none named `Codacy Security Scan`**. This shows the required context genuinely can be absent for an existing pull request. It is **not** a substitute for the controlled test: the pull request's reported merge state could not be read at the required fidelity from the unauthenticated API, and no merge was attempted.
+```
+Cannot merge PR #58 in shahid1995/freelance-web-business: Repository rule violations found
+
+2 of 3 required status checks are in progress.
+```
+
+At that moment `Analyze (javascript-typescript)` and `Codacy Security Scan` were both `in_progress` and `dependency-review` had reported `success`. The refusal names the rule violation and counts the pending required checks, and the pull request was not merged.
+
+**2. Merge state tracks the required contexts.** Observed on PR #58:
+
+| Observed | `mergeable_state` | Required-check condition at that moment |
+|---|---|---|
+| ~14 s after creation | `blocked` | `Analyze (javascript-typescript)` and `Codacy Security Scan` in progress, `dependency-review` passed |
+| mid-run | `unstable` | `Analyze (javascript-typescript)` and `dependency-review` passed, `Codacy Security Scan` still running, several non-required checks also in flight |
+| after all three required contexts reported `success` | `clean` | all three required contexts passed |
+
+`mergeable_state` is GitHub's advisory summary field and is computed asynchronously, so the first row is the merge-blocked signal and the explicit refusal in point 1 is the authoritative evidence.
+
+**3. A missing required context also blocks the merge.** The pre-existing pull request [PR #53](https://github.com/shahid1995/freelance-web-business/pull/53) has head SHA `91fffbeb08c5a6b24834442bb4c1c1b5726a6cb7`, which predates `.github/workflows/codacy.yml` and therefore carries `Codacy Static Code Analysis` (a different app) rather than the required `Codacy Security Scan` context. GitHub reports it as `mergeable: true`, `mergeable_state: "blocked"`, `merged: false` — blocked by the same ruleset, with no merge attempted on it.
+
+**4. The configuration is live and singular.** `GET /repos/shahid1995/freelance-web-business/rulesets` returns exactly one ruleset, and `GET /repos/shahid1995/freelance-web-business/rules/branches/main` shows GitHub evaluating all four of its rules against `main`.
+
+**What remains untested.** A required check that *fails* was not exercised, and direct-push rejection was not tested by design. Both are recorded as limitations in §14.
 
 ## 12. Rollback plan
 
@@ -272,7 +296,7 @@ Rollback remains a separate settings change and requires explicit Founder author
 
 ## 13. Open Founder decisions (13)
 
-The Founder approved the following decisions on 2026-10-21. These decisions authorise implementation, and the resulting configuration has since been applied and re-read live (§3.4). Approval and activation are recorded facts; demonstrated enforcement behaviour is tracked separately in §11.1 and is not yet established.
+The Founder approved the following decisions on 2026-10-21. These decisions authorise implementation, and the resulting configuration has since been applied and re-read live (§3.4). Approval and activation are recorded facts; demonstrated enforcement behaviour is recorded separately in §11.1.
 
 | ID | Decision | Founder-approved decision | Why / condition |
 |---|---|---|---|
@@ -290,7 +314,7 @@ The Founder approved the following decisions on 2026-10-21. These decisions auth
 | Q12 | Conversation resolution, stale approvals, signed commits | Require conversation resolution; defer stale-approval and signing rules | Resolution is low friction; approvals and signing need a real independent reviewer and tested signing process |
 | Q13 | Force-push/deletion and linear history | Block force pushes and deletion; defer linear history | Preserve `main`; decide merge-method changes separately |
 
-The Founder approval record above authorises implementation of this policy, and the implementation has since been applied and re-read live as ruleset `25555806`. Merging this document was not evidence that settings are active; the live re-read in §3.4 is. Enforcement behaviour remains outstanding per §11.1.
+The Founder approval record above authorises implementation of this policy, and the implementation has since been applied and re-read live as ruleset `25555806`. Merging this document was not evidence that settings are active; the live re-read in §3.4 is. Enforcement behaviour is separately evidenced in §11.1.
 
 ## 14. Evidence, references, and limitations
 
@@ -300,6 +324,8 @@ The Founder approval record above authorises implementation of this policy, and 
 - [Policy approval PR #56](https://github.com/shahid1995/freelance-web-business/pull/56) — merged, merge commit `39be4554c871c9341b979124f9371e2f99b28a19`
 - [Live ruleset 25555806](https://github.com/shahid1995/freelance-web-business/rules/25555806)
 - [Tracking issue #57](https://github.com/shahid1995/freelance-web-business/issues/57)
+- [Controlled enforcement test PR #58](https://github.com/shahid1995/freelance-web-business/pull/58) — closed without merging; the evidence comment on it records the merge refusal
+- [Rules branch evaluation endpoint](https://api.github.com/repos/shahid1995/freelance-web-business/rules/branches/main)
 - [Scanner retirement decision](2026-10-21-scanner-workflow-retirement.md)
 - [Website CI workflow](../../.github/workflows/ci.yml)
 - [CodeQL Advanced workflow](../../.github/workflows/codeql.yml)
@@ -325,10 +351,10 @@ The Founder approval record above authorises implementation of this policy, and 
 
 **Not independently re-confirmable in this pass.** The ruleset response available to this verification omitted the `bypass_actors` field, so the empty bypass list and `current_user_can_bypass: never` are carried forward from the earlier admin-permission observation recorded in Issue #57 rather than re-confirmed here. This is stated as a limitation, not as a fresh verification.
 
-**Enforcement not yet demonstrated.** See §11.1. The ruleset reports `active`, but the merge-blocking behaviour under a pending required check has not been observed. No claim of verified enforcement is made in this document. The controlled test pull request could not be created from the verification environment for lack of a GitHub API credential, and the test branch has been left in place for the next authorised attempt.
+**Enforcement demonstrated, with a stated scope.** See §11.1. The ruleset reports `active`, and merge-blocking behaviour was then observed directly rather than inferred. GitHub refused a merge of the test pull request while required contexts were pending ("Repository rule violations found — 2 of 3 required status checks are in progress"), and a pre-existing pull request whose head commit lacks the required `Codacy Security Scan` context is reported `mergeable_state: "blocked"`. The deliberately-failing-check variant was not exercised.
 
-**Deliberately untested conditions.** No deliberately failing required check was introduced, so the "a required check that fails blocks the merge" condition is untested. No direct push to `main` was attempted, so direct-push rejection is untested by design. `Website CI` path-filter behaviour was not exercised, and `Website CI` is not a required check.
+**Deliberately untested conditions.** No deliberately failing required check was introduced, so the "a required check that *fails* blocks the merge" condition is untested; the *pending* and *missing* conditions are tested and recorded in §11.1. No direct push to `main` was attempted, so direct-push rejection is untested by design. `Website CI` path-filter behaviour was not exercised, and `Website CI` is not a required check. The pull-request requirement was not tested by attempting a direct update to `main` (§6).
 
 **Scope of the check inventory.** The successful checks on PR #55, on the merge commit, and on `main` at `39be4554` do not constitute runtime API security testing or prove that every external app check will always run. The classic status endpoint's `pending` state with no status contexts must be distinguished from the separately successful Check Runs API results. The `dependency-review` context is produced only on pull requests, so a push or merge to `main` will never carry all three required contexts.
 
-**Final state:** APPROVED — CONFIGURATION ACTIVE AND VERIFIED — ENFORCEMENT VERIFICATION OUTSTANDING. The policy is approved, the Founder has authorised implementation, and the configuration is live and independently re-read as repository ruleset `25555806` (`protect-main-founder-approved`), active on `refs/heads/main` with the three approved required contexts. Whether that configuration actually blocks a merge while a required check is pending has **not** yet been demonstrated; see §11.1. No pull request has been merged, no direct push to `main` was made, no workflow, application source, deployment, or production data has been changed, and the ruleset was neither modified nor duplicated during this verification.
+**Final state:** APPROVED — CONFIGURATION ACTIVE AND VERIFIED — ENFORCEMENT VERIFIED. The policy is approved, the Founder has authorised implementation, and the configuration is live and independently re-read as repository ruleset `25555806` (`protect-main-founder-approved`), active on `refs/heads/main` with the three approved required contexts. Merge-blocking behaviour was then demonstrated on separate pull requests: a pending required check caused GitHub to refuse the merge with an explicit rule-violation message, and a pull request missing a required context is reported `blocked` (§11.1). No pull request was merged, no direct push to `main` was made, no workflow, application source, deployment, or production data has been changed, and the ruleset was neither modified nor duplicated during this verification.
