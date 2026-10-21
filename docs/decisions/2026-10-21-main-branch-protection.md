@@ -1,17 +1,17 @@
-# Main Branch Protection Proposal
+# Main Branch Protection Policy and Activation Plan
 
-**Status:** PROPOSED — NOT APPROVED — NOT ACTIVE  
+**Status:** APPROVED — IMPLEMENTATION AUTHORISED — NOT ACTIVE  
 **Owner:** Founder  
 **Date:** 2026-10-21  
 **Scope:** Repository governance for the `main` branch only
 
-> This document is a proposal and verification plan. It does not authorise or implement any GitHub setting changes. Founder approval and a separate implementation task are required before activation.
+> Founder approval was given on 2026-10-21 for the recommended starting policy below and for implementation of the main-only protection rules. This document records that approval. The live ruleset has not been created or activated; activation is complete only after the settings are applied and independently verified.
 
 ## 1. Purpose and authority
 
 This proposal defines a minimum, practical protection policy for `main` in the public repository `shahid1995/freelance-web-business`.
 
-The Founder remains the final authority. GitHub is the sole system of record. Execution agents may research, propose, implement after approval, and verify; they must not activate branch protection or rulesets under this proposal alone.
+The Founder remains the final authority. GitHub is the sole system of record. The Founder has approved the recommended starting decisions in §5 and §13 and authorised implementation. Actual configuration must still pass the activation-time checks below; no setting may be reported active until live verification confirms it.
 
 The relevant governing documents are [the Constitution](../../CONSTITUTION.md), [Governance](../governance.md), and the [repository and documentation conventions](../conventions/repository-and-documentation.md).
 
@@ -76,7 +76,7 @@ Choose either Option B or C for the first implementation; do not configure both 
 
 ## 5. Recommended minimum policy
 
-Subject to separate Founder approval, the proposed minimum is:
+The Founder-approved minimum policy is:
 
 1. Target only the exact `main` branch.
 2. Require a pull request before merging.
@@ -99,7 +99,7 @@ Do not validate the rule by attempting a direct push to `main`. Use the settings
 
 ## 7. Required status checks: exact candidates and limits
 
-The candidate list below is based on check-run names observed on PR #55 and current workflow definitions. It is a proposed initial set, not a statement that checks are already required.
+The approved candidate list below is based on observed check-run names and workflow definitions. These checks are not yet required on `main`; the exact contexts must still be selected and verified during activation.
 
 | Exact observed check-run name | Source | Recommendation | Reason / qualification |
 |---|---|---|---|
@@ -139,11 +139,11 @@ Recommended initial policy:
 - **Merge queue / deployment requirements:** not recommended now. No evidence in this scope establishes sufficient concurrency or an authorized staging-deployment gate.
 - **Secret scanning and runtime API security:** separate controls and workstreams; do not conflate them with branch protection.
 
-## 10. Activation checklist (requires separate Founder approval)
+## 10. Activation checklist (Founder approval recorded; settings still inactive)
 
 Before anyone enables settings:
 
-- [ ] Founder approves the selected mechanism (one ruleset or one classic branch-protection rule).
+- [x] Founder approved one repository ruleset targeting `main`, subject to confirmation that the needed controls are available in the repository's GitHub plan and settings UI.
 - [ ] Re-fetch current `main` SHA and verify this proposal is still based on an appropriate current state.
 - [ ] Open GitHub repository settings in a write-authorised account and verify current branch protection and rulesets directly; capture the configuration state for the audit record.
 - [ ] Confirm the rule targets exactly `main`, with no unintended branch pattern.
@@ -156,7 +156,7 @@ Before anyone enables settings:
 - [ ] Record the exact ruleset/rule values, activation time, authorising Founder decision, and rollback procedure.
 - [ ] Do not deploy or change provider settings; branch protection is a repository governance change only.
 
-No checklist item is marked completed by this proposal.
+Founder approval is recorded above. The remaining live-configuration and post-activation verification items must stay incomplete until they are actually performed and evidenced.
 
 ## 11. Post-activation verification plan
 
@@ -186,9 +186,9 @@ No rollback or live setting change is authorised by this proposal.
 
 ## 13. Open Founder decisions (13)
 
-The default below is a recommendation for review, not an approved policy.
+The Founder approved the following decisions on 2026-10-21. These decisions authorise implementation, but do not prove that any GitHub setting is active.
 
-| ID | Decision | Recommended starting point | Why / condition |
+| ID | Decision | Founder-approved decision | Why / condition |
 |---|---|---|---|
 | Q1 | Protection mechanism | One repository ruleset | Clear visibility and flexible enforcement; confirm feature availability and settings UI |
 | Q2 | Branch scope | Exact `main` only | Minimise accidental impact on topic branches |
@@ -232,4 +232,4 @@ This proposal is based on repository files and GitHub metadata/check-run evidenc
 
 The successful checks on PR #55 and its merge commit do not constitute runtime API security testing or prove that every external app check will always run. The classic status endpoint's `pending` state with no status contexts must be distinguished from the separately successful Check Runs API results. The exact status-check configuration remains an activation-time verification requirement.
 
-**Final state:** PROPOSED — NOT APPROVED — NOT ACTIVE. No branch protection, ruleset, repository setting, workflow, application source, deployment, or production data was changed in creating this proposal.
+**Final state:** APPROVED — IMPLEMENTATION AUTHORISED — NOT ACTIVE. The policy is approved, but no branch protection/ruleset settings have yet been changed. No workflow, application source, deployment, or production data has been changed.
