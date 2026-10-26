@@ -294,7 +294,7 @@ If a policy blocks legitimate work:
 
 Rollback remains a separate settings change and requires explicit Founder authorisation.
 
-## 13. Open Founder decisions (13)
+## 13. Founder-approved decisions (13)
 
 The Founder approved the following decisions on 2026-10-21. These decisions authorise implementation, and the resulting configuration has since been applied and re-read live (§3.4). Approval and activation are recorded facts; demonstrated enforcement behaviour is recorded separately in §11.1.
 
