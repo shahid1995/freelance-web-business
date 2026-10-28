@@ -40,7 +40,7 @@ jobs:
 
       # Execute Codacy Analysis CLI and generate a SARIF output with the security issues identified during the analysis
       - name: Run Codacy Analysis CLI
-        uses: codacy/codacy-analysis-cli-action@d840f886c4bd4edc059706d09c6a1586111c540b
+        uses: codacy/codacy-analysis-cli-action@562ee3e92b8e92df8b67e0a5ff8aa8e261919c08
         with:
           # Check https://github.com/codacy/codacy-analysis-cli#project-token to get your project token from your Codacy repository
           # You can also omit the token and run the tools that support default configurations
@@ -54,8 +54,105 @@ jobs:
           # This will handover control about PR rejection to the GitHub side
           max-allowed-issues: 2147483647
 
-      # Upload the SARIF file generated in the previous step
-      - name: Upload SARIF results file
-        uses: github/codeql-action/upload-sarif@v3
+      # The Codacy CLI writes one SARIF run per analyzer and sets no per-run
+      # category (26 runs on this repository). GitHub derives a run's
+      # category from automationDetails.id as everything BEFORE the LAST
+      # slash ("category/run-id"), so an id like "Eslint-9/22" has category
+      # "Eslint-9": repeated tool names would share a category, and GitHub
+      # then rejects same-tool+same-category runs in one file (since
+      # 2025-07-22) or overwrites earlier results when a second upload uses
+      # the same tool+category:
+      # https://docs.github.com/en/code-security/reference/code-scanning/sarif-files/sarif-support
+      # https://github.blog/changelog/2025-07-21-code-scanning-will-stop-combining-multiple-sarif-runs-uploaded-in-the-same-sarif-file/
+      # https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/integrate-with-existing-tools/upload-sarif-file
+      #
+      # Therefore give EVERY run a globally unique category, deterministically:
+      #   id = "codacy-<tool-slug>[-<occurrence>]/scan-<run-index>"
+      # so the category (before the last slash) is "codacy-<tool-slug>[-<n>]".
+      # Tools with unique names keep a stable category across scans (no stale
+      # alerts when run order shifts); only genuinely repeated tool names get
+      # an occurrence suffix. Runs without a tool name fall back to
+      # "unnamed-tool". Existing automationDetails fields are merged, not
+      # replaced. Note: the upload action's `category` input only applies to
+      # runs with NO automationDetails (codeql-action src/upload-lib.ts
+      # populateRunAutomationDetails), so these per-run ids are what actually
+      # control the effective categories. All findings are preserved.
+      - name: Assign globally unique SARIF run categories
+        run: |
+          jq '
+            . as $doc
+            | ([ $doc.runs[] | (.tool.driver.name // "unnamed-tool")
+                 | ascii_downcase | gsub("[^a-z0-9]+"; "-")
+                 | sub("^-+"; "") | sub("-+$"; "")
+                 | if . == "" then "unnamed-tool" else . end ]
+               | group_by(.) | map({ (.[0]): length }) | add // {}) as $counts
+            | .runs |= (reduce (to_entries[]) as $e
+                ({ occ: {}, out: [] };
+                 ($e.value.tool.driver.name // "unnamed-tool"
+                  | ascii_downcase | gsub("[^a-z0-9]+"; "-")
+                  | sub("^-+"; "") | sub("-+$"; "")
+                  | if . == "" then "unnamed-tool" else . end) as $slug
+                 | (.occ[$slug] // 0) as $n
+                 | .occ[$slug] = ($n + 1)
+                 | ($slug + (if ($counts[$slug] // 1) > 1
+                             then "-" + ($n | tostring) else "" end)) as $cat
+                 | .out += [ ($e.value
+                     + { automationDetails:
+                           (($e.value.automationDetails // {})
+                            + { id: ("codacy-" + $cat
+                                     + "/scan-" + ($e.key | tostring)) }) }) ])
+              | .out)
+          ' results.sarif > results.categorized.sarif
+          mv results.categorized.sarif results.sarif
+
+      # Code scanning also accepts at most 20 runs per SARIF file (this
+      # repository produces 26), and a directory upload was observed to be
+      # submitted as a single 26-run analysis, which the server rejected.
+      # Split the runs into <=20-run files and upload each file explicitly.
+      # The ids above are assigned before splitting, so their categories stay
+      # unique across BOTH uploaded files (the upload action checks
+      # (id,tool) uniqueness across a job's uploads and GitHub treats a later
+      # upload with the same tool+category as an overwrite). No run or result
+      # is dropped. The guards below fail loudly instead of silently losing
+      # data if Codacy ever needs a third part or emits a duplicate category:
+      - name: Split SARIF into upload-sized files
+        run: |
+          mkdir -p sarif-parts
+          total=$(jq '.runs | length' results.sarif)
+          i=0; part=0
+          while [ "$i" -lt "$total" ]; do
+            jq --argjson i "$i" '.runs = .runs[$i:$i+20]' results.sarif > "sarif-parts/results-$part.sarif"
+            i=$((i + 20)); part=$((part + 1))
+          done
+          echo "Split $total runs into $part file(s):"
+          ls -la sarif-parts
+          if [ "$part" -gt 2 ]; then
+            echo "::error::Codacy produced $part SARIF parts but this workflow uploads at most 2 (40 runs). Extend the upload steps rather than dropping data."
+            exit 1
+          fi
+          # Effective-category guard: GitHub parses category as everything
+          # before the LAST slash of automationDetails.id; duplicates would
+          # collide or overwrite across uploads.
+          dupes=$(jq -s '[.[].runs[]
+            | (.automationDetails.id // "") as $id
+            | ($id | (rindex("/") // 0)) as $i
+            | $id[0:$i]]
+            | group_by(.) | map(select(length > 1)) | length' sarif-parts/*.sarif)
+          if [ "$dupes" -ne 0 ]; then
+            echo "::error::Duplicate effective SARIF categories detected across upload parts; GitHub would reject or overwrite these results."
+            exit 1
+          fi
+
+      # Upload each SARIF part as its own code-scanning analysis. No `category`
+      # input is set on purpose: every run carries a unique automationDetails.id,
+      # and the action only applies a category input to runs that have none.
+      - name: Upload SARIF part 1 (runs 1-20)
+        uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: results.sarif
+          sarif_file: sarif-parts/results-0.sarif
+
+      - name: Upload SARIF part 2 (runs 21+)
+        if: hashFiles('sarif-parts/results-1.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif-parts/results-1.sarif
