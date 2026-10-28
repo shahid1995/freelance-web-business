@@ -54,6 +54,19 @@ jobs:
           # This will handover control about PR rejection to the GitHub side
           max-allowed-issues: 2147483647
 
+      # The Codacy CLI writes one SARIF run per analyzer and sets no per-run
+      # category. Since 2025-07-22, GitHub code scanning rejects SARIF files
+      # containing multiple runs that share a tool+category, so give every run
+      # a distinct runAutomationDetails.id before upload. All findings are
+      # preserved; nothing is dropped or suppressed:
+      # https://github.blog/changelog/2025-07-21-code-scanning-will-stop-combining-multiple-sarif-runs-uploaded-in-the-same-sarif-file/
+      - name: Assign distinct SARIF run categories
+        run: |
+          jq '.runs |= (to_entries | map(
+            .value + {runAutomationDetails: {id: ((.value.tool.driver.name // "codacy") + "/" + (.key | tostring))}}
+          ))' results.sarif > results.categorized.sarif
+          mv results.categorized.sarif results.sarif
+
       # Upload the SARIF file generated in the previous step
       - name: Upload SARIF results file
         uses: github/codeql-action/upload-sarif@v4
