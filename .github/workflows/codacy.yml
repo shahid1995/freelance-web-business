@@ -69,10 +69,13 @@ jobs:
           mv results.categorized.sarif results.sarif
 
       # Code scanning also accepts at most 20 runs per SARIF file (this
-      # repository produces 26). upload-sarif accepts a directory of SARIF
-      # files, so split the runs into <=20-run chunks; the distinct
-      # automationDetails.id assigned above keeps categories unique across
-      # every uploaded file. No run or result is dropped:
+      # repository produces 26), and a directory upload was observed to be
+      # submitted as a single 26-run analysis, which the server rejected.
+      # Split the runs into <=20-run files and upload each file explicitly
+      # under its own category (uploads with different categories are never
+      # combined). No run or result is dropped. The guard below fails loudly
+      # instead of silently dropping data if the tool count ever needs a
+      # third part:
       - name: Split SARIF into upload-sized files
         run: |
           mkdir -p sarif-parts
@@ -84,9 +87,21 @@ jobs:
           done
           echo "Split $total runs into $part file(s):"
           ls -la sarif-parts
+          if [ "$part" -gt 2 ]; then
+            echo "::error::Codacy produced $part SARIF parts but this workflow uploads at most 2 (40 runs). Extend the upload steps rather than dropping data."
+            exit 1
+          fi
 
-      # Upload the SARIF file generated in the previous step
-      - name: Upload SARIF results file
+      # Upload each SARIF part as its own code-scanning analysis
+      - name: Upload SARIF part 1 (runs 1-20)
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: sarif-parts
+          sarif_file: sarif-parts/results-0.sarif
+          category: codacy-part-1
+
+      - name: Upload SARIF part 2 (runs 21+)
+        if: hashFiles('sarif-parts/results-1.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif-parts/results-1.sarif
+          category: codacy-part-2
