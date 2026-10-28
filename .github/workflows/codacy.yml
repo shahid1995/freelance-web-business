@@ -68,8 +68,25 @@ jobs:
           ))' results.sarif > results.categorized.sarif
           mv results.categorized.sarif results.sarif
 
+      # Code scanning also accepts at most 20 runs per SARIF file (this
+      # repository produces 26). upload-sarif accepts a directory of SARIF
+      # files, so split the runs into <=20-run chunks; the distinct
+      # automationDetails.id assigned above keeps categories unique across
+      # every uploaded file. No run or result is dropped:
+      - name: Split SARIF into upload-sized files
+        run: |
+          mkdir -p sarif-parts
+          total=$(jq '.runs | length' results.sarif)
+          i=0; part=0
+          while [ "$i" -lt "$total" ]; do
+            jq --argjson i "$i" '.runs = .runs[$i:$i+20]' results.sarif > "sarif-parts/results-$part.sarif"
+            i=$((i + 20)); part=$((part + 1))
+          done
+          echo "Split $total runs into $part file(s):"
+          ls -la sarif-parts
+
       # Upload the SARIF file generated in the previous step
       - name: Upload SARIF results file
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: results.sarif
+          sarif_file: sarif-parts
