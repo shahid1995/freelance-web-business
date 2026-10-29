@@ -13,6 +13,10 @@
     "plugins": [],
     "types": ["node"]
   },
-  "include": ["tests/**/*.ts", "lib/platform/**/*.ts"],
+  "include": [
+    "tests/**/*.ts",
+    "lib/platform/**/*.ts",
+    "app/api/auth/request-link/route.ts"
+  ],
   "exclude": ["node_modules", ".next", ".test-build"]
 }
