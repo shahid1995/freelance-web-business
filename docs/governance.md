@@ -21,6 +21,8 @@ For material work:
 7. Merge only after the change is accepted.
 8. Treat deployment/publication as a separate authorized action.
 
+For code changes, use the [Independent Code Review Standard](quality/independent-code-review-standard.md): review the diff first, trace relevant behavior, verify proportionately, and report only actionable, evidence-backed findings. Keep CI/baseline failures and optional improvements separate from code defects.
+
 ## Decision classes
 
 ### Material business decision
