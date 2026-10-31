@@ -16,6 +16,11 @@
  * inside a running server. The service, not the route, is what sanitises the
  * destination before it can enter the emailed link, so both the form post and
  * a forged verify URL are exercised as attack surfaces.
+ *
+ * A failed verification — spent, expired, unknown, or attempt-capped — must
+ * keep the destination on the way back to the sign-in page too, or the
+ * replacement link the customer requests next starts from the dashboard
+ * instead of the page they originally asked for.
  */
 
 import assert from "node:assert/strict";
@@ -279,9 +284,13 @@ describe("post-sign-in destination", () => {
     assert.equal(issued.length, 1, "verification issues exactly one session cookie");
 
     // The same link again: the challenge was consumed, so it must not sign
-    // anybody in a second time — destination or no destination.
+    // anybody in a second time — and the refusal still remembers where the
+    // customer was going, without letting the token ride along.
     const replay = assertRedirect(await followVerify(harness, link.href));
-    assert.equal(`${replay.pathname}${replay.search}`, "/sign-in?error=invalid-link");
+    assert.equal(replay.pathname, "/sign-in");
+    assert.equal(replay.searchParams.get("error"), "invalid-link");
+    assert.equal(replay.searchParams.get("returnTo"), destination);
+    assert.equal(replay.searchParams.get("token"), null, "the consumed token must not ride along");
     assert.equal(takeRecordedCookies().length, 0, "a consumed link issues no session");
   });
 
@@ -351,17 +360,150 @@ describe("post-sign-in destination", () => {
     assert.equal(consumed.pathname, destination, "the first attempt is admitted");
 
     const replayed = assertRedirect(await followVerify(verifyHarness, link.href));
-    assert.equal(
-      `${replayed.pathname}${replayed.search}`,
-      "/sign-in?error=invalid-link",
-      "the second is refused as consumed",
-    );
+    assert.equal(replayed.pathname, "/sign-in");
+    assert.equal(replayed.searchParams.get("error"), "invalid-link", "the second is refused as consumed");
+    assert.equal(replayed.searchParams.get("returnTo"), destination, "the refusal keeps the destination");
+    assert.equal(replayed.searchParams.get("token"), null, "the token must not ride along");
 
     const rateLimited = assertRedirect(await followVerify(verifyHarness, link.href));
+    assert.equal(rateLimited.pathname, "/sign-in");
     assert.equal(
-      `${rateLimited.pathname}${rateLimited.search}`,
-      "/sign-in?error=link-rate-limited",
+      rateLimited.searchParams.get("error"),
+      "link-rate-limited",
       "the third hits the link's attempt cap",
     );
+    assert.equal(
+      rateLimited.searchParams.get("returnTo"),
+      destination,
+      "the capped attempt keeps the destination",
+    );
+    assert.equal(rateLimited.searchParams.get("token"), null, "the token must not ride along");
+  });
+
+  it("carries the destination through a failed verification into the replacement link", async () => {
+    const harness = await createTestPlatform();
+    const destination = "/dashboard/projects/PROJ-1001/intake";
+
+    // A customer follows a link that is already spent — the same refusal an
+    // expired or unknown link receives.
+    await postSignInForm(harness, { email: OWNER_EMAIL, returnTo: destination });
+    const link = emailedLink(harness);
+    const first = assertRedirect(await followVerify(harness, link.href));
+    assert.equal(first.pathname, destination, "the first use lands on the destination");
+
+    const refused = assertRedirect(await followVerify(harness, link.href));
+    assert.equal(refused.pathname, "/sign-in");
+    assert.equal(refused.searchParams.get("error"), "invalid-link");
+    assert.equal(
+      refused.searchParams.get("returnTo"),
+      destination,
+      "the failed verification preserves the destination",
+    );
+    assert.equal(refused.searchParams.get("token"), null, "the one-time token must not ride along");
+
+    // The customer asks for another link from exactly the state the refusal
+    // left them in: the sign-in page puts the preserved destination back into
+    // the form's hidden field.
+    const preserved = refused.searchParams.get("returnTo");
+    assert.ok(preserved, "the failure redirect must expose a destination to carry");
+    const retry = assertRedirect(
+      await postSignInForm(harness, { email: OWNER_EMAIL, returnTo: preserved }),
+    );
+    assert.equal(retry.searchParams.get("error"), null, "the replacement request is admitted");
+    assert.equal(retry.searchParams.get("returnTo"), destination);
+
+    const replacement = emailedLink(harness);
+    assert.equal(
+      replacement.searchParams.get("returnTo"),
+      destination,
+      "the replacement email link carries the destination",
+    );
+
+    const arrival = assertRedirect(await followVerify(harness, replacement.href));
+    assert.equal(arrival.pathname, destination, "the replacement link lands where the customer was going");
+    assert.equal(arrival.origin, SELF_ORIGIN);
+  });
+
+  it("preserves the destination when verification refuses the link for hitting its attempt cap", async () => {
+    const harness = await createTestPlatform({
+      config: {
+        verifyLimits: {
+          perClient: { limit: 30, windowMs: 60_000 },
+          perLink: { limit: 2, windowMs: 60_000 },
+        },
+      },
+    });
+    const destination = "/dashboard/projects/WEB.2026-014/agreement";
+
+    await postSignInForm(harness, { email: OWNER_EMAIL, returnTo: destination });
+    const link = emailedLink(harness);
+
+    const admitted = assertRedirect(await followVerify(harness, link.href));
+    assert.equal(admitted.pathname, destination, "the first attempt is admitted");
+    const consumed = assertRedirect(await followVerify(harness, link.href));
+    assert.equal(consumed.searchParams.get("error"), "invalid-link", "the second is refused as consumed");
+
+    const limited = assertRedirect(await followVerify(harness, link.href));
+    assert.equal(limited.pathname, "/sign-in");
+    assert.equal(limited.searchParams.get("error"), "link-rate-limited");
+    assert.equal(
+      limited.searchParams.get("returnTo"),
+      destination,
+      "the rate-limit notice preserves the destination",
+    );
+    assert.equal(limited.searchParams.get("token"), null, "no token is carried into the sign-in redirect");
+
+    // The preserved destination is enough to ask for another link: it goes
+    // back into the form, and the replacement link carries it onward.
+    const preserved = limited.searchParams.get("returnTo");
+    assert.ok(preserved, "the rate-limit redirect must expose a destination to carry");
+    const retry = assertRedirect(
+      await postSignInForm(harness, { email: OWNER_EMAIL, returnTo: preserved }),
+    );
+    assert.equal(retry.searchParams.get("error"), null, "the replacement request is admitted");
+    assert.equal(retry.searchParams.get("returnTo"), destination);
+
+    const replacement = emailedLink(harness);
+    assert.equal(
+      replacement.searchParams.get("returnTo"),
+      destination,
+      "the replacement link carries the destination",
+    );
+
+    const arrival = assertRedirect(await followVerify(harness, replacement.href));
+    assert.equal(arrival.pathname, destination, "the replacement link lands on the original destination");
+  });
+
+  it("discards a tampered destination when the verification itself fails", async () => {
+    const harness = await createTestPlatform();
+
+    // A genuine, properly requested token — only the destination on the failed
+    // attempt is forged, the way an edited link around a real one would do it.
+    await postSignInForm(harness, { email: OWNER_EMAIL, returnTo: "/dashboard" });
+    const genuine = emailedLink(harness);
+    const token = genuine.searchParams.get("token");
+    assert.ok(token, "the sign-in link must carry its token");
+    const consumed = assertRedirect(await followVerify(harness, genuine.href));
+    assert.equal(`${consumed.pathname}${consumed.search}`, "/dashboard", "the genuine link verifies first");
+
+    for (const hostile of [
+      "https://attacker.example/collect",
+      "//attacker.example",
+      "/\\attacker.example",
+      "%2F%2Fattacker.example",
+      "/dashboard next",
+    ]) {
+      const crafted = `${VERIFY_BASE}?token=${encodeURIComponent(token)}&returnTo=${encodeURIComponent(hostile)}`;
+      const refused = assertRedirect(await followVerify(harness, crafted));
+      assert.equal(refused.pathname, "/sign-in", `the notice must still be shown for: ${hostile}`);
+      assert.equal(refused.origin, SELF_ORIGIN, `the refusal must stay on-site for: ${hostile}`);
+      assert.equal(refused.searchParams.get("error"), "invalid-link", "the notice code is unchanged");
+      assert.equal(
+        refused.searchParams.get("returnTo"),
+        null,
+        `a rejected destination must not survive the failure redirect: ${hostile}`,
+      );
+      assert.equal(refused.searchParams.get("token"), null, "the token must not ride along");
+    }
   });
 });
