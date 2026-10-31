@@ -115,6 +115,38 @@ function emailedLink(harness: TestPlatform, to = OWNER_EMAIL): URL {
   return new URL(message.signInUrl, SELF_ORIGIN);
 }
 
+/**
+ * Continues from a failure redirect that still carried `destination`: puts the
+ * preserved value back into the sign-in form exactly as the sign-in page's
+ * hidden field would, then follows the replacement link it emails and returns
+ * where that link lands.
+ */
+async function retryWithPreservedDestination(
+  harness: TestPlatform,
+  failure: URL,
+  destination: string,
+): Promise<URL> {
+  const preserved = failure.searchParams.get("returnTo");
+  assert.ok(preserved, "the failure redirect must expose a destination to carry");
+  const retry = assertRedirect(
+    await postSignInForm(harness, { email: OWNER_EMAIL, returnTo: preserved }),
+  );
+  assert.equal(retry.searchParams.get("error"), null, "the replacement request is admitted");
+  assert.equal(retry.searchParams.get("returnTo"), destination);
+
+  const replacement = emailedLink(harness);
+  assert.equal(
+    replacement.searchParams.get("returnTo"),
+    destination,
+    "the replacement link carries the destination",
+  );
+
+  const arrival = assertRedirect(await followVerify(harness, replacement.href));
+  assert.equal(arrival.pathname, destination, "the replacement link lands where the customer was going");
+  assert.equal(arrival.origin, SELF_ORIGIN);
+  return arrival;
+}
+
 describe("post-sign-in destination", () => {
   it("carries a protected-page destination through the complete magic-link flow", async () => {
     const harness = await createTestPlatform();
@@ -404,24 +436,7 @@ describe("post-sign-in destination", () => {
     // The customer asks for another link from exactly the state the refusal
     // left them in: the sign-in page puts the preserved destination back into
     // the form's hidden field.
-    const preserved = refused.searchParams.get("returnTo");
-    assert.ok(preserved, "the failure redirect must expose a destination to carry");
-    const retry = assertRedirect(
-      await postSignInForm(harness, { email: OWNER_EMAIL, returnTo: preserved }),
-    );
-    assert.equal(retry.searchParams.get("error"), null, "the replacement request is admitted");
-    assert.equal(retry.searchParams.get("returnTo"), destination);
-
-    const replacement = emailedLink(harness);
-    assert.equal(
-      replacement.searchParams.get("returnTo"),
-      destination,
-      "the replacement email link carries the destination",
-    );
-
-    const arrival = assertRedirect(await followVerify(harness, replacement.href));
-    assert.equal(arrival.pathname, destination, "the replacement link lands where the customer was going");
-    assert.equal(arrival.origin, SELF_ORIGIN);
+    await retryWithPreservedDestination(harness, refused, destination);
   });
 
   it("preserves the destination when verification refuses the link for hitting its attempt cap", async () => {
@@ -455,23 +470,7 @@ describe("post-sign-in destination", () => {
 
     // The preserved destination is enough to ask for another link: it goes
     // back into the form, and the replacement link carries it onward.
-    const preserved = limited.searchParams.get("returnTo");
-    assert.ok(preserved, "the rate-limit redirect must expose a destination to carry");
-    const retry = assertRedirect(
-      await postSignInForm(harness, { email: OWNER_EMAIL, returnTo: preserved }),
-    );
-    assert.equal(retry.searchParams.get("error"), null, "the replacement request is admitted");
-    assert.equal(retry.searchParams.get("returnTo"), destination);
-
-    const replacement = emailedLink(harness);
-    assert.equal(
-      replacement.searchParams.get("returnTo"),
-      destination,
-      "the replacement link carries the destination",
-    );
-
-    const arrival = assertRedirect(await followVerify(harness, replacement.href));
-    assert.equal(arrival.pathname, destination, "the replacement link lands on the original destination");
+    await retryWithPreservedDestination(harness, limited, destination);
   });
 
   it("discards a tampered destination when the verification itself fails", async () => {
