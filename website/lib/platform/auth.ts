@@ -19,6 +19,7 @@
 import type { Clock } from "./clock";
 import type { AuthenticationChallenge, Person, Session } from "./domain";
 import { PlatformError, ValidationError } from "./errors";
+import { sanitizeReturnTo } from "./http";
 import type { EmailDelivery, PlatformStore } from "./ports";
 import { consumeRateLimit, type RateLimitRule } from "./rate-limit";
 import {
@@ -64,8 +65,13 @@ export interface AuthServiceOptions {
   clock: Clock;
   email: EmailDelivery;
   sessions: SessionService;
-  /** Builds the one-time URL. Injected so the core stays free of framework concerns. */
-  buildSignInUrl: (token: string) => string;
+  /**
+   * Builds the one-time URL. Injected so the core stays free of framework
+   * concerns. `destination` is the post-verification landing path — a
+   * sanitised same-site path, or null/absent when the caller supplied nothing
+   * usable — and is appended as `returnTo` so verification can restore it.
+   */
+  buildSignInUrl: (token: string, destination?: string | null) => string;
   signInLinkTtlMs: number;
   newId: () => string;
   signInLimits: { perAddress: RateLimitRule; perClient: RateLimitRule };
@@ -80,10 +86,17 @@ export class AuthService {
    *
    * Performs no lookup against existing accounts, so the response and the work
    * performed are the same for a registered and an unregistered address.
+   *
+   * `returnTo` is the page the customer asked for before signing in. It is
+   * sanitised here — at the point where it enters the URL the platform itself
+   * sends — so no caller can place an external target in the emailed link;
+   * anything unusable becomes null and verification falls back to the
+   * dashboard.
    */
   async requestSignInLink(input: {
     email: string;
     clientKey: string;
+    returnTo?: string | null;
   }): Promise<SignInResult> {
     const email = normalizeEmail(input.email);
     if (!isValidEmailShape(email)) {
@@ -120,9 +133,13 @@ export class AuthService {
     };
     this.options.store.createChallenge(challenge);
 
+    const destination = sanitizeReturnTo(input.returnTo);
     await this.options.email.sendSignInLink({
       to: email,
-      signInUrl: this.options.buildSignInUrl(buildChallengeToken(challenge.id, secret)),
+      signInUrl: this.options.buildSignInUrl(
+        buildChallengeToken(challenge.id, secret),
+        destination,
+      ),
       expiresAt,
     });
 
