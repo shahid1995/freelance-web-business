@@ -49,6 +49,11 @@ export async function POST(request: Request) {
     await platform.auth.requestSignInLink({
       email: typeof email === "string" ? email : "",
       clientKey: context.clientKey,
+      // The raw form value: the service sanitises it before it can enter the
+      // emailed link, so a hostile value here can neither reach the mail nor
+      // outlive this redirect. It is what lets verification restore the
+      // customer's original destination after the link is used.
+      returnTo: typeof rawReturnTo === "string" ? rawReturnTo : null,
     });
   } catch (error) {
     if (isPlatformError(error, PLATFORM_ERROR_CODES.invalidInput)) {

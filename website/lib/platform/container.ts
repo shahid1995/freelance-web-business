@@ -118,7 +118,14 @@ export async function createPlatform(
       clock,
       email,
       sessions,
-      buildSignInUrl: (token) => `${signInPath}?token=${encodeURIComponent(token)}`,
+      buildSignInUrl: (token, destination) => {
+        const url = `${signInPath}?token=${encodeURIComponent(token)}`;
+        // The service guarantees `destination` is already a sanitised
+        // same-site path, so this can only ever widen the link's own
+        // site-relative redirect — never move it off-site. With no usable
+        // destination the URL is exactly what it was before.
+        return destination ? `${url}&returnTo=${encodeURIComponent(destination)}` : url;
+      },
       signInLinkTtlMs: config.signInLinkTtlMs,
       newId,
       signInLimits: config.signInLimits,

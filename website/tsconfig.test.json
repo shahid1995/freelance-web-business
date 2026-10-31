@@ -16,7 +16,8 @@
   "include": [
     "tests/**/*.ts",
     "lib/platform/**/*.ts",
-    "app/api/auth/request-link/route.ts"
+    "app/api/auth/request-link/route.ts",
+    "app/api/auth/verify/route.ts"
   ],
   "exclude": ["node_modules", ".next", ".test-build"]
 }
