@@ -39,7 +39,22 @@ jobs:
         uses: actions/checkout@v4
 
       # Execute Codacy Analysis CLI and generate a SARIF output with the security issues identified during the analysis
+      #
+      # `fail-if-incomplete: true` makes the CLI exit non-zero (code 101)
+      # whenever ANY configured analyzer invocation fails, instead of
+      # exiting 0 with partial results. Verified against codacy-analysis-cli
+      # 7.9.25 source (ExitStatus.scala): exit 101 = partially-failed
+      # analysis when failIfIncomplete is set and any executor's Try is a
+      # failure; it is checked before the max-allowed-issues exit (102).
+      # The SARIF file is written before that exit code is computed, so the
+      # runs of every analyzer that DID complete are still on disk and are
+      # uploaded by the steps below - while this step (and therefore the
+      # required check) fails. That is why every downstream step runs with
+      # `always()` + an explicit hashFiles guard, and why an explicit gate
+      # step at the very end fails the job verifiably. No step uses
+      # continue-on-error: a green run always means a complete analysis.
       - name: Run Codacy Analysis CLI
+        id: codacy
         uses: codacy/codacy-analysis-cli-action@562ee3e92b8e92df8b67e0a5ff8aa8e261919c08
         with:
           # Check https://github.com/codacy/codacy-analysis-cli#project-token to get your project token from your Codacy repository
@@ -53,13 +68,19 @@ jobs:
           # Force 0 exit code to allow SARIF file generation
           # This will handover control about PR rejection to the GitHub side
           max-allowed-issues: 2147483647
+          # Fail the CLI (exit 101) when a configured analyzer cannot
+          # execute or its results cannot be processed, so this required
+          # check can never be green while the configured scan is
+          # incomplete. Partial SARIF from successful analyzers is still
+          # written and uploaded below.
+          fail-if-incomplete: true
 
-      # The Codacy CLI writes one SARIF run per analyzer and sets no per-run
-      # category (26 runs on this repository). GitHub derives a run's
-      # category from automationDetails.id as everything BEFORE the LAST
-      # slash ("category/run-id"), so an id like "Eslint-9/22" has category
-      # "Eslint-9": repeated tool names would share a category, and GitHub
-      # then rejects same-tool+same-category runs in one file (since
+      # The Codacy CLI writes one SARIF run per analyzer invocation and sets
+      # no per-run category (26+ runs on this repository). GitHub derives a
+      # run's category from automationDetails.id as everything BEFORE the
+      # LAST slash ("category/run-id"), so an id like "Eslint-9/22" has
+      # category "Eslint-9": repeated tool names would share a category,
+      # and GitHub then rejects same-tool+same-category runs in one file (since
       # 2025-07-22) or overwrites earlier results when a second upload uses
       # the same tool+category:
       # https://docs.github.com/en/code-security/reference/code-scanning/sarif-files/sarif-support
@@ -77,7 +98,13 @@ jobs:
       # runs with NO automationDetails (codeql-action src/upload-lib.ts
       # populateRunAutomationDetails), so these per-run ids are what actually
       # control the effective categories. All findings are preserved.
+      # `always()` + hashFiles: when the CLI step above fails under
+      # fail-if-incomplete, its partial SARIF must still be categorized,
+      # split and uploaded; the final gate then fails the job explicitly.
+      # The hashFiles guard skips cleanly only when no SARIF was produced
+      # at all (in which case the gate reports the incomplete scan).
       - name: Assign globally unique SARIF run categories
+        if: always() && hashFiles('results.sarif') != ''
         run: |
           jq '
             . as $doc
@@ -116,6 +143,7 @@ jobs:
       # is dropped. The guards below fail loudly instead of silently losing
       # data if Codacy ever needs a third part or emits a duplicate category:
       - name: Split SARIF into upload-sized files
+        if: always() && hashFiles('results.sarif') != ''
         run: |
           mkdir -p sarif-parts
           total=$(jq '.runs | length' results.sarif)
@@ -125,6 +153,9 @@ jobs:
             i=$((i + 20)); part=$((part + 1))
           done
           echo "Split $total runs into $part file(s):"
+          for f in sarif-parts/*.sarif; do
+            echo "$f: $(jq '.runs | length' "$f") runs, $(jq '[.runs[].results[]?] | length' "$f") results"
+          done
           ls -la sarif-parts
           if [ "$part" -gt 2 ]; then
             echo "::error::Codacy produced $part SARIF parts but this workflow uploads at most 2 (40 runs). Extend the upload steps rather than dropping data."
@@ -146,13 +177,42 @@ jobs:
       # Upload each SARIF part as its own code-scanning analysis. No `category`
       # input is set on purpose: every run carries a unique automationDetails.id,
       # and the action only applies a category input to runs that have none.
+      # Both uploads run with `always()` + hashFiles so that when the CLI
+      # step failed (fail-if-incomplete), the partial SARIF produced by the
+      # analyzers that completed is still uploaded; the gate step below
+      # then fails the job, so findings are never lost AND the check is
+      # never green. The hashFiles guard skips an upload only when that
+      # part genuinely does not exist (fewer runs), never to hide results.
       - name: Upload SARIF part 1 (runs 1-20)
+        if: always() && hashFiles('sarif-parts/results-0.sarif') != ''
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: sarif-parts/results-0.sarif
 
       - name: Upload SARIF part 2 (runs 21+)
-        if: hashFiles('sarif-parts/results-1.sarif') != ''
+        if: always() && hashFiles('sarif-parts/results-1.sarif') != ''
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: sarif-parts/results-1.sarif
+
+      # Explicit, verifiable fail-closed gate - deliberately the LAST step.
+      # A failed Codacy CLI step already fails the job implicitly, but this
+      # gate makes the meaning explicit and auditable in the check UI, and
+      # additionally rejects a "successful" run that produced no valid
+      # SARIF runs at all (an empty scan must never read as a clean scan).
+      # It runs after both uploads so partial results are published first.
+      # No continue-on-error anywhere: success of this step means every
+      # configured analyzer invocation completed and its output processed.
+      - name: Fail if the configured analysis was incomplete
+        if: always()
+        run: |
+          outcome="${{ steps.codacy.outcome }}"
+          if [ "$outcome" != "success" ]; then
+            echo "::error::Codacy Security Scan is incomplete: the Codacy CLI step concluded '$outcome'. With fail-if-incomplete the CLI exits non-zero (101) when a configured analyzer fails to execute or its results cannot be processed, so this required check must not report success. Partial SARIF from the analyzers that completed has still been uploaded by the steps above. See the 'Run Codacy Analysis CLI' log for the failing analyzer invocations."
+            exit 1
+          fi
+          if ! jq -e '.runs | length > 0' results.sarif >/dev/null 2>&1; then
+            echo "::error::Codacy Security Scan produced no valid SARIF runs; treating an empty or unreadable scan as incomplete."
+            exit 1
+          fi
+          echo "Codacy CLI completed with $(jq '.runs | length' results.sarif) analyzer runs; every configured analyzer invocation succeeded."
