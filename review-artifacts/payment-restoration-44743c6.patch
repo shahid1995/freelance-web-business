@@ -1,0 +1,2332 @@
+diff --git a/website/lib/platform/container.ts b/website/lib/platform/container.ts
+index 2b110c9..6e45855 100644
+--- a/website/lib/platform/container.ts
++++ b/website/lib/platform/container.ts
+@@ -24,6 +24,7 @@ import { FounderWorkspaceService } from "./internal";
+ import { IntakeService } from "./intake";
+ import { LocalEmailSink } from "./local-email";
+ import { OrganizationService } from "./organizations";
++import { PaymentConfigurationService } from "./payment-configurations";
+ import { ProjectService } from "./projects";
+ import { ProposalService } from "./proposals";
+ import { SessionService, sessionCookieSettings } from "./sessions";
+@@ -45,6 +46,11 @@ export interface Platform {
+   proposals: ProposalService;
+   /** Founder-only agreement authoring. Never mounted into the customer workspace. */
+   agreements: AgreementService;
++  /**
++   * Founder-only payment configuration and obligation authoring. Never mounted
++   * into the customer workspace; no customer service or projection consults it.
++   */
++  paymentConfigurations: PaymentConfigurationService;
+   /** Customer-facing agreement reading/signing, using project access and Owner/Admin authority. */
+   customerAgreements: CustomerAgreementService;
+   /**
+@@ -144,6 +150,12 @@ export async function createPlatform(
+       newId,
+       founderEmailHashes: config.founderEmailHashes,
+     }),
++    paymentConfigurations: new PaymentConfigurationService({
++      store: resolvedStore,
++      clock,
++      newId,
++      founderEmailHashes: config.founderEmailHashes,
++    }),
+     customerProposals: new CustomerProposalService({
+       store: resolvedStore,
+     }),
+diff --git a/website/lib/platform/domain.ts b/website/lib/platform/domain.ts
+index 8c68293..0025168 100644
+--- a/website/lib/platform/domain.ts
++++ b/website/lib/platform/domain.ts
+@@ -19,6 +19,8 @@ export type ProjectIntakeId = string;
+ export type ChallengeId = string;
+ export type SessionId = string;
+ export type AuditEventId = string;
++export type PaymentConfigVersionId = string;
++export type PaymentObligationId = string;
+ 
+ /**
+  * Internal business roles. `owner` is the first user of an organization;
+@@ -100,6 +102,23 @@ export function isFounderDecision(value: unknown): value is FounderDecision {
+   );
+ }
+ 
++export const PAYMENT_SCHEDULE_STRUCTURES = [
++  "full_upfront",
++  "deposit_plus_later",
++  "milestone_linked",
++] as const;
++
++export type PaymentScheduleStructure = (typeof PAYMENT_SCHEDULE_STRUCTURES)[number];
++
++export function isPaymentScheduleStructure(
++  value: unknown,
++): value is PaymentScheduleStructure {
++  return (
++    typeof value === "string" &&
++    (PAYMENT_SCHEDULE_STRUCTURES as readonly string[]).includes(value)
++  );
++}
++
+ export interface ProjectInternal {
+   id: ProjectId;
+   organizationId: OrganizationId;
+@@ -187,6 +206,70 @@ export interface AgreementVersionInternal {
+   publishedAt: number | null;
+ }
+ 
++/**
++ * One immutable payment configuration version for a project.
++ *
++ * Created by the Founder for a specific project. The baseline proposal and
++ * agreement version references are immutable once written: a change to the
++ * configuration creates a new version rather than mutating this one.
++ *
++ * `totalAmount` and the obligations' `expectedAmount` are stored as decimal
++ * strings (never floats) so the Founder-entered values round-trip exactly,
++ * regardless of how many decimal places the currency uses.
++ */
++export interface PaymentConfigVersionInternal {
++  id: PaymentConfigVersionId;
++  projectId: ProjectId;
++  organizationId: OrganizationId;
++  /** Per-project, gapless version number. 1 for the first configuration. */
++  versionNumber: number;
++  scheduleStructure: PaymentScheduleStructure;
++  /** Exact Founder-supplied project total, as a decimal string. */
++  totalAmount: string;
++  /** Founder-supplied ISO 4217 currency code. */
++  currency: string;
++  /** The exact current accepted proposal version this configuration binds to. */
++  proposalId: ProposalId;
++  proposalVersionId: ProposalVersionId;
++  proposalVersionNumber: number;
++  /** The exact current signed agreement version this configuration binds to. */
++  agreementId: AgreementId;
++  agreementVersionId: AgreementVersionId;
++  agreementVersionNumber: number;
++  createdByPersonId: PersonId;
++  createdAt: number;
++}
++
++/**
++ * One payment obligation belonging to exactly one configuration version.
++ *
++ * Append-only: there is no update or delete path. A new configuration creates
++ * new obligations; existing ones are never reassigned to a different version.
++ *
++ * There is deliberately no status, due date, or payable-state column: state
++ * transitions and the trigger for becoming payable are unresolved Founder
++ * decisions (payments decision, sections C.3 and C.4).
++ */
++export interface PaymentObligationInternal {
++  id: PaymentObligationId;
++  paymentConfigVersionId: PaymentConfigVersionId;
++  projectId: ProjectId;
++  organizationId: OrganizationId;
++  /** 1-based position within the owning configuration version. */
++  orderIndex: number;
++  /** Exact Founder-supplied expected amount, as a decimal string. */
++  expectedAmount: string;
++  currency: string;
++  /**
++   * Opaque scope/milestone version reference for milestone-linked schedules.
++   * Null for other schedule structures. This is an identifier only — there is
++   * no milestone subsystem in this slice.
++   */
++  scopeOrMilestoneRef: string | null;
++  createdByPersonId: PersonId;
++  createdAt: number;
++}
++
+ /** One immutable Q1-A customer signature record. */
+ export interface AgreementSignatureInternal {
+   id: AgreementSignatureId;
+@@ -497,4 +580,8 @@ export type AuditEventType =
+   | "agreement.created"
+   | "agreement_version.created"
+   | "agreement_version.published"
+-  | "agreement.signed";
++  | "agreement.signed"
++  // Payment configuration. Metadata carries identifiers only — never amounts,
++  // currencies, or any other commercial content (payments decision, section B.6).
++  | "payment_config_version.created"
++  | "payment_obligation.created";
+diff --git a/website/lib/platform/payment-configurations.ts b/website/lib/platform/payment-configurations.ts
+new file mode 100644
+index 0000000..2d091ae
+--- /dev/null
++++ b/website/lib/platform/payment-configurations.ts
+@@ -0,0 +1,540 @@
++/**
++ * Founder-only payment configuration authoring.
++ *
++ * The provider-neutral slice from the approved payments decision (sections B.1,
++ * B.2, C.1–C.2, J.1, J.2): the Founder records a project's amount and currency,
++ * selects one of the three approved schedule structures, and issues the explicit
++ * set of payment obligations for one immutable configuration version bound to the
++ * exact current commercial baseline.
++ *
++ * Boundaries this module deliberately keeps:
++ *
++ * - **Founder capability only.** Every operation starts with
++ *   `requireFounderWithBootstrap`; organization ownership or administration is
++ *   never consulted and never implies this authority (section G.3).
++ * - **No amounts in audit metadata.** Audit rows carry identifiers and version
++ *   numbers only (section B.6); amounts, currencies, and scope references stay
++ *   in the protected payment records.
++ * - **No provider, no activation, no due dates, no obligation states.** Schedule
++ *   timing, state transitions, and the trigger for becoming payable are
++ *   unresolved Founder decisions (sections C.3, C.4, F.2) and are not modelled
++ *   here — an obligation row has no status and no due-date field at all.
++ * - **No invented breakdown.** The obligations arrive explicitly, in order,
++ *   with their exact amounts. Nothing derives a deposit percentage, an
++ *   installment count, or a hidden schedule from the chosen structure, and no
++ *   sum is reconciled against the project total: both would be new commercial
++ *   policy (J.1–J.2 deliberately leave the breakdown to explicit Founder input).
++ * - **One currency per configuration.** Every obligation uses the
++ *   configuration's own project currency. A mixed-currency obligation set is
++ *   rejected, never converted: no exchange rate, no rounding, and no
++ *   re-scaling of an exact decimal string (Founder decision recorded
++ *   2026-10-20).
++ *
++ * No customer route, view, or projection imports this module.
++ */
++
++import { requireFounderWithBootstrap } from "./authorization";
++import type { Clock } from "./clock";
++import {
++  isPaymentScheduleStructure,
++  type AgreementId,
++  type AgreementVersionId,
++  type AuditEventType,
++  type PaymentConfigVersionId,
++  type PaymentConfigVersionInternal,
++  type PaymentObligationId,
++  type PaymentObligationInternal,
++  type PaymentScheduleStructure,
++  type PersonId,
++  type ProjectId,
++  type ProjectInternal,
++  type ProposalId,
++  type ProposalVersionId,
++} from "./domain";
++import { NotFoundError, ValidationError } from "./errors";
++import type { PlatformStore } from "./ports";
++
++/**
++ * Technical input bounds. These are request-sanity limits in the spirit of the
++ * intake message limit — not commercial policy: none of them encodes how a
++ * schedule may be shaped, only how large a single field may be.
++ */
++const MAX_OBLIGATIONS = 100;
++const MAX_AMOUNT_LENGTH = 32;
++/** Wide enough for every ISO 4217 exponent (at most 4) plus margin — never a claim that any currency uses a fixed number of decimals. */
++const MAX_AMOUNT_DECIMALS = 6;
++const MAX_SCOPE_REFERENCE_LENGTH = 128;
++
++/**
++ * Exact decimal text: an unsigned integer part with an optional fractional
++ * part, no exponent, no sign, no separators. `1500` and `1500.50` and
++ * `120.750` are all valid; `1500.`, `.5`, `1,500`, `-10`, `1e3`, and `007`
++ * are not. The value is kept as the exact string the Founder entered (trimmed
++ * only) — it is never parsed into a number, so no floating-point arithmetic
++ * touches it and no decimal-place assumption is applied.
++ */
++const AMOUNT_PATTERN = /^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/;
++/** Three letters, matched case-insensitively and stored uppercase. A code is accepted by shape, never by membership in an invented currency list (J.1 leaves currency to the Founder). */
++const CURRENCY_PATTERN = /^[A-Za-z]{3}$/;
++const CURRENCY_LENGTH = 3;
++
++/** The only fields an obligation may carry. Anything else is rejected, not ignored. */
++const OBLIGATION_FIELDS = new Set([
++  "expectedAmount",
++  "currency",
++  "scopeOrMilestoneRef",
++]);
++
++export interface PaymentConfigurationServiceOptions {
++  store: PlatformStore;
++  clock: Clock;
++  newId: () => string;
++  founderEmailHashes: readonly string[];
++}
++
++export interface CreatePaymentConfigVersionInput {
++  personId: string;
++  projectId: ProjectId;
++  scheduleStructure: unknown;
++  totalAmount: unknown;
++  currency: unknown;
++  /** Ordered list of `{ expectedAmount, currency, scopeOrMilestoneRef? }`. Ordering is positional; no order field is read from the records. */
++  obligations: unknown;
++  /**
++   * The accepted proposal version the caller is binding to. The server derives
++   * the actual current baseline inside the write transaction and rejects a
++   * mismatch, following the same stale-version-binding rule proposal publishing
++   * and agreement signing already use — a stale baseline is refused rather than
++   * silently rebound in either direction.
++   */
++  expectedProposalVersionId: unknown;
++  expectedAgreementVersionId: unknown;
++}
++
++export interface PaymentObligationView {
++  id: PaymentObligationId;
++  /** 1-based position, from the Founder's explicit ordering. */
++  orderIndex: number;
++  expectedAmount: string;
++  currency: string;
++  scopeOrMilestoneRef: string | null;
++  createdByPersonId: PersonId;
++  createdAt: number;
++}
++
++export interface PaymentConfigVersionView {
++  id: PaymentConfigVersionId;
++  /** Per-project, 1-based, gapless. */
++  versionNumber: number;
++  scheduleStructure: PaymentScheduleStructure;
++  /** Exact Founder-entered decimal string, unmodified beyond trimming. */
++  totalAmount: string;
++  currency: string;
++  proposalId: ProposalId;
++  proposalVersionId: ProposalVersionId;
++  proposalVersionNumber: number;
++  agreementId: AgreementId;
++  agreementVersionId: AgreementVersionId;
++  agreementVersionNumber: number;
++  createdByPersonId: PersonId;
++  createdAt: number;
++  /**
++   * Derived at read time and never stored: true once the current accepted
++   * proposal version or the current applicable signed agreement version no
++   * longer matches what this version references (payments decision, section
++   * B.1). The stored references are not rewritten when this flips — the version
++   * becomes stale, not current again.
++   */
++  stale: boolean;
++  obligations: PaymentObligationView[];
++}
++
++export interface InternalPaymentConfigView {
++  projectReference: string;
++  /** Oldest first, so the latest configuration is last. */
++  versions: PaymentConfigVersionView[];
++}
++
++function parseScheduleStructure(raw: unknown): PaymentScheduleStructure {
++  if (!isPaymentScheduleStructure(raw)) {
++    throw new ValidationError(
++      "The schedule structure must be one of the three supported structures: full_upfront, deposit_plus_later, milestone_linked.",
++    );
++  }
++  return raw;
++}
++
++/**
++ * Validates and normalizes one monetary input.
++ *
++ * Accepts only decimal text, trims surrounding whitespace, and returns the
++ * digits exactly as entered. Rejecting a JavaScript number outright is
++ * deliberate: a number has already passed through binary floating point, so it
++ * cannot promise the exact value the Founder meant to record. Zero is rejected
++ * as well — an obligation or project total with no nonzero digit is not a
++ * monetary requirement, and letting it through would let a future satisfaction
++ * check pass vacuously.
++ */
++function normalizeAmount(raw: unknown, label: string): string {
++  if (typeof raw !== "string") {
++    throw new ValidationError(
++      `${label} must be an amount given as text, for example 1500 or 1500.50.`,
++    );
++  }
++  const value = raw.trim();
++  if (value.length > MAX_AMOUNT_LENGTH || !AMOUNT_PATTERN.test(value)) {
++    throw new ValidationError(
++      `${label} must be a plain decimal amount such as 1500 or 1500.50, with no commas, signs, or exponent.`,
++    );
++  }
++  if (!/[1-9]/.test(value)) {
++    throw new ValidationError(`${label} must be greater than zero.`);
++  }
++  return value;
++}
++
++function normalizeCurrency(raw: unknown, label: string): string {
++  if (typeof raw !== "string") {
++    throw new ValidationError(`${label} must be a three-letter currency code such as USD.`);
++  }
++  const value = raw.trim().toUpperCase();
++  if (value.length !== CURRENCY_LENGTH || !CURRENCY_PATTERN.test(value)) {
++    throw new ValidationError(`${label} must be a three-letter currency code such as USD.`);
++  }
++  return value;
++}
++
++interface NormalizedObligation {
++  expectedAmount: string;
++  currency: string;
++  scopeOrMilestoneRef: string | null;
++}
++
++/**
++ * Validates the explicit obligation list.
++ *
++ * The list arrives in the Founder's chosen order and that order is what is
++ * stored; nothing here derives positions, counts, or amounts from the schedule
++ * structure. The structure only decides one thing: a milestone-linked
++ * obligation must carry its opaque scope/milestone reference (that is what the
++ * structure means, J.2), and for the other two structures a reference is
++ * rejected rather than silently ignored because nothing would ever read it.
++ *
++ * It also enforces the Founder's single-currency rule (recorded 2026-10-20): one
++ * payment configuration uses exactly one currency, so every obligation must
++ * carry the configuration's own currency. Both sides are already normalized by
++ * `normalizeCurrency`, so the comparison is a plain string equality on the
++ * stored uppercase form — case never decides it, and nothing is converted,
++ * rounded, or re-scaled to make two currencies comparable. A mismatch is a
++ * rejection, not a conversion, and it is raised here — during input
++ * normalization, before the write transaction is opened.
++ */
++function normalizeObligations(
++  raw: unknown,
++  scheduleStructure: PaymentScheduleStructure,
++  configurationCurrency: string,
++): NormalizedObligation[] {
++  if (!Array.isArray(raw)) {
++    throw new ValidationError("The obligations must be supplied as a list.");
++  }
++  if (raw.length < 1) {
++    throw new ValidationError("A payment configuration needs at least one obligation.");
++  }
++  if (raw.length > MAX_OBLIGATIONS) {
++    throw new ValidationError(
++      `A payment configuration cannot carry more than ${MAX_OBLIGATIONS} obligations.`,
++    );
++  }
++
++  const expectsScopeReference = scheduleStructure === "milestone_linked";
++  return raw.map((entry, index): NormalizedObligation => {
++    const position = index + 1;
++    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
++      throw new ValidationError(`Obligation ${position} must be an object.`);
++    }
++    const record = entry as Record<string, unknown>;
++    for (const key of Object.keys(record)) {
++      if (!OBLIGATION_FIELDS.has(key)) {
++        throw new ValidationError(
++          `Obligation ${position} has an unsupported field: ${key}.`,
++        );
++      }
++    }
++
++    const expectedAmount = normalizeAmount(record.expectedAmount, `Obligation ${position}'s amount`);
++    const currency = normalizeCurrency(record.currency, `Obligation ${position}'s currency`);
++    if (currency !== configurationCurrency) {
++      throw new ValidationError(
++        `Obligation ${position}'s currency (${currency}) must match the project currency (${configurationCurrency}). One payment configuration uses exactly one currency.`,
++      );
++    }
++
++    const rawScopeReference = record.scopeOrMilestoneRef;
++    let scopeOrMilestoneRef: string | null = null;
++    if (expectsScopeReference) {
++      if (typeof rawScopeReference !== "string" || rawScopeReference.trim() === "") {
++        throw new ValidationError(
++          `Obligation ${position} must reference the scope or milestone version it belongs to.`,
++        );
++      }
++      scopeOrMilestoneRef = rawScopeReference.trim();
++      if (scopeOrMilestoneRef.length > MAX_SCOPE_REFERENCE_LENGTH) {
++        throw new ValidationError(
++          `Obligation ${position}'s scope or milestone reference is too long.`,
++        );
++      }
++    } else if (rawScopeReference !== undefined && rawScopeReference !== null) {
++      throw new ValidationError(
++        `Obligation ${position} carries a scope or milestone reference, but only milestone-linked obligations can use one.`,
++      );
++    }
++
++    return { expectedAmount, currency, scopeOrMilestoneRef };
++  });
++}
++
++function parseBaselineReference(raw: unknown, label: string): string {
++  if (typeof raw !== "string" || raw.trim() === "") {
++    throw new ValidationError(`The ${label} reference is missing.`);
++  }
++  return raw.trim();
++}
++
++export class PaymentConfigurationService {
++  constructor(private readonly options: PaymentConfigurationServiceOptions) {}
++
++  /**
++   * Reads every configuration version and its obligations for one project.
++   *
++   * Founder-only, read-only, and scoped to the requested project: the version
++   * list comes from a project-scoped query and each obligation list from the
++   * owning version id, so one project's records can never surface under
++   * another's.
++   */
++  read(personId: string, projectId: ProjectId): InternalPaymentConfigView {
++    const project = this.requireFounderProject(personId, projectId);
++    const store = this.options.store;
++    const currentProposalVersionId =
++      store.findCurrentAcceptedProposalVersion(project.id)?.id ?? null;
++    const currentAgreementVersionId =
++      store.findCurrentSignedAgreementVersion(project.id)?.id ?? null;
++
++    const versions = store.listPaymentConfigVersions(project.id).map((version) => ({
++      id: version.id,
++      versionNumber: version.versionNumber,
++      scheduleStructure: version.scheduleStructure,
++      totalAmount: version.totalAmount,
++      currency: version.currency,
++      proposalId: version.proposalId,
++      proposalVersionId: version.proposalVersionId,
++      proposalVersionNumber: version.proposalVersionNumber,
++      agreementId: version.agreementId,
++      agreementVersionId: version.agreementVersionId,
++      agreementVersionNumber: version.agreementVersionNumber,
++      createdByPersonId: version.createdByPersonId,
++      createdAt: version.createdAt,
++      stale:
++        version.proposalVersionId !== currentProposalVersionId ||
++        version.agreementVersionId !== currentAgreementVersionId,
++      obligations: store.listPaymentObligationsByVersion(version.id).map(toObligationView),
++    }));
++
++    return { projectReference: project.reference, versions };
++  }
++
++  /**
++   * Creates the next immutable configuration version for a project.
++   *
++   * Validation order matters and is deliberate:
++   *
++   * 1. **Founder capability, then project resolution** — authorization never
++   *    depends on route visibility, organization membership, or a
++   *    caller-supplied id (section G.2).
++   * 2. **All commercial input validation** happens before the transaction
++   *    opens, so malformed amounts, currencies, schedules, or obligations —
++   *    and any obligation whose currency differs from the configuration's
++   *    own currency — are rejected before persistence is even attempted.
++   * 3. **Baseline validation runs inside the write transaction** (section B.1):
++   *    an accepted proposal must exist, a signed agreement applicable to that
++   *    exact proposal must exist, and the caller's expected references must
++   *    equal those current versions. A published-but-unsigned agreement is not
++   *    signed evidence, and a signed agreement whose proposal baseline has been
++   *    superseded is not applicable — both are rejected rather than bound.
++   * 4. **Configuration, obligations, and audit rows are written in that same
++   *    transaction**, so they commit together or leave nothing behind (G.5).
++   *
++   * A change to the configuration is always a *new* version: previous versions
++   * and their issued obligations are never rewritten, reassigned, or deleted.
++   */
++  createVersion(input: CreatePaymentConfigVersionInput): InternalPaymentConfigView {
++    const project = this.requireFounderProject(input.personId, input.projectId);
++
++    const scheduleStructure = parseScheduleStructure(input.scheduleStructure);
++    const totalAmount = normalizeAmount(input.totalAmount, "The project amount");
++    const currency = normalizeCurrency(input.currency, "The project currency");
++    const obligations = normalizeObligations(input.obligations, scheduleStructure, currency);
++    const expectedProposalVersionId = parseBaselineReference(
++      input.expectedProposalVersionId,
++      "accepted proposal version",
++    );
++    const expectedAgreementVersionId = parseBaselineReference(
++      input.expectedAgreementVersionId,
++      "signed agreement version",
++    );
++    const now = this.options.clock.now();
++
++    this.options.store.transaction((store) => {
++      const currentProposal = store.findCurrentAcceptedProposalVersion(project.id);
++      if (!currentProposal) {
++        throw new ValidationError(
++          "An accepted proposal is required before a payment configuration can be created.",
++        );
++      }
++
++      const currentAgreement = store.findCurrentSignedAgreementVersion(project.id);
++      if (!currentAgreement) {
++        const published = store.findCurrentAgreementVersion(project.id);
++        if (published && published.status === "published") {
++          throw new ValidationError(
++            "The current agreement version is published but not signed. A signed agreement is required before a payment configuration can be created.",
++          );
++        }
++        throw new ValidationError(
++          "A signed agreement applicable to the accepted proposal is required before a payment configuration can be created.",
++        );
++      }
++
++      if (
++        expectedProposalVersionId !== currentProposal.id ||
++        expectedAgreementVersionId !== currentAgreement.id
++      ) {
++        throw new ValidationError(
++          "The proposal or agreement baseline changed after this configuration was prepared. Nothing was saved; reload the current baseline and try again.",
++        );
++      }
++
++      // Inside the transaction, so two concurrent creations cannot both observe
++      // the same highest version number; the UNIQUE (project_id, version_number)
++      // constraint remains the final integrity guard.
++      const existing = store.listPaymentConfigVersions(project.id);
++      const versionNumber =
++        existing.length > 0 ? existing[existing.length - 1]!.versionNumber + 1 : 1;
++
++      const version = store.createPaymentConfigVersion({
++        id: this.options.newId(),
++        projectId: project.id,
++        organizationId: project.organizationId,
++        versionNumber,
++        scheduleStructure,
++        totalAmount,
++        currency,
++        proposalId: currentProposal.proposalId,
++        proposalVersionId: currentProposal.id,
++        proposalVersionNumber: currentProposal.versionNumber,
++        agreementId: currentAgreement.agreementId,
++        agreementVersionId: currentAgreement.id,
++        agreementVersionNumber: currentAgreement.versionNumber,
++        createdByPersonId: input.personId,
++        createdAt: now,
++      });
++
++      this.recordEvent(store, {
++        type: "payment_config_version.created",
++        personId: input.personId,
++        project,
++        occurredAt: now,
++        metadata: {
++          paymentConfigVersionId: version.id,
++          versionNumber: version.versionNumber,
++          proposalVersionId: version.proposalVersionId,
++          agreementVersionId: version.agreementVersionId,
++        },
++      });
++
++      obligations.forEach((obligation, index) => {
++        const created = store.createPaymentObligation({
++          id: this.options.newId(),
++          paymentConfigVersionId: version.id,
++          projectId: project.id,
++          organizationId: project.organizationId,
++          orderIndex: index + 1,
++          expectedAmount: obligation.expectedAmount,
++          currency: obligation.currency,
++          scopeOrMilestoneRef: obligation.scopeOrMilestoneRef,
++          createdByPersonId: input.personId,
++          createdAt: now,
++        });
++        this.recordEvent(store, {
++          type: "payment_obligation.created",
++          personId: input.personId,
++          project,
++          occurredAt: now,
++          metadata: {
++            paymentConfigVersionId: version.id,
++            obligationId: created.id,
++          },
++        });
++      });
++    });
++
++    return this.read(input.personId, project.id);
++  }
++
++  /**
++   * Founder capability first, on every call, then project resolution.
++   *
++   * The capability check is the same shared bootstrap the other internal
++   * services use, so membership in a customer organization — owner or admin —
++   * can never imply payment authority.
++   */
++  private requireFounderProject(personId: string, projectId: ProjectId): ProjectInternal {
++    requireFounderWithBootstrap(
++      this.options.store,
++      this.options.clock,
++      this.options.founderEmailHashes,
++      personId,
++    );
++    if (typeof projectId !== "string" || projectId.trim() === "") {
++      throw new NotFoundError("That project does not exist.");
++    }
++    const project = this.options.store.findProject(projectId.trim());
++    if (!project) {
++      throw new NotFoundError("That project does not exist.");
++    }
++    return project;
++  }
++
++  /** Identifier-only audit append; the caller has already opened the transaction. */
++  private recordEvent(
++    store: PlatformStore,
++    input: {
++      type: AuditEventType;
++      personId: string;
++      project: ProjectInternal;
++      occurredAt: number;
++      metadata: Record<string, unknown>;
++    },
++  ): void {
++    store.appendAuditEvent({
++      id: this.options.newId(),
++      organizationId: input.project.organizationId,
++      personId: input.personId,
++      projectId: input.project.id,
++      type: input.type,
++      occurredAt: input.occurredAt,
++      metadata: input.metadata,
++    });
++  }
++}
++
++function toObligationView(obligation: PaymentObligationInternal): PaymentObligationView {
++  return {
++    id: obligation.id,
++    orderIndex: obligation.orderIndex,
++    expectedAmount: obligation.expectedAmount,
++    currency: obligation.currency,
++    scopeOrMilestoneRef: obligation.scopeOrMilestoneRef,
++    createdByPersonId: obligation.createdByPersonId,
++    createdAt: obligation.createdAt,
++  };
++}
+diff --git a/website/lib/platform/ports.ts b/website/lib/platform/ports.ts
+index 6fd973c..95fa8b9 100644
+--- a/website/lib/platform/ports.ts
++++ b/website/lib/platform/ports.ts
+@@ -31,6 +31,10 @@ import type {
+   ProposalResponseInternal,
+   ProposalVersionId,
+   ProposalVersionInternal,
++  PaymentConfigVersionId,
++  PaymentConfigVersionInternal,
++  PaymentObligationId,
++  PaymentObligationInternal,
+   Session,
+ } from "./domain";
+ 
+@@ -332,6 +336,67 @@ export interface PlatformStore {
+   findAgreementSignatureByKey(actionKey: string): AgreementSignatureInternal | null;
+   listAgreementSignaturesByVersion(agreementVersionId: string): AgreementSignatureInternal[];
+ 
++  // --- payment configuration and obligations -------------------------------
++  /**
++   * The exact current **signed** agreement version, or null when the current
++   * applicable agreement version is not signed.
++   *
++   * "Current applicable" uses the same rule as `findCurrentAgreementVersion`:
++   * the highest published-or-signed version whose proposal baseline is the
++   * current accepted proposal version. Only that version is then required to be
++   * signed.
++   *
++   * The distinction matters: if a newer applicable version has been published
++   * but not yet signed, the answer is null — there is no signed *current*
++   * version — rather than falling back to an older signed version that the
++   * newer one supersedes. A published-but-unsigned agreement is never signed
++   * evidence, so payment configuration binding must not silently bind to the
++   * superseded signature. Drafts never affect the answer: they are not
++   * applicable versions at all, so a draft cannot invalidate a valid signed
++   * baseline.
++   */
++  findCurrentSignedAgreementVersion(
++    projectId: ProjectId,
++  ): AgreementVersionInternal | null;
++  /**
++   * Payment configuration versions for one project, oldest first.
++   *
++   * Ordered by the per-project version number so "the latest configuration" is
++   * the last element, matching how proposal and agreement versions are listed.
++   * Project-scoped: one project's versions are never mixed with another's.
++   */
++  listPaymentConfigVersions(projectId: ProjectId): PaymentConfigVersionInternal[];
++  /**
++   * Appends one immutable configuration version. Insert only — the port
++   * deliberately exposes no update and no delete method, so a version written
++   * once can never be overwritten or rebound to different baseline references.
++   */
++  createPaymentConfigVersion(
++    input: PaymentConfigVersionInternal,
++  ): PaymentConfigVersionInternal;
++  /**
++   * Obligations belonging to one exact configuration version, in `orderIndex`
++   * order. Membership is the version reference itself, so this read cannot
++   * return another version's obligations.
++   */
++  listPaymentObligationsByVersion(
++    paymentConfigVersionId: PaymentConfigVersionId,
++  ): PaymentObligationInternal[];
++  /**
++   * Every obligation belonging to one project, ordered by owning version and
++   * position.
++   *
++   * Project-scoped on purpose: it is the read that lets a caller prove all of a
++   * project's obligations are its own — and that a rollback left none behind —
++   * without reaching across projects.
++   */
++  listPaymentObligationsByProject(projectId: ProjectId): PaymentObligationInternal[];
++  /**
++   * Appends one immutable payment obligation. Insert only, for the same
++   * append-only reason as the configuration version.
++   */
++  createPaymentObligation(input: PaymentObligationInternal): PaymentObligationInternal;
++
+   // --- project access ------------------------------------------------------
+   findProjectAccess(projectId: ProjectId, personId: string): ProjectAccess | null;
+   grantProjectAccess(access: ProjectAccess): ProjectAccess;
+diff --git a/website/lib/platform/sqlite-store.ts b/website/lib/platform/sqlite-store.ts
+index f364820..27e3b98 100644
+--- a/website/lib/platform/sqlite-store.ts
++++ b/website/lib/platform/sqlite-store.ts
+@@ -31,6 +31,10 @@ import {
+   type InternalQualificationState,
+   type Membership,
+   type Organization,
++  type PaymentConfigVersionId,
++  type PaymentConfigVersionInternal,
++  type PaymentObligationInternal,
++  type PaymentScheduleStructure,
+   type Person,
+   type PersonId,
+   type ProjectAccess,
+@@ -359,6 +363,73 @@ CREATE INDEX IF NOT EXISTS agreement_signatures_by_version
+ CREATE UNIQUE INDEX IF NOT EXISTS agreement_signatures_once
+   ON agreement_signatures (agreement_version_id);
+ 
++-- Payment configuration versions. Append-only: rows are created once and are
++-- never updated or deleted (payments decision, sections B.1 and B.5), so a
++-- baseline reference is immutable once written and a change to the configuration
++-- creates a new version rather than editing this one.
++--
++-- total_amount (and expected_amount on the obligations below) is stored as a
++-- TEXT decimal string rather than a number: no floating-point arithmetic ever
++-- touches it, the Founder-entered digits round-trip exactly, and nothing assumes
++-- a currency has exactly two decimal places. There is deliberately no due-date
++-- column and no obligation-status column: schedule timing and state transitions
++-- are unresolved Founder decisions (payments decision, sections C.3 and C.4).
++CREATE TABLE IF NOT EXISTS payment_config_versions (
++  id TEXT PRIMARY KEY,
++  project_id TEXT NOT NULL REFERENCES projects(id),
++  organization_id TEXT NOT NULL REFERENCES organizations(id),
++  -- Per-project, 1-based, gapless. UNIQUE makes overwriting an earlier version
++  -- number impossible at the database level, not merely discouraged in the service.
++  version_number INTEGER NOT NULL,
++  schedule_structure TEXT NOT NULL
++    CHECK (schedule_structure IN ('full_upfront', 'deposit_plus_later', 'milestone_linked')),
++  total_amount TEXT NOT NULL
++    CHECK (length(total_amount) > 0 AND total_amount NOT GLOB '*[^0-9.]*'),
++  currency TEXT NOT NULL
++    CHECK (length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'),
++  -- The exact current accepted proposal version this configuration binds to.
++  proposal_id TEXT NOT NULL REFERENCES proposals(id),
++  proposal_version_id TEXT NOT NULL REFERENCES proposal_versions(id),
++  proposal_version_number INTEGER NOT NULL,
++  -- The exact current signed agreement version this configuration binds to.
++  agreement_id TEXT NOT NULL REFERENCES agreements(id),
++  agreement_version_id TEXT NOT NULL REFERENCES agreement_versions(id),
++  agreement_version_number INTEGER NOT NULL,
++  created_by_person_id TEXT NOT NULL REFERENCES people(id),
++  created_at INTEGER NOT NULL,
++  UNIQUE (project_id, version_number)
++);
++CREATE INDEX IF NOT EXISTS payment_config_versions_by_project
++  ON payment_config_versions (project_id, version_number);
++
++-- Obligations belonging to exactly one configuration version. Append-only for
++-- the same reason as the version above: previously issued obligations are never
++-- reassigned, mutated, or deleted when a new configuration version is created.
++-- Membership in a configuration version IS this reference, so ownership is
++-- unambiguous and a read scoped by it cannot cross versions.
++CREATE TABLE IF NOT EXISTS payment_obligations (
++  id TEXT PRIMARY KEY,
++  payment_config_version_id TEXT NOT NULL REFERENCES payment_config_versions(id),
++  project_id TEXT NOT NULL REFERENCES projects(id),
++  organization_id TEXT NOT NULL REFERENCES organizations(id),
++  -- 1-based position from the Founder's explicit ordering. UNIQUE makes a
++  -- duplicate or missing position within a version impossible.
++  order_index INTEGER NOT NULL CHECK (order_index >= 1),
++  expected_amount TEXT NOT NULL
++    CHECK (length(expected_amount) > 0 AND expected_amount NOT GLOB '*[^0-9.]*'),
++  currency TEXT NOT NULL
++    CHECK (length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'),
++  -- Opaque scope/milestone version reference for milestone-linked schedules;
++  -- NULL for the other two structures. There is deliberately no milestone
++  -- subsystem behind it in this slice (payments decision, section C.2).
++  scope_or_milestone_ref TEXT,
++  created_by_person_id TEXT NOT NULL REFERENCES people(id),
++  created_at INTEGER NOT NULL,
++  UNIQUE (payment_config_version_id, order_index)
++);
++CREATE INDEX IF NOT EXISTS payment_obligations_by_version
++  ON payment_obligations (payment_config_version_id, order_index);
++
+ CREATE TABLE IF NOT EXISTS rate_limits (
+   bucket TEXT PRIMARY KEY,
+   window_start INTEGER NOT NULL,
+@@ -1474,6 +1545,164 @@ export class SqlitePlatformStore implements PlatformStore {
+     ).map((row) => this.toAgreementSignature(row));
+   }
+ 
++  // --- payment configuration and obligations -------------------------------
++
++  private toPaymentConfigVersion(row: Row): PaymentConfigVersionInternal {
++    return {
++      id: text(row, "id"),
++      projectId: text(row, "project_id"),
++      organizationId: text(row, "organization_id"),
++      versionNumber: int(row, "version_number"),
++      scheduleStructure: text(row, "schedule_structure") as PaymentScheduleStructure,
++      totalAmount: text(row, "total_amount"),
++      currency: text(row, "currency"),
++      proposalId: text(row, "proposal_id"),
++      proposalVersionId: text(row, "proposal_version_id"),
++      proposalVersionNumber: int(row, "proposal_version_number"),
++      agreementId: text(row, "agreement_id"),
++      agreementVersionId: text(row, "agreement_version_id"),
++      agreementVersionNumber: int(row, "agreement_version_number"),
++      createdByPersonId: text(row, "created_by_person_id"),
++      createdAt: int(row, "created_at"),
++    };
++  }
++
++  private toPaymentObligation(row: Row): PaymentObligationInternal {
++    return {
++      id: text(row, "id"),
++      paymentConfigVersionId: text(row, "payment_config_version_id"),
++      projectId: text(row, "project_id"),
++      organizationId: text(row, "organization_id"),
++      orderIndex: int(row, "order_index"),
++      expectedAmount: text(row, "expected_amount"),
++      currency: text(row, "currency"),
++      scopeOrMilestoneRef: nullableText(row, "scope_or_milestone_ref"),
++      createdByPersonId: text(row, "created_by_person_id"),
++      createdAt: int(row, "created_at"),
++    };
++  }
++
++  findCurrentSignedAgreementVersion(projectId: ProjectId): AgreementVersionInternal | null {
++    // Resolves the current applicable version with the same rule as
++    // findCurrentAgreementVersion (highest published-or-signed version whose
++    // proposal baseline is the current accepted proposal), then requires *that*
++    // version to be signed.
++    //
++    // The order matters: filtering to signed versions inside the candidate set
++    // would fall back to an older signed version whenever a newer applicable
++    // version has been published but not yet signed, even though the newer
++    // version is the current applicable one. Resolving applicability first and
++    // checking signed status in the outer query returns null in that case —
++    // there is no signed current applicable version, only a superseded one.
++    //
++    // Drafts are excluded from candidacy by the subquery's status filter, so an
++    // unpublished draft cannot invalidate a previously valid signed baseline.
++    const row = this.get(
++      "SELECT current_version.* FROM (" +
++        "SELECT av.* FROM agreement_versions av " +
++        "JOIN agreements a ON a.id = av.agreement_id " +
++        "WHERE a.project_id = ? AND av.status IN ('published', 'signed') " +
++        "AND av.proposal_version_id = (" +
++        "SELECT pv.id FROM proposal_versions pv " +
++        "JOIN proposal_responses pr ON pr.proposal_version_id = pv.id AND pr.action = 'accepted' " +
++        "JOIN proposals p ON p.id = pv.proposal_id " +
++        "WHERE p.project_id = ? ORDER BY pv.version_number DESC LIMIT 1" +
++        ") ORDER BY av.version_number DESC LIMIT 1" +
++        ") AS current_version WHERE current_version.status = 'signed'",
++      projectId,
++      projectId,
++    );
++    return row ? this.toAgreementVersion(row) : null;
++  }
++
++  listPaymentConfigVersions(projectId: ProjectId): PaymentConfigVersionInternal[] {
++    return this.all(
++      "SELECT * FROM payment_config_versions WHERE project_id = ? ORDER BY version_number ASC",
++      projectId,
++    ).map((row) => this.toPaymentConfigVersion(row));
++  }
++
++  createPaymentConfigVersion(
++    input: PaymentConfigVersionInternal,
++  ): PaymentConfigVersionInternal {
++    this.run(
++      `INSERT INTO payment_config_versions
++         (id, project_id, organization_id, version_number, schedule_structure,
++          total_amount, currency, proposal_id, proposal_version_id, proposal_version_number,
++          agreement_id, agreement_version_id, agreement_version_number,
++          created_by_person_id, created_at)
++       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
++      input.id,
++      input.projectId,
++      input.organizationId,
++      input.versionNumber,
++      input.scheduleStructure,
++      input.totalAmount,
++      input.currency,
++      input.proposalId,
++      input.proposalVersionId,
++      input.proposalVersionNumber,
++      input.agreementId,
++      input.agreementVersionId,
++      input.agreementVersionNumber,
++      input.createdByPersonId,
++      input.createdAt,
++    );
++    const stored = this.get(
++      "SELECT * FROM payment_config_versions WHERE id = ?",
++      input.id,
++    );
++    if (!stored) {
++      throw new Error("Payment configuration version was not readable immediately after creation.");
++    }
++    return this.toPaymentConfigVersion(stored);
++  }
++
++  listPaymentObligationsByVersion(
++    paymentConfigVersionId: PaymentConfigVersionId,
++  ): PaymentObligationInternal[] {
++    return this.all(
++      "SELECT * FROM payment_obligations WHERE payment_config_version_id = ? " +
++        "ORDER BY order_index ASC, id ASC",
++      paymentConfigVersionId,
++    ).map((row) => this.toPaymentObligation(row));
++  }
++
++  listPaymentObligationsByProject(projectId: ProjectId): PaymentObligationInternal[] {
++    return this.all(
++      "SELECT * FROM payment_obligations WHERE project_id = ? " +
++        "ORDER BY payment_config_version_id ASC, order_index ASC, id ASC",
++      projectId,
++    ).map((row) => this.toPaymentObligation(row));
++  }
++
++  createPaymentObligation(input: PaymentObligationInternal): PaymentObligationInternal {
++    this.run(
++      `INSERT INTO payment_obligations
++         (id, payment_config_version_id, project_id, organization_id, order_index,
++          expected_amount, currency, scope_or_milestone_ref, created_by_person_id, created_at)
++       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
++      input.id,
++      input.paymentConfigVersionId,
++      input.projectId,
++      input.organizationId,
++      input.orderIndex,
++      input.expectedAmount,
++      input.currency,
++      input.scopeOrMilestoneRef,
++      input.createdByPersonId,
++      input.createdAt,
++    );
++    const stored = this.get(
++      "SELECT * FROM payment_obligations WHERE id = ?",
++      input.id,
++    );
++    if (!stored) {
++      throw new Error("Payment obligation was not readable immediately after creation.");
++    }
++    return this.toPaymentObligation(stored);
++  }
++
+   // --- internal capabilities ------------------------------------------------
+ 
+   private toInternalCapability(row: Row): InternalCapabilityGrant {
+diff --git a/website/tests/payment-configurations.test.ts b/website/tests/payment-configurations.test.ts
+new file mode 100644
+index 0000000..66069ea
+--- /dev/null
++++ b/website/tests/payment-configurations.test.ts
+@@ -0,0 +1,1288 @@
++/**
++ * Payment configuration and obligations.
++ *
++ * Exercises the provider-neutral payment configuration slice from the approved
++ * payments decision (docs/decisions/2026-10-12-payments-project-activation.md,
++ * sections B.1, B.2, C.1–C.2, G, I.1, J.1, J.2) against the real services, the
++ * real SQLite adapter, and the real signing flow. All identities, amounts, and
++ * obligations here are synthetic. No provider is involved, no payment is
++ * attempted, and nothing customer-facing is read or written.
++ */
++
++import assert from "node:assert/strict";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { describe, it } from "node:test";
++
++import { customerStageFor } from "../lib/platform/views";
++import { isPlatformError } from "../lib/platform/errors";
++import type { AuditEvent, PaymentObligationInternal } from "../lib/platform/domain";
++import { generateActionKey } from "../lib/platform/secrets";
++import { SqlitePlatformStore } from "../lib/platform/sqlite-store";
++import {
++  MEMBER_EMAIL,
++  OTHER_EMAIL,
++  createTestPlatform,
++  signIn,
++  type TestPlatform,
++} from "./support/harness";
++import {
++  FOUNDER_HASH,
++  createProposalHarness,
++  ownerWithProject,
++  publishFirstVersion,
++  publishNextVersion,
++  publishedOwner,
++  type Owner,
++} from "./support/proposals";
++
++const agreementContent = "Additional terms for this synthetic agreement.";
++
++// --- fixtures ---------------------------------------------------------------
++
++function acceptCurrentProposal(harness: TestPlatform, owner: Owner): void {
++  const proposal = harness.platform.store.findCurrentPublishedProposalVersion(owner.projectId);
++  assert.ok(proposal);
++  harness.platform.customerProposalResponses.submit({
++    personId: owner.personId,
++    projectId: owner.projectId,
++    action: "accepted",
++    versionNumber: proposal.versionNumber,
++    message: null,
++    actionKey: generateActionKey(),
++  });
++}
++
++function createAgreementVersion(
++  harness: TestPlatform,
++  actorPersonId: string,
++  projectId: string,
++  versionNumber: number,
++): void {
++  if (versionNumber === 1) {
++    harness.platform.agreements.createAgreement({
++      personId: actorPersonId,
++      projectId,
++      additionalTerms: agreementContent,
++    });
++  } else {
++    harness.platform.agreements.createVersion({
++      personId: actorPersonId,
++      projectId,
++      additionalTerms: agreementContent,
++    });
++  }
++  harness.platform.agreements.publishVersion({
++    personId: actorPersonId,
++    projectId,
++    versionNumber,
++  });
++}
++
++/**
++ * An owner whose project has completed the full commercial baseline: a published
++ * proposal, accepted by the customer, and an agreement version 1 signed by that
++ * same customer. This is the only baseline a payment configuration may bind to.
++ */
++async function ownerWithSignedBaseline(harness: TestPlatform): Promise<Owner> {
++  const owner = await publishedOwner(harness);
++  acceptCurrentProposal(harness, owner);
++  createAgreementVersion(harness, owner.personId, owner.projectId, 1);
++  harness.platform.customerAgreements.sign({
++    personId: owner.personId,
++    projectId: owner.projectId,
++    versionNumber: 1,
++    actionKey: generateActionKey(),
++  });
++  return owner;
++}
++
++/** Advances the baseline through a second proposal version, acceptance, and signature. */
++function advanceBaseline(harness: TestPlatform, owner: Owner): void {
++  publishNextVersion(harness, owner, 2);
++  acceptCurrentProposal(harness, owner);
++  createAgreementVersion(harness, owner.personId, owner.projectId, 2);
++  harness.platform.customerAgreements.sign({
++    personId: owner.personId,
++    projectId: owner.projectId,
++    versionNumber: 2,
++    actionKey: generateActionKey(),
++  });
++}
++
++function baselineRefs(harness: TestPlatform, owner: Owner) {
++  const proposal = harness.platform.store.findCurrentAcceptedProposalVersion(owner.projectId);
++  const agreement = harness.platform.store.findCurrentSignedAgreementVersion(owner.projectId);
++  assert.ok(proposal);
++  assert.ok(agreement);
++  return { proposalVersionId: proposal.id, agreementVersionId: agreement.id };
++}
++
++/**
++ * A full-upfront configuration input. Without baseline references it carries
++ * placeholder expected ids — safe for negative tests, whose rejections happen
++ * during baseline validation before the references are ever compared.
++ */
++function configInput(owner: Owner, refs?: { proposalVersionId: string; agreementVersionId: string }) {
++  return {
++    personId: owner.personId,
++    projectId: owner.projectId,
++    scheduleStructure: "full_upfront",
++    totalAmount: "1500.00",
++    currency: "usd",
++    obligations: [{ expectedAmount: "1500.00", currency: "usd" }],
++    expectedProposalVersionId: refs?.proposalVersionId ?? "expected-proposal-version",
++    expectedAgreementVersionId: refs?.agreementVersionId ?? "expected-agreement-version",
++  };
++}
++
++/** Submits a configuration against the project's real current baseline. */
++function createConfig(
++  harness: TestPlatform,
++  owner: Owner,
++  overrides: Record<string, unknown> = {},
++) {
++  return harness.platform.paymentConfigurations.createVersion({
++    ...configInput(owner, baselineRefs(harness, owner)),
++    ...overrides,
++  });
++}
++
++/** Submits an already-built input, for negative tests with an incomplete baseline. */
++function createVersionRaw(
++  harness: TestPlatform,
++  input: ReturnType<typeof configInput> & Record<string, unknown>,
++) {
++  return harness.platform.paymentConfigurations.createVersion(input);
++}
++
++function expectRejected(action: () => unknown, code: string): void {
++  assert.throws(action, (error: unknown) => isPlatformError(error) && error.code === code);
++}
++
++function expectRejectedWithMessage(action: () => unknown, pattern: RegExp): void {
++  assert.throws(
++    action,
++    (error: unknown) =>
++      isPlatformError(error) && error.code === "invalid_input" && pattern.test(error.message),
++  );
++}
++
++function paymentAuditEvents(harness: TestPlatform, projectId: string): AuditEvent[] {
++  return harness.platform.store
++    .listAuditEventsForProject(projectId, 200)
++    .filter((event) => event.type.startsWith("payment_"));
++}
++
++/**
++ * Lifecycle columns this slice deliberately does not have: obligation states
++ * are candidates, and due timing is unresolved (payments decision, C.3–C.4).
++ */
++function assertNoLifecycleFields(record: Record<string, unknown>, label: string): void {
++  for (const forbidden of ["dueDate", "dueAt", "scheduledFor", "payableAt", "status", "state"]) {
++    assert.equal(forbidden in record, false, `${label} must not carry a ${forbidden} field`);
++  }
++}
++
++function storedVersion(harness: TestPlatform, owner: Owner, index: number) {
++  return harness.platform.store.listPaymentConfigVersions(owner.projectId)[index];
++}
++
++// --- suites -----------------------------------------------------------------
++
++describe("payment configuration and obligations", () => {
++  it("lets the Founder create and read a configuration version for a synthetic project", async () => {
++    const harness = await createProposalHarness();
++    const owner = await ownerWithSignedBaseline(harness);
++
++    const view = createConfig(harness, owner);
++
++    assert.equal(view.projectReference, owner.reference);
++    assert.equal(view.versions.length, 1);
++    const version = view.versions[0]!;
++    assert.equal(version.versionNumber, 1);
++    assert.equal(version.scheduleStructure, "full_upfront");
++    assert.equal(version.totalAmount, "1500.00");
++    assert.equal(version.currency, "USD");
++    assert.equal(version.stale, false);
++    assert.equal(version.createdByPersonId, owner.personId);
++    assert.equal(version.obligations.length, 1);
++    assert.equal(version.obligations[0]!.orderIndex, 1);
++    assert.equal(version.obligations[0]!.expectedAmount, "1500.00");
++    assert.equal(version.obligations[0]!.currency, "USD");
++    assert.equal(version.obligations[0]!.scopeOrMilestoneRef, null);
++    assertNoLifecycleFields(version as unknown as Record<string, unknown>, "configuration version");
++    assertNoLifecycleFields(
++      version.obligations[0]! as unknown as Record<string, unknown>,
++      "obligation",
++    );
++
++    // A separate read returns the same durable state.
++    const reread = harness.platform.paymentConfigurations.read(owner.personId, owner.projectId);
++    assert.deepEqual(reread, view);
++  });
++
++  it("captures the exact accepted-proposal and signed-agreement baseline references", async () => {
++    const harness = await createProposalHarness();
++    const owner = await ownerWithSignedBaseline(harness);
++
++    const view = createConfig(harness, owner);
++    const version = view.versions[0]!;
++
++    const proposal = harness.platform.store.findCurrentAcceptedProposalVersion(owner.projectId);
++    const agreement = harness.platform.store.findCurrentSignedAgreementVersion(owner.projectId);
++    assert.ok(proposal);
++    assert.ok(agreement);
++    assert.equal(version.proposalId, proposal.proposalId);
++    assert.equal(version.proposalVersionId, proposal.id);
++    assert.equal(version.proposalVersionNumber, proposal.versionNumber);
++    assert.equal(version.agreementId, agreement.agreementId);
++    assert.equal(version.agreementVersionId, agreement.id);
++    assert.equal(version.agreementVersionNumber, agreement.versionNumber);
++
++    const stored = storedVersion(harness, owner, 0)!;
++    assert.equal(stored.proposalVersionId, proposal.id);
++    assert.equal(stored.agreementVersionId, agreement.id);
++  });
++
++  it("rejects a non-Founder even when they own or administer an organization", async () => {
++    const harness = await createProposalHarness();
++    const owner = await ownerWithSignedBaseline(harness);
++
++    // The owner of a different organization.
++    const otherOwner = await ownerWithProject(harness, OTHER_EMAIL, "Second Synthetic Org");
++    // An administrator inside the Founder's own organization.
++    const adminSession = await signIn(harness, MEMBER_EMAIL);
++    harness.platform.store.createMembership({
++      id: `membership-${adminSession.person.id}`,
++      personId: adminSession.person.id,
++      organizationId: owner.organizationId,
++      role: "admin",
++      now: harness.clock.now(),
++    });
++
++    const attempts = [
++      { personId: otherOwner.personId, projectId: otherOwner.projectId },
++      { personId: otherOwner.personId, projectId: owner.projectId },
++      { personId: adminSession.person.id, projectId: owner.projectId },
++    ];
++    for (const attempt of attempts) {
++      expectRejected(
++        () =>
++          harness.platform.paymentConfigurations.createVersion({
++            ...configInput(owner, baselineRefs(harness, owner)),
++            ...attempt,
++          }),
++        "forbidden",
++      );
++      expectRejected(
++        () => harness.platform.paymentConfigurations.read(attempt.personId, attempt.projectId),
++        "forbidden",
++      );
++    }
++
++    // Nothing was written by any rejected actor.
++    assert.equal(harness.platform.store.listPaymentConfigVersions(owner.projectId).length, 0);
++    assert.equal(harness.platform.store.listPaymentObligationsByProject(owner.projectId).length, 0);
++  });
++
++  it("rejects a missing or nonexistent project", async () => {
++    const harness = await createProposalHarness();
++    const owner = await ownerWithSignedBaseline(harness);
++    const service = harness.platform.paymentConfigurations;
++
++    for (const projectId of ["", "   ", "does-not-exist", undefined as unknown as string]) {
++      expectRejected(() => service.read(owner.personId, projectId), "not_found");
++      expectRejected(
++        () =>
++          service.createVersion({
++            ...configInput(owner, baselineRefs(harness, owner)),
++            projectId,
++          }),
++        "not_found",
++      );
++    }
++  });
++
++  it("refuses creation while no accepted proposal exists", async () => {
++    const harness = await createProposalHarness();
++    const owner = await ownerWithProject(harness);
++
++    // No proposal at all.
++    expectRejectedWithMessage(
++      () => createVersionRaw(harness, configInput(owner)),
++      /accepted proposal is required/i,
++    );
++
++    // A published but unaccepted proposal is still not an accepted proposal.
++    publishFirstVersion(harness, owner);
++    expectRejectedWithMessage(
++      () => createVersionRaw(harness, configInput(owner)),
++      /accepted proposal is required/i,
++    );
++
++    acceptCurrentProposal(harness, owner);
++    assert.equal(harness.platform.store.listPaymentConfigVersions(owner.projectId).length, 0);
++    assert.equal(paymentAuditEvents(harness, owner.projectId).length, 0);
++  });
++
++  it("refuses creation without a signed agreement and never accepts published-but-unsigned as signed evidence", async () => {
++    const harness = await createProposalHarness();
++    const owner = await publishedOwner(harness);
++    acceptCurrentProposal(harness, owner);
++
++    // Accepted proposal, no agreement at all.
++    expectRejectedWithMessage(
++      () => createVersionRaw(harness, configInput(owner)),
++      /signed agreement .*required/i,
++    );
++
++    harness.platform.agreements.createAgreement({
++      personId: owner.personId,
++      projectId: owner.projectId,
++      additionalTerms: agreementContent,
++    });
++    harness.platform.agreements.publishVersion({
++      personId: owner.personId,
++      projectId: owner.projectId,
++      versionNumber: 1,
++    });
++
++    // The published version exists, but a published agreement is not signed evidence.
++    const published = harness.platform.store.findCurrentAgreementVersion(owner.projectId);
++    assert.equal(published?.status, "published");
++    assert.equal(harness.platform.store.findCurrentSignedAgreementVersion(owner.projectId), null);
++
++    expectRejectedWithMessage(
++      () => createVersionRaw(harness, configInput(owner)),
++      /published but not signed/i,
++    );
++    assert.equal(harness.platform.store.listPaymentConfigVersions(owner.projectId).length, 0);
++
++    // Signing the same version makes the baseline complete.
++    harness.platform.customerAgreements.sign({
++      personId: owner.personId,
++      projectId: owner.projectId,
++      versionNumber: 1,
++      actionKey: generateActionKey(),
++    });
++    const view = createConfig(harness, owner);
++    assert.equal(view.versions.length, 1);
++  });
++
++  it("treats a signed agreement as inapplicable once its accepted-proposal baseline is superseded", async () => {
++    const harness = await createProposalHarness();
++    const owner = await ownerWithSignedBaseline(harness);
++    createConfig(harness, owner);
++
++    // A newer proposal version is published and accepted; the signed agreement
++    // version 1 remains signed, but is no longer applicable to the new baseline.
++    publishNextVersion(harness, owner, 2);
++    acceptCurrentProposal(harness, owner);
++    assert.equal(harness.platform.store.findCurrentSignedAgreementVersion(owner.projectId), null);
++
++    expectRejectedWithMessage(
++      () => createVersionRaw(harness, configInput(owner)),
++      /signed agreement .*required/i,
++    );
++    assert.equal(harness.platform.store.listPaymentConfigVersions(owner.projectId).length, 1);
++  });
++
++  it("does not fall back to an older signed agreement while a newer applicable version is published but unsigned", async () => {
++    const harness = await createProposalHarness();
++    const owner = await publishedOwner(harness);
++    acceptCurrentProposal(harness, owner);
++
++    // 1-2. A current accepted proposal exists, and agreement version 1 is
++    // created and signed against it.
++    createAgreementVersion(harness, owner.personId, owner.projectId, 1);
++    harness.platform.customerAgreements.sign({
++      personId: owner.personId,
++      projectId: owner.projectId,
++      versionNumber: 1,
++      actionKey: generateActionKey(),
++    });
++
++    // A configuration created while version 1 is the current applicable
++    // agreement binds to it and reads as current.
++    const created = createConfig(harness, owner);
++    const boundVersion = created.versions[0]!;
++    assert.equal(boundVersion.stale, false);
++    assert.equal(boundVersion.agreementVersionNumber, 1);
++    const boundObligations = structuredClone(
++      harness.platform.store.listPaymentObligationsByVersion(boundVersion.id),
++    );
++    const auditBefore = structuredClone(paymentAuditEvents(harness, owner.projectId));
++
++    // 3. Agreement version 2 is created and published against the same
++    // accepted proposal, but left unsigned.
++    createAgreementVersion(harness, owner.personId, owner.projectId, 2);
++    const applicable = harness.platform.store.findCurrentAgreementVersion(owner.projectId);
++    assert.equal(applicable?.versionNumber, 2);
++    assert.equal(applicable?.status, "published");
++
++    // The current applicable version is published but unsigned, so there is no
++    // signed *current* version — and the superseded signed version 1 must not
++    // stand in for it.
++    assert.equal(harness.platform.store.findCurrentSignedAgreementVersion(owner.projectId), null);
++
++    // 4. A new configuration is rejected rather than accepted against the
++    // older signature.
++    expectRejectedWithMessage(
++      () => createVersionRaw(harness, configInput(owner)),
++      /published but not signed/i,
++    );
++
++    // The rejected attempt left versions, obligations, and audit rows unchanged.
++    const versionsAfter = harness.platform.store.listPaymentConfigVersions(owner.projectId);
++    assert.equal(versionsAfter.length, 1);
++    assert.deepEqual(
++      harness.platform.store.listPaymentObligationsByVersion(boundVersion.id),
++      boundObligations,
++    );
++    assert.deepEqual(paymentAuditEvents(harness, owner.projectId), auditBefore);
++
++    // 5. The existing configuration is now stale: version 2 superseded
++    // version 1 as the current applicable agreement, and version 2 is unsigned.
++    const read = harness.platform.paymentConfigurations.read(owner.personId, owner.projectId);
++    assert.equal(read.versions.length, 1);
++    assert.equal(read.versions[0]!.id, boundVersion.id);
++    assert.equal(read.versions[0]!.stale, true);
++    // Its stored references are unchanged — stale, not silently rebound.
++    assert.equal(read.versions[0]!.agreementVersionId, boundVersion.agreementVersionId);
++    assert.equal(read.versions[0]!.agreementVersionNumber, 1);
++  });
++
++  it("keeps a signed baseline valid while a newer draft exists, and revalidates once the newer version is signed", async () => {
++    const harness = await createProposalHarness();
++    const owner = await ownerWithSignedBaseline(harness);
++    const created = createConfig(harness, owner);
++    const boundVersion = created.versions[0]!;
++    assert.equal(boundVersion.stale, false);
++
++    // An unpublished draft is not an applicable agreement version, so it cannot
++    // invalidate the previously valid signed baseline.
++    harness.platform.agreements.createVersion({
++      personId: owner.personId,
++      projectId: owner.projectId,
++      additionalTerms: agreementContent,
++    });
++    const signedWithDraft = harness.platform.store.findCurrentSignedAgreementVersion(
++      owner.projectId,
++    );
++    assert.equal(signedWithDraft?.versionNumber, 1);
++    assert.equal(
++      harness.platform.paymentConfigurations.read(owner.personId, owner.projectId).versions[0]!
++        .stale,
++      false,
++    );
++
++    // Publishing version 2 makes it the current applicable agreement, so the
++    // configuration becomes stale and creation is refused while it is unsigned.
++    harness.platform.agreements.publishVersion({
++      personId: owner.personId,
++      projectId: owner.projectId,
++      versionNumber: 2,
++    });
++    assert.equal(harness.platform.store.findCurrentSignedAgreementVersion(owner.projectId), null);
++    expectRejectedWithMessage(
++      () => createVersionRaw(harness, configInput(owner)),
++      /published but not signed/i,
++    );
++
++    // Signing version 2 restores a valid current signed baseline: creation is
++    // accepted again, bound to version 2, and the version 1 configuration stays
++    // stale against its own historical reference.
++    harness.platform.customerAgreements.sign({
++      personId: owner.personId,
++      projectId: owner.projectId,
++      versionNumber: 2,
++      actionKey: generateActionKey(),
++    });
++    assert.equal(
++      harness.platform.store.findCurrentSignedAgreementVersion(owner.projectId)?.versionNumber,
++      2,
++    );
++    const afterSigning = createConfig(harness, owner);
++    assert.equal(afterSigning.versions.length, 2);
++    assert.equal(afterSigning.versions[1]!.agreementVersionNumber, 2);
++    assert.equal(afterSigning.versions[1]!.stale, false);
++    assert.equal(afterSigning.versions[0]!.id, boundVersion.id);
++    assert.equal(afterSigning.versions[0]!.stale, true);
++  });
++
++  it("rejects a stale baseline reference and never silently rebinds an existing version", async () => {
++    const harness = await createProposalHarness();
++    const owner = await ownerWithSignedBaseline(harness);
++
++    const first = createConfig(harness, owner);
++    const firstVersion = first.versions[0]!;
++    const firstStoredBefore = storedVersion(harness, owner, 0);
++    const firstObligationsBefore = harness.platform.store.listPaymentObligationsByVersion(
++      firstVersion.id,
++    );
++
++    advanceBaseline(harness, owner);
++    const fresh = baselineRefs(harness, owner);
++    assert.notEqual(fresh.proposalVersionId, firstVersion.proposalVersionId);
++    assert.notEqual(fresh.agreementVersionId, firstVersion.agreementVersionId);
++
++    // Both references stale.
++    expectRejectedWithMessage(
++      () =>
++        createConfig(harness, owner, {
++          expectedProposalVersionId: firstVersion.proposalVersionId,
++          expectedAgreementVersionId: firstVersion.agreementVersionId,
++        }),
++      /baseline changed/i,
++    );
++    // Only the agreement reference stale.
++    expectRejectedWithMessage(
++      () =>
++        createConfig(harness, owner, {
++          expectedAgreementVersionId: firstVersion.agreementVersionId,
++        }),
++      /baseline changed/i,
++    );
++    // Only the proposal reference stale.
++    expectRejectedWithMessage(
++      () =>
++        createConfig(harness, owner, {
++          expectedProposalVersionId: firstVersion.proposalVersionId,
++        }),
++      /baseline changed/i,
++    );
++
++    // Every stale attempt left the world untouched.
++    const versionsAfterFailures = harness.platform.store.listPaymentConfigVersions(owner.projectId);
++    assert.equal(versionsAfterFailures.length, 1);
++    assert.deepEqual(versionsAfterFailures[0], firstStoredBefore);
++    assert.deepEqual(
++      harness.platform.store.listPaymentObligationsByVersion(firstVersion.id),
++      firstObligationsBefore,
++    );
++
++    // The current baseline is accepted and produces a distinct later version.
++    const second = createConfig(harness, owner, fresh);
++    assert.equal(second.versions.length, 2);
++    const secondVersion = second.versions[1]!;
++    assert.equal(secondVersion.versionNumber, 2);
++    assert.notEqual(secondVersion.id, firstVersion.id);
++    assert.equal(secondVersion.proposalVersionId, fresh.proposalVersionId);
++    assert.equal(secondVersion.agreementVersionId, fresh.agreementVersionId);
++
++    // The earlier version still references the old baseline — stale, not rebound.
++    const reread = harness.platform.paymentConfigurations.read(owner.personId, owner.projectId);
++    assert.equal(reread.versions[0]!.stale, true);
++    assert.equal(reread.versions[0]!.proposalVersionId, firstVersion.proposalVersionId);
++    assert.equal(reread.versions[0]!.agreementVersionId, firstVersion.agreementVersionId);
++    assert.equal(reread.versions[1]!.stale, false);
++    assert.deepEqual(
++      harness.platform.store.listPaymentObligationsByVersion(firstVersion.id),
++      firstObligationsBefore,
++    );
++  });
++
++  it("accepts all three approved schedule structures with explicit inputs and infers nothing", async () => {
++    const harness = await createProposalHarness();
++    const owner = await ownerWithSignedBaseline(harness);
++
++    // Full amount up front: one explicit obligation.
++    const upfront = createConfig(harness, owner);
++    const upfrontVersion = upfront.versions[0]!;
++    assert.equal(upfrontVersion.scheduleStructure, "full_upfront");
++    assert.equal(upfrontVersion.obligations.length, 1);
++    assert.equal(upfrontVersion.obligations[0]!.expectedAmount, "1500.00");
++
++    // A deposit plus later payments: three explicit obligations, explicit order.
++    const deposit = createConfig(harness, owner, {
++      scheduleStructure: "deposit_plus_later",
++      totalAmount: "2400.50",
++      currency: "USD",
++      obligations: [
++        { expectedAmount: "600.25", currency: "USD" },
++        { expectedAmount: "900.25", currency: "USD" },
++        { expectedAmount: "900.00", currency: "USD" },
++      ],
++    });
++    const depositVersion = deposit.versions[1]!;
++    assert.equal(depositVersion.scheduleStructure, "deposit_plus_later");
++    assert.deepEqual(
++      depositVersion.obligations.map((obligation) => [
++        obligation.orderIndex,
++        obligation.expectedAmount,
++      ]),
++      [
++        [1, "600.25"],
++        [2, "900.25"],
++        [3, "900.00"],
++      ],
++    );
++
++    // Milestone-linked: each obligation carries its opaque scope/milestone
++    // reference, and a three-decimal currency amount is preserved exactly —
++    // nothing normalizes it to two decimal places and nothing parses it as a
++    // number.
++    const milestone = createConfig(harness, owner, {
++      scheduleStructure: "milestone_linked",
++      totalAmount: "5000",
++      currency: "BHD",
++      obligations: [
++        { expectedAmount: "2500.000", currency: "BHD", scopeOrMilestoneRef: "scope-version-alpha" },
++        { expectedAmount: "2500.000", currency: "BHD", scopeOrMilestoneRef: "scope-version-beta" },
++      ],
++    });
++    const milestoneVersion = milestone.versions[2]!;
++    assert.equal(milestoneVersion.scheduleStructure, "milestone_linked");
++    assert.equal(milestoneVersion.totalAmount, "5000");
++    assert.equal(milestoneVersion.currency, "BHD");
++    assert.deepEqual(
++      milestoneVersion.obligations.map((obligation) => [
++        obligation.orderIndex,
++        obligation.expectedAmount,
++        obligation.scopeOrMilestoneRef,
++      ]),
++      [
++        [1, "2500.000", "scope-version-alpha"],
++        [2, "2500.000", "scope-version-beta"],
++      ],
++    );
++
++    // Three versions, each with exactly the obligations the Founder supplied:
++    // no inferred installments, no derived percentages, no invented dates.
++    for (const version of [upfrontVersion, depositVersion, milestoneVersion]) {
++      assertNoLifecycleFields(
++        version as unknown as Record<string, unknown>,
++        version.scheduleStructure,
++      );
++      for (const obligation of version.obligations) {
++        assertNoLifecycleFields(
++          obligation as unknown as Record<string, unknown>,
++          `${version.scheduleStructure} obligation`,
++        );
++      }
++    }
++    assert.equal(upfrontVersion.obligations.length, 1);
++    assert.equal(depositVersion.obligations.length, 3);
++    assert.equal(milestoneVersion.obligations.length, 2);
++
++    const raw = harness.platform.store.listPaymentObligationsByVersion(milestoneVersion.id);
++    assert.deepEqual(
++      raw.map((obligation) => obligation.expectedAmount),
++      ["2500.000", "2500.000"],
++    );
++    const order = harness.platform.store.listPaymentObligationsByVersion(depositVersion.id);
++    assert.deepEqual(
++      order.map((obligation) => obligation.orderIndex),
++      [1, 2, 3],
++    );
++  });
++
++  it("rejects unsupported structures and malformed money before anything is persisted", async () => {
++    const harness = await createProposalHarness();
++    const owner = await ownerWithSignedBaseline(harness);
++    const service = harness.platform.paymentConfigurations;
++    const refs = baselineRefs(harness, owner);
++
++    const cases: Array<[string, Record<string, unknown>]> = [
++      ["unknown schedule structure", { scheduleStructure: "installments_4" }],
++      ["wrong-case schedule structure", { scheduleStructure: "FULL_UPFRONT" }],
++      ["empty schedule structure", { scheduleStructure: "" }],
++      ["non-string schedule structure", { scheduleStructure: 3 }],
++      ["number amount", { totalAmount: 1500.5 }],
++      ["thousands separator", { totalAmount: "1,500.00" }],
++      ["trailing dot", { totalAmount: "1500." }],
++      ["leading dot", { totalAmount: ".5" }],
++      ["negative amount", { totalAmount: "-10" }],
++      ["exponent notation", { totalAmount: "1e3" }],
++      ["non-numeric amount", { totalAmount: "abc" }],
++      ["empty amount", { totalAmount: "" }],
++      ["zero amount", { totalAmount: "0" }],
++      ["zero decimal amount", { totalAmount: "0.00" }],
++      ["seven decimal places", { totalAmount: "1500.0000000" }],
++      ["leading zero", { totalAmount: "007" }],
++      ["short currency", { currency: "US" }],
++      ["long currency", { currency: "USDD" }],
++      ["word currency", { currency: "DOLLARS" }],
++      ["digit currency", { currency: "U5D" }],
++      ["empty currency", { currency: "" }],
++      ["obligations not a list", { obligations: "none" }],
++      ["empty obligations", { obligations: [] }],
++      ["null obligation entry", { obligations: [null] }],
++      ["obligation missing currency", { obligations: [{ expectedAmount: "10.00" }] }],
++      [
++        "obligation with numeric amount",
++        { obligations: [{ expectedAmount: 10.0, currency: "USD" }] },
++      ],
++      [
++        "obligation with unlisted field",
++        {
++          obligations: [{ expectedAmount: "10.00", currency: "USD", dueDate: "2026-11-01" }],
++        },
++      ],
++      [
++        "obligation with zero amount",
++        { obligations: [{ expectedAmount: "0.00", currency: "USD" }] },
++      ],
++      [
++        "milestone obligation without a scope reference",
++        {
++          scheduleStructure: "milestone_linked",
++          obligations: [{ expectedAmount: "10.00", currency: "USD" }],
++        },
++      ],
++      [
++        "non-milestone obligation carrying a scope reference",
++        {
++          obligations: [
++            { expectedAmount: "10.00", currency: "USD", scopeOrMilestoneRef: "scope-version-1" },
++          ],
++        },
++      ],
++      ["missing expected proposal version", { expectedProposalVersionId: "  " }],
++      ["missing expected agreement version", { expectedAgreementVersionId: undefined }],
++    ];
++
++    for (const [label, patch] of cases) {
++      assert.throws(
++        () => service.createVersion({ ...configInput(owner, refs), ...patch }),
++        (error: unknown) => isPlatformError(error) && error.code === "invalid_input",
++        `expected ${label} to be rejected`,
++      );
++    }
++
++    // Every rejection happened before persistence: no configuration, no
++    // obligations, no audit rows.
++    assert.equal(harness.platform.store.listPaymentConfigVersions(owner.projectId).length, 0);
++    assert.equal(harness.platform.store.listPaymentObligationsByProject(owner.projectId).length, 0);
++    assert.equal(paymentAuditEvents(harness, owner.projectId).length, 0);
++  });
++
++  it("accepts a configuration whose obligations all use the configuration currency, in any letter case", async () => {
++    const harness = await createProposalHarness();
++    const owner = await ownerWithSignedBaseline(harness);
++
++    // One payment configuration, one currency. The lowercase configuration
++    // currency and the mixed-case obligation currencies are the same code after
++    // the service's existing normalization, so the whole set is accepted and
++    // stored uppercase — case never decides the outcome.
++    const view = createConfig(harness, owner, {
++      scheduleStructure: "deposit_plus_later",
++      totalAmount: "2700.00",
++      currency: "usd",
++      obligations: [
++        { expectedAmount: "600.25", currency: "usd" },
++        { expectedAmount: "900.25", currency: "USD" },
++        { expectedAmount: "1199.50", currency: "uSd" },
++      ],
++    });
++
++    const version = view.versions[0]!;
++    assert.equal(version.currency, "USD");
++    assert.deepEqual(
++      version.obligations.map((obligation) => [
++        obligation.orderIndex,
++        obligation.expectedAmount,
++        obligation.currency,
++      ]),
++      [
++        [1, "600.25", "USD"],
++        [2, "900.25", "USD"],
++        [3, "1199.50", "USD"],
++      ],
++    );
++
++    // The stored rows carry that one currency, and the exact decimal text is
++    // untouched — no re-scaling to two decimal places, no numeric parsing.
++    const stored = harness.platform.store.listPaymentObligationsByVersion(version.id);
++    assert.deepEqual(
++      stored.map((obligation) => obligation.currency),
++      ["USD", "USD", "USD"],
++    );
++    assert.deepEqual(
++      stored.map((obligation) => obligation.expectedAmount),
++      ["600.25", "900.25", "1199.50"],
++    );
++    assert.equal(harness.platform.store.listPaymentConfigVersions(owner.projectId).length, 1);
++  });
++
++  it("rejects an obligation whose currency differs from the configuration currency and writes nothing", async () => {
++    const harness = await createProposalHarness();
++    const owner = await ownerWithSignedBaseline(harness);
++
++    // A valid configuration first, so every rejected attempt below has real
++    // persisted state it must leave untouched.
++    const created = createConfig(harness, owner, {
++      scheduleStructure: "deposit_plus_later",
++      totalAmount: "1500.00",
++      currency: "USD",
++      obligations: [
++        { expectedAmount: "600.00", currency: "USD" },
++        { expectedAmount: "900.00", currency: "USD" },
++      ],
++    });
++    const createdVersion = created.versions[0]!;
++    const versionsBefore = structuredClone(
++      harness.platform.store.listPaymentConfigVersions(owner.projectId),
++    );
++    const obligationsBefore = structuredClone(
++      harness.platform.store.listPaymentObligationsByVersion(createdVersion.id),
++    );
++    const auditBefore = structuredClone(paymentAuditEvents(harness, owner.projectId));
++
++    const cases: Array<[string, Record<string, unknown>, RegExp]> = [
++      [
++        "the only obligation in another currency",
++        { currency: "USD", obligations: [{ expectedAmount: "100.00", currency: "EUR" }] },
++        /Obligation 1's currency \(EUR\) must match the project currency \(USD\)/,
++      ],
++      [
++        "a later obligation in another currency",
++        {
++          currency: "USD",
++          obligations: [
++            { expectedAmount: "100.00", currency: "USD" },
++            { expectedAmount: "200.00", currency: "EUR" },
++          ],
++        },
++        /Obligation 2's currency \(EUR\) must match the project currency \(USD\)/,
++      ],
++      [
++        "a lowercase configuration currency against another currency",
++        { currency: "usd", obligations: [{ expectedAmount: "100.00", currency: "EUR" }] },
++        /Obligation 1's currency \(EUR\) must match the project currency \(USD\)/,
++      ],
++      [
++        "a lowercase obligation currency against another currency",
++        { currency: "USD", obligations: [{ expectedAmount: "100.00", currency: "eur" }] },
++        /Obligation 1's currency \(EUR\) must match the project currency \(USD\)/,
++      ],
++      [
++        "the configuration in another currency than its obligation",
++        { currency: "EUR", obligations: [{ expectedAmount: "100.00", currency: "USD" }] },
++        /Obligation 1's currency \(USD\) must match the project currency \(EUR\)/,
++      ],
++      [
++        "a milestone-linked obligation in another currency",
++        {
++          scheduleStructure: "milestone_linked",
++          totalAmount: "300.00",
++          currency: "USD",
++          obligations: [
++            {
++              expectedAmount: "300.00",
++              currency: "EUR",
++              scopeOrMilestoneRef: "scope-version-alpha",
++            },
++          ],
++        },
++        /Obligation 1's currency \(EUR\) must match the project currency \(USD\)/,
++      ],
++    ];
++
++    for (const [label, patch, pattern] of cases) {
++      expectRejectedWithMessage(() => createConfig(harness, owner, patch), pattern);
++    }
++
++    // Nothing was converted, appended, or audited: the configuration versions,
++    // the existing obligations, and the payment audit trail are unchanged.
++    assert.deepEqual(
++      harness.platform.store.listPaymentConfigVersions(owner.projectId),
++      versionsBefore,
++    );
++    assert.deepEqual(
++      harness.platform.store.listPaymentObligationsByVersion(createdVersion.id),
++      obligationsBefore,
++    );
++    assert.deepEqual(paymentAuditEvents(harness, owner.projectId), auditBefore);
++    assert.equal(harness.platform.store.listPaymentObligationsByProject(owner.projectId).length, 2);
++  });
++
++  it("keeps obligation membership and project association unambiguous", async () => {
++    const harness = await createProposalHarness();
++    const owner = await ownerWithSignedBaseline(harness);
++
++    const view = createConfig(harness, owner, {
++      scheduleStructure: "deposit_plus_later",
++      totalAmount: "1000.00",
++      obligations: [
++        { expectedAmount: "250.00", currency: "USD" },
++        { expectedAmount: "750.00", currency: "USD" },
++      ],
++    });
++    const version = view.versions[0]!;
++
++    const byVersion = harness.platform.store.listPaymentObligationsByVersion(version.id);
++    assert.equal(byVersion.length, 2);
++    for (const obligation of byVersion) {
++      assert.equal(obligation.paymentConfigVersionId, version.id);
++      assert.equal(obligation.projectId, owner.projectId);
++      assert.equal(obligation.organizationId, owner.organizationId);
++      assert.equal(obligation.createdByPersonId, owner.personId);
++    }
++
++    // The project-scoped read returns exactly this version's obligations.
++    const byProject = harness.platform.store.listPaymentObligationsByProject(owner.projectId);
++    assert.deepEqual(
++      byProject.map((obligation) => obligation.id),
++      byVersion.map((obligation) => obligation.id),
++    );
++    assert.deepEqual(
++      byProject.map((obligation) => obligation.orderIndex),
++      [1, 2],
++    );
++  });
++
++  it("appends a new version instead of overwriting, leaving earlier versions and obligations intact", async () => {
++    const harness = await createProposalHarness();
++    const owner = await ownerWithSignedBaseline(harness);
++
++    const first = createConfig(harness, owner, {
++      scheduleStructure: "deposit_plus_later",
++      totalAmount: "800.00",
++      obligations: [
++        { expectedAmount: "200.00", currency: "USD" },
++        { expectedAmount: "600.00", currency: "USD" },
++      ],
++    });
++    const firstVersion = first.versions[0]!;
++    const firstRowBefore = structuredClone(storedVersion(harness, owner, 0));
++    const firstObligationsBefore = structuredClone(
++      harness.platform.store.listPaymentObligationsByVersion(firstVersion.id),
++    );
++
++    const second = createConfig(harness, owner, {
++      totalAmount: "999.00",
++      obligations: [{ expectedAmount: "999.00", currency: "USD" }],
++    });
++
++    const versions = harness.platform.store.listPaymentConfigVersions(owner.projectId);
++    assert.equal(versions.length, 2);
++    assert.equal(versions[0]!.versionNumber, 1);
++    assert.equal(versions[1]!.versionNumber, 2);
++    assert.notEqual(versions[1]!.id, versions[0]!.id);
++    // The earlier version and its obligations are byte-identical to before.
++    assert.deepEqual(structuredClone(versions[0]), firstRowBefore);
++    assert.deepEqual(
++      structuredClone(harness.platform.store.listPaymentObligationsByVersion(firstVersion.id)),
++      firstObligationsBefore,
++    );
++    assert.deepEqual(
++      second.versions.map((version) => version.versionNumber),
++      [1, 2],
++    );
++
++    // The database itself refuses a duplicate version number, so the first
++    // version cannot be overwritten even through the store port directly.
++    assert.throws(() =>
++      harness.platform.store.createPaymentConfigVersion({
++        ...firstRowBefore!,
++        id: "rewritten-version-id",
++      }),
++    );
++    assert.deepEqual(structuredClone(storedVersion(harness, owner, 0)), firstRowBefore);
++  });
++
++  it("keeps one project's configuration and obligations out of another project's reads", async () => {
++    const harness = await createProposalHarness();
++    const first = await ownerWithSignedBaseline(harness);
++
++    // A second project, in another organization, with its own completed baseline.
++    // The Founder authors on it; the second owner is the customer who accepts
++    // and signs.
++    const second = await ownerWithProject(harness, OTHER_EMAIL, "Second Synthetic Org");
++    publishFirstVersion(harness, { personId: first.personId, projectId: second.projectId });
++    acceptCurrentProposal(harness, second);
++    createAgreementVersion(harness, first.personId, second.projectId, 1);
++    harness.platform.customerAgreements.sign({
++      personId: second.personId,
++      projectId: second.projectId,
++      versionNumber: 1,
++      actionKey: generateActionKey(),
++    });
++
++    const firstView = createConfig(harness, first, {
++      obligations: [
++        { expectedAmount: "100.00", currency: "USD" },
++        { expectedAmount: "1400.00", currency: "USD" },
++      ],
++      totalAmount: "1500.00",
++    });
++    const secondView = createConfig(harness, second, {
++      personId: first.personId,
++      totalAmount: "4000.00",
++      currency: "EUR",
++      obligations: [{ expectedAmount: "4000.00", currency: "EUR" }],
++    });
++
++    const readFirst = harness.platform.paymentConfigurations.read(first.personId, first.projectId);
++    const readSecond = harness.platform.paymentConfigurations.read(first.personId, second.projectId);
++
++    assert.equal(readFirst.projectReference, first.reference);
++    assert.equal(readSecond.projectReference, second.reference);
++    assert.deepEqual(
++      readFirst.versions.map((version) => version.id),
++      [firstView.versions[0]!.id],
++    );
++    assert.deepEqual(
++      readSecond.versions.map((version) => version.id),
++      [secondView.versions[0]!.id],
++    );
++
++    // Every obligation read for one project belongs to that project only.
++    const firstObligations = harness.platform.store.listPaymentObligationsByProject(first.projectId);
++    const secondObligations = harness.platform.store.listPaymentObligationsByProject(
++      second.projectId,
++    );
++    assert.equal(firstObligations.length, 2);
++    assert.equal(secondObligations.length, 1);
++    for (const obligation of firstObligations) {
++      assert.equal(obligation.projectId, first.projectId);
++    }
++    for (const obligation of secondObligations) {
++      assert.equal(obligation.projectId, second.projectId);
++    }
++    assert.deepEqual(
++      readFirst.versions[0]!.obligations.map((obligation) => obligation.expectedAmount),
++      ["100.00", "1400.00"],
++    );
++    assert.deepEqual(
++      readSecond.versions[0]!.obligations.map((obligation) => obligation.expectedAmount),
++      ["4000.00"],
++    );
++  });
++
++  it("writes identifier-only audit events in the same transaction as the records", async () => {
++    const harness = await createProposalHarness();
++    const owner = await ownerWithSignedBaseline(harness);
++
++    createConfig(harness, owner, {
++      scheduleStructure: "deposit_plus_later",
++      totalAmount: "600.25",
++      obligations: [
++        { expectedAmount: "200.15", currency: "USD" },
++        { expectedAmount: "400.10", currency: "USD" },
++      ],
++    });
++
++    const events = paymentAuditEvents(harness, owner.projectId);
++    assert.equal(events.length, 3);
++    assert.deepEqual(
++      events
++        .map((event) => event.type)
++        .sort(),
++      ["payment_config_version.created", "payment_obligation.created", "payment_obligation.created"],
++    );
++
++    const version = harness.platform.store.listPaymentConfigVersions(owner.projectId)[0]!;
++    const obligations = harness.platform.store.listPaymentObligationsByVersion(version.id);
++    const allowedKeys = new Set([
++      "paymentConfigVersionId",
++      "versionNumber",
++      "proposalVersionId",
++      "agreementVersionId",
++      "obligationId",
++    ]);
++    for (const event of events) {
++      assert.equal(event.projectId, owner.projectId);
++      assert.equal(event.organizationId, owner.organizationId);
++      assert.equal(event.personId, owner.personId);
++      assert.ok(event.metadata);
++      for (const key of Object.keys(event.metadata)) {
++        assert.ok(allowedKeys.has(key), `unexpected audit metadata key: ${key}`);
++        assert.equal(/amount|currency|due|scope/i.test(key), false, `sensitive key ${key}`);
++      }
++      const serialized = JSON.stringify(event.metadata);
++      // Decimal amounts contain a dot, which cannot occur inside the
++      // identifier-shaped values; this proves no amount travelled into audit.
++      assert.equal(serialized.includes("600.25"), false);
++      assert.equal(serialized.includes("200.15"), false);
++      assert.equal(serialized.includes("400.10"), false);
++    }
++
++    const configEvent = events.find((event) => event.type === "payment_config_version.created")!;
++    assert.deepEqual(Object.keys(configEvent.metadata!).sort(), [
++      "agreementVersionId",
++      "paymentConfigVersionId",
++      "proposalVersionId",
++      "versionNumber",
++    ]);
++    assert.equal(configEvent.metadata!.versionNumber, 1);
++    assert.equal(configEvent.metadata!.paymentConfigVersionId, version.id);
++    assert.equal(configEvent.metadata!.proposalVersionId, version.proposalVersionId);
++    assert.equal(configEvent.metadata!.agreementVersionId, version.agreementVersionId);
++
++    const obligationEvents = events.filter((event) => event.type === "payment_obligation.created");
++    assert.deepEqual(
++      obligationEvents.map((event) => event.metadata!.obligationId).sort(),
++      obligations.map((obligation) => obligation.id).sort(),
++    );
++    for (const event of obligationEvents) {
++      assert.deepEqual(Object.keys(event.metadata!).sort(), [
++        "obligationId",
++        "paymentConfigVersionId",
++      ]);
++      assert.equal(event.metadata!.paymentConfigVersionId, version.id);
++    }
++  });
++
++  it("rolls back the configuration, obligations, and audit rows when the config audit append fails", async () => {
++    class FailingConfigAuditStore extends SqlitePlatformStore {
++      override appendAuditEvent(event: AuditEvent): void {
++        if (event.type === "payment_config_version.created") {
++          throw new Error("Simulated audit failure.");
++        }
++        super.appendAuditEvent(event);
++      }
++    }
++
++    const harness = await createTestPlatform({
++      config: { founderEmailHashes: [FOUNDER_HASH] },
++      createOptions: { store: new FailingConfigAuditStore(":memory:") },
++    });
++    const owner = await ownerWithSignedBaseline(harness);
++
++    assert.throws(() => createConfig(harness, owner), /Simulated audit failure/);
++    assert.equal(harness.platform.store.listPaymentConfigVersions(owner.projectId).length, 0);
++    assert.equal(harness.platform.store.listPaymentObligationsByProject(owner.projectId).length, 0);
++    assert.equal(paymentAuditEvents(harness, owner.projectId).length, 0);
++  });
++
++  it("rolls everything back when a later obligation write fails", async () => {
++    class FailingObligationStore extends SqlitePlatformStore {
++      private attempts = 0;
++      override createPaymentObligation(
++        input: PaymentObligationInternal,
++      ): PaymentObligationInternal {
++        this.attempts += 1;
++        if (this.attempts === 2) {
++          throw new Error("Simulated obligation failure.");
++        }
++        return super.createPaymentObligation(input);
++      }
++    }
++
++    const harness = await createTestPlatform({
++      config: { founderEmailHashes: [FOUNDER_HASH] },
++      createOptions: { store: new FailingObligationStore(":memory:") },
++    });
++    const owner = await ownerWithSignedBaseline(harness);
++
++    assert.throws(
++      () =>
++        createConfig(harness, owner, {
++          scheduleStructure: "deposit_plus_later",
++          totalAmount: "1000.00",
++          obligations: [
++            { expectedAmount: "250.00", currency: "USD" },
++            { expectedAmount: "750.00", currency: "USD" },
++          ],
++        }),
++      /Simulated obligation failure/,
++    );
++    // The version row, the first obligation, and the first obligation's audit
++    // event all rolled back with the failed second write.
++    assert.equal(harness.platform.store.listPaymentConfigVersions(owner.projectId).length, 0);
++    assert.equal(harness.platform.store.listPaymentObligationsByProject(owner.projectId).length, 0);
++    assert.equal(paymentAuditEvents(harness, owner.projectId).length, 0);
++  });
++
++  it("rolls back the config version and its audit event when an obligation audit append fails", async () => {
++    class FailingObligationAuditStore extends SqlitePlatformStore {
++      override appendAuditEvent(event: AuditEvent): void {
++        if (event.type === "payment_obligation.created") {
++          throw new Error("Simulated obligation audit failure.");
++        }
++        super.appendAuditEvent(event);
++      }
++    }
++
++    const harness = await createTestPlatform({
++      config: { founderEmailHashes: [FOUNDER_HASH] },
++      createOptions: { store: new FailingObligationAuditStore(":memory:") },
++    });
++    const owner = await ownerWithSignedBaseline(harness);
++
++    assert.throws(() => createConfig(harness, owner), /Simulated obligation audit failure/);
++    assert.equal(harness.platform.store.listPaymentConfigVersions(owner.projectId).length, 0);
++    assert.equal(harness.platform.store.listPaymentObligationsByProject(owner.projectId).length, 0);
++    assert.equal(paymentAuditEvents(harness, owner.projectId).length, 0);
++  });
++
++  it("keeps the configuration and obligations readable after reopening a persistent database", async () => {
++    const directory = mkdtempSync(join(tmpdir(), "payments-config-"));
++    const databasePath = join(directory, "payments.db");
++    try {
++      const first = await createTestPlatform({
++        config: { databasePath, founderEmailHashes: [FOUNDER_HASH] },
++      });
++      const owner = await ownerWithSignedBaseline(first);
++      const created = createConfig(first, owner, {
++        scheduleStructure: "deposit_plus_later",
++        totalAmount: "2400.50",
++        obligations: [
++          { expectedAmount: "600.25", currency: "USD" },
++          { expectedAmount: "1800.25", currency: "USD" },
++        ],
++      });
++      const createdVersion = created.versions[0]!;
++      first.platform.close();
++
++      const second = await createTestPlatform({
++        config: { databasePath, founderEmailHashes: [FOUNDER_HASH] },
++      });
++      const reread = second.platform.paymentConfigurations.read(owner.personId, owner.projectId);
++      assert.equal(reread.versions.length, 1);
++      const version = reread.versions[0]!;
++      assert.equal(version.id, createdVersion.id);
++      assert.equal(version.versionNumber, 1);
++      assert.equal(version.scheduleStructure, "deposit_plus_later");
++      assert.equal(version.totalAmount, "2400.50");
++      assert.equal(version.currency, "USD");
++      assert.equal(version.stale, false);
++      assert.deepEqual(
++        version.obligations.map((obligation) => [obligation.id, obligation.expectedAmount]),
++        createdVersion.obligations.map((obligation) => [obligation.id, obligation.expectedAmount]),
++      );
++      second.platform.close();
++    } finally {
++      rmSync(directory, { recursive: true, force: true });
++    }
++  });
++
++  it("changes no project row, customer stage, or customer agreement view", async () => {
++    const harness = await createProposalHarness();
++    const owner = await ownerWithSignedBaseline(harness);
++
++    const projectBefore = harness.platform.store.findProject(owner.projectId);
++    assert.ok(projectBefore);
++    const stageBefore = customerStageFor({ status: "submitted" }, projectBefore.reviewStartedAt);
++    const customerViewBefore = harness.platform.customerAgreements.readByProjectId(
++      owner.personId,
++      owner.projectId,
++    );
++
++    createConfig(harness, owner);
++
++    const projectAfter = harness.platform.store.findProject(owner.projectId);
++    assert.deepEqual(projectAfter, projectBefore);
++    assert.equal(
++      customerStageFor({ status: "submitted" }, projectAfter!.reviewStartedAt),
++      stageBefore,
++    );
++    const customerViewAfter = harness.platform.customerAgreements.readByProjectId(
++      owner.personId,
++      owner.projectId,
++    );
++    assert.deepEqual(customerViewAfter, customerViewBefore);
++    // The customer-facing view carries no payment fields at all.
++    assert.equal(/payment|obligation/i.test(JSON.stringify(customerViewAfter)), false);
++
++    // Existing proposal and agreement behaviour is unchanged by a configuration.
++    publishNextVersion(harness, owner, 2);
++    acceptCurrentProposal(harness, owner);
++    const accepted = harness.platform.store.findCurrentAcceptedProposalVersion(owner.projectId);
++    assert.equal(accepted?.versionNumber, 2);
++  });
++});
