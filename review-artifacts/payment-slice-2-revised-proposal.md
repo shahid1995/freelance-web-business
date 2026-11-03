@@ -260,34 +260,6 @@ Slice 2A contains only the minimum records required:
 
 **No mutable `status` column** on `payment_evidence`. The record is append-only immutable. Position/status is derived from the full history (Issue A).
 
-### 7.2 Source Identity and Trusted Namespace (Issue C)
-
-- **Source namespace must be established through trusted server-side configuration or an equivalent trusted source-registration mechanism.** It must not be accepted as arbitrary caller-controlled input.
-- **Unknown, unregistered, or invalid source namespaces must fail verification.** The system maintains a register of trusted namespaces (populated via Founder/internal capability only). An unknown namespace results in `verification_result` outcome = `"rejected"`.
-- **Uniqueness boundary for source events**: Defined per `project_id`. The combination `(source_kind, source_namespace, source_event_id)` must be unique per project. No global-versus-project ambiguity: the uniqueness constraint is scoped to `project_id` because the same source event ID may be valid under different projects with different namespaces.
-- **How the same source event cannot be silently accepted under multiple projects**: Each project has its own `payment_evidence` table; a source event is accepted per-project. The uniqueness constraint `(source_kind, source_namespace, source_event_id, project_id)` ensures it cannot be accepted twice under the same project. Under different projects, it is a separate event.
-- **Database-enforced uniqueness**: A partial unique index `(source_kind, source_namespace, source_event_id, project_id)` on `payment_evidence` enforces the boundary. Transient `SQLITE_BUSY` or `SQLITE_LOCKED` errors during concurrent writes are handled by the application retry loop with exponential backoff (max 3 attempts), not by claiming snapshot isolation.
-
-### 7.3 Duplicate and Conflict Handling (Issue C.5–C.7)
-
-| Scenario | Behavior |
-|---|---|
-| **Identical duplicate delivery** | Same `(source_kind, source_namespace, source_event_id, project_id)` → second delivery returns reference to first `evidence_id`; no new record written; no double-counting. Audit event `payment_evidence.duplicate_delivery` appended. |
-| **Same identity with conflicting amount/currency** | Same deduplication key but different `amount` or `currency` → flagged as conflicting evidence; earlier accepted `payment_evidence` preserved; `verification_result` with outcome `"reconciliation_conflict"` appended; reconciliation outcome recorded. |
-| **Unknown namespace** | Verification fails; `verification_result` outcome = `"rejected"`; no `payment_evidence` record written; audit event `payment_evidence.rejected` appended. |
-| **Malformed or unverified event** | Missing required fields, invalid decimal pattern, or verification failure → `verification_result` outcome = `"rejected"`; no evidence record; audit event appended. |
-| **Concurrent duplicate deliveries** | Both arrivals enter separate transactions; the second transaction encounters the uniqueness constraint and is handled via SQLite `OR IGNORE` / retry pattern. The first committed record wins; the second returns reference to the already-accepted record. |
-
-### 7.4 Atomicity and SQLite Concurrency (Issue F)
-
-**Do not claim SQLite provides snapshot isolation.** The actual intended protections are:
-
-- **Database uniqueness constraints** (partial unique index) prevent duplicate `(source_kind, source_namespace, source_event_id, project_id)` inserts.
-- **Appropriate write transactions**: All evidence + verification_result + audit writes occur in a single SQLite `BEGIN/COMMIT` transaction. Either all three write, or none do (atomic write pattern already used in PR #54 tests).
-- **Safe handling of busy/locked conditions**: On `SQLITE_BUSY` or `SQLITE_LOCKED`, the application retries with bounded exponential backoff (max 3 attempts, ~100ms base, ~500ms total). After 3 failed attempts, the write is rejected and an audit event `payment_evidence.write_failure` is appended. No silent drop.
-- **Concurrency guarantees required for Slice 2A**: Uniqueness constraint + transactional atomicity + bounded retry. These prevent duplicate evidence records and ensure consistent state.
-- **Concurrency guarantees deferred to Slice 2B**: Allocation-specific concurrency (per-obligation remaining balance, per-transaction fund ceiling) is J.14-dependent and deferred.
-
 ### 7.5 Synthetic Fixtures and Fake Verifier (Testing Support)
 
 Slice 2A test infrastructure includes:
@@ -304,11 +276,78 @@ All Slice 2A tests use synthetic data only; no live provider, no real payment.
 
 ---
 
-## 8. Slice 2B — Allocation Model and Derived Financial Position
+## 8. Slice 2A Idempotency, Trusted Source Identity, and SQLite Concurrency
 
-### 8.1 Allocation Records (Built on Slice 2A Foundation)
+### 8.1 Idempotency and Stable Source Identity
 
-Slice 2B adds the following on Slice 2A's foundation:
+**Slice 2A deduplication key**: `(source_kind, source_namespace, source_event_id)` — stable source identity using the provider's own event ID combined with the trusted namespace. This is the deduplication key defined in §C and Issue C.
+
+- **Duplicate replay of the same source event**: Must be idempotent and must not create another `payment_evidence` record. The database uniqueness constraint `(source_kind, source_namespace, source_event_id, project_id)` with `INSERT OR IGNORE` ensures this. A second delivery returns a reference to the previously accepted `evidence_id`; no new record is written; no double-counting.
+- **Source namespace must be established through trusted server-side configuration or an equivalent trusted source-registration mechanism.** It must not be accepted as arbitrary caller-controlled input. Unknown, unregistered, or invalid source namespaces must fail verification (Issue C.2).
+- **Uniqueness boundary**: `(source_kind, source_namespace, source_event_id, project_id)` with a partial unique index in the database. The same source event ID may be valid under different projects with different namespaces; the uniqueness constraint is scoped to `project_id`.
+- **How the same source event cannot be silently accepted under multiple projects**: Each project has its own `payment_evidence` table; a source event is accepted per-project. Under different projects, it is a separate event.
+
+### 8.2 SQLite Concurrency (Issue F)
+
+**Do not claim SQLite provides snapshot isolation.** The actual intended protections are:
+
+- **Database uniqueness constraints** (partial unique index) prevent duplicate `(source_kind, source_namespace, source_event_id, project_id)` inserts.
+- **Appropriate write transactions**: All evidence + verification_result + audit writes occur in a single SQLite `BEGIN/COMMIT` transaction. Either all three write, or none do (atomic write pattern already used in PR #54 tests).
+- **Safe handling of busy/locked conditions**: On `SQLITE_BUSY` or `SQLITE_LOCKED`, the application retries with bounded exponential backoff (max 3 attempts, ~100ms base, ~500ms total). After 3 failed attempts, the write is rejected and an audit event `payment_evidence.write_failure` is appended. No silent drop.
+- **Concurrency guarantees required for Slice 2A**: Uniqueness constraint + transactional atomicity + bounded retry. These prevent duplicate evidence records and ensure consistent state.
+- **Concurrency guarantees deferred to Slice 2B**: Allocation-specific concurrency (per-obligation remaining balance, per-transaction fund ceiling) is J.14-dependent and deferred.
+
+### 8.3 Append-Only History and Correction History
+
+- **Evidence records are strictly append-only immutable.** After an evidence record is written, it is never modified.
+- **Verification outcomes are represented by immutable events or records, not by mutating the original evidence.** A `verification_result` append-only record references the `evidence_id` and carries the outcome; it does not change the evidence record.
+- **The current verification/reconciliation position is derived from the authoritative records.** The "current state" is computed by reading the latest `verification_result` for a given `evidence_id` plus the associated `allocation` records. It is not stored as a mutable column on the evidence record.
+- **Conflicting duplicate deliveries never silently overwrite or replace previously accepted evidence.** A duplicate delivery with the same `(source_kind, source_namespace, source_event_id)` deduplication key is recognized and returns a reference to the previously accepted evidence record. A delivery with conflicting `amount` or `currency` against the same key is flagged as conflicting evidence (reconciliation event), and the earlier accepted record is preserved.
+- **A rejected or failed verification attempt can be represented without falsely making it an accepted payment.** A `verification_result` record with `outcome` = `"failed"` or `"rejected"` is append-only; it records the failure but does not change the evidence record's status. The evidence record itself remains as originally written.
+- **Corrections and superseding decisions preserve the prior history.** If a new verification outcome supersedes a prior one, a new `verification_result` append is written; the prior record is not deleted or overwritten. The derived position reflects the full history.
+
+### 8.4 Identifier-Only Audit Privacy
+
+For audit privacy, use an explicit allowlist of permitted metadata keys:
+
+**Permitted keys** (must pass allowlist check):
+- `evidence_id`
+- `verification_id`
+- `obligation_id`
+- `versionNumber`
+- `paymentConfigVersionId`
+- `proposalVersionId`
+- `agreementVersionId`
+
+**Rejected keys** (test asserts these are forbidden):
+- Any key containing `amount` substring (e.g., `amount`, `total_amount`, `paid_amount`).
+- Any key containing `currency` substring (e.g., `currency`, `payment_currency`).
+- Any key containing `due` substring (e.g., `due_date`, `payment_due`).
+- Any key containing `scope` substring (e.g., `scope_ref`, `milestone_scope`).
+- Any key containing `credential` or `secret` substring.
+
+**Test pattern** (for each audit event written):
+```javascript
+const allowedKeys = new Set([
+  "evidence_id", "verification_id", "obligation_id",
+  "versionNumber", "paymentConfigVersionId", "proposalVersionId", "agreementVersionId"
+]);
+for (const key of Object.keys(event.metadata)) {
+  assert.ok(allowedKeys.has(key), `unexpected audit metadata key: ${key}`);
+  assert.equal(/amount|currency|due|scope/i.test(key), false, `sensitive key ${key}`);
+}
+const serialized = JSON.stringify(event.metadata);
+assert.equal(serialized.includes("600.25"), false);  // proven no amount leaked
+assert.equal(serialized.includes("1500.00"), false); // proven no amount leaked
+```
+
+**A string search for one sample amount is not adequate proof** — the allowlist test must cover all permitted and forbidden key patterns.
+
+---
+
+## 9. Slice 2B — Allocation Model and Derived Financial Position
+
+### 9.1 Normalized Allocation Records (Built on Slice 2A Foundation)
 
 | Table | Purpose |
 |---|---|
@@ -317,11 +356,7 @@ Slice 2B adds the following on Slice 2A's foundation:
 
 **Per-transaction fund ceiling**: For each `transaction_id`, the total of all `allocated_amount` where `allocated_currency` matches and `transaction_id` matches must not exceed the verified available funds from the associated evidence. This is enforced by the application logic (not a database trigger) that reads the associated `payment_evidence` + `verification_result` records and checks: `SUM(allocated_amount) ≤ verified_amount`.
 
-**Per-obligation remaining balance**: Always calculated from the ledger: `expected_amount - SUM(allocated_amount WHERE obligation_id = ...)`. Never stored as a mutable column. The `expected_amount` and `currency` come from the obligation record (configuration version).
-
-### 8.2 Allocation Idempotency (Issue E)
-
-A stable allocation-request identity or equivalent idempotency contract:
+### 9.2 Stable Allocation-Request Identity and Idempotency
 
 - **Duplicate replay of the same allocation request**: Must be idempotent and must not create another allocation record. The `allocation_request` table (if used) records `status` = `"duplicate_rejected"` on second submission. If `allocation_request` is not used, the application-level deduplication key is `(transaction_id, obligation_id, allocated_amount, allocated_currency)` — but this is policy-dependent and deferred to J.14 resolution.
 - **Two distinct legitimate allocations from one verified transaction**: May be allowed where approved policy permits (e.g., Option B and C allow a single transaction to be split across multiple obligations; Option A also allows it up to each obligation's full amount). The system does not reject legitimate multiple allocations from one transaction, subject to ceilings.
@@ -332,7 +367,7 @@ A stable allocation-request identity or equivalent idempotency contract:
 
 **Do not use arrays of allocation IDs as a substitute for normalized relational records.** Allocation is a separate normalized record with `allocation_id`, `transaction_id`, `obligation_id`, `allocated_amount`, `allocated_currency` — not a denormalized array embedded in another record.
 
-### 8.3 Derived Financial Position (Issue F)
+### 9.3 Derived Remaining Balance
 
 **`remaining_balance_after` or another mutable balance snapshot is NOT in the authoritative ledger.** Balances are derived from authoritative obligation amounts and valid allocations:
 
@@ -342,18 +377,20 @@ remaining_balance(expected_amount, allocated) = expected_amount - SUM(allocated_
 
 Any materialized/cached representation of the balance is explicitly marked as **non-authoritative** and must be safely rebuildable from the ledger (payment_evidence + allocation + obligation records). If the cache is lost, it can be reconstructed without data loss or inconsistency.
 
-### 8.4 Slice 2B Dependencies
+### 9.4 Concurrency and J.14 Policy Dependencies
 
-Slice 2B is subject to:
-- **J.3**: Evidence source authority (which `source_kind` values are accepted).
-- **J.14**: Allocation, partial-payment, and overpayment policy (which of Options A–D is chosen).
-- **J.10**: Manual determination authority (only if Option D is chosen; not required for A–C).
+**Do not claim SQLite provides snapshot isolation.** The actual intended protections for Slice 2A are:
 
-**Slice 2B has not received implementation authorization.** It is a proposed technical scope for Founder review after J.14 resolution.
+- **Database uniqueness constraints** (partial unique index) prevent duplicate `(source_kind, source_namespace, source_event_id, project_id)` inserts.
+- **Appropriate write transactions**: All evidence + verification_result + audit writes occur in a single SQLite `BEGIN/COMMIT` transaction. Either all three write, or none do (atomic write pattern already used in PR #54 tests).
+- **Safe handling of busy/locked conditions**: On `SQLITE_BUSY` or `SQLITE_LOCKED`, the application retries with bounded exponential backoff (max 3 attempts, ~100ms base, ~500ms total). After 3 failed attempts, the write is rejected and an audit event `payment_evidence.write_failure` is appended. No silent drop.
+- **Concurrency guarantees required for Slice 2A**: Uniqueness constraint + transactional atomicity + bounded retry. These prevent duplicate evidence records and ensure consistent state.
+- **Concurrency guarantees deferred to Slice 2B**: Allocation-specific concurrency (per-obligation remaining balance, per-transaction fund ceiling) is J.14-dependent and deferred.
+- **J.14 policy dependencies**: The specific allocation rules (partial acceptance, overpayment handling, balance calculation) depend on the chosen J.14 option (A: all-or-nothing; B: partial payments with balance; C: per-transaction ceiling). Until J.14 is resolved, Slice 2B allocation rules remain undefined.
 
----
+**Explicit exclusion from Slice 2A**: Allocations, payment attempts, manual determinations, partial-payment behavior, and derived obligation states beyond `proposed` are explicitly excluded from Slice 2A and deferred to Slice 2B.
 
-## 9. Payment Attempts and Obligation-State Boundaries
+## 10. Payment Attempts and Obligation-State Boundaries
 
 ### 9.1 Payment Attempts Outside Slice 2A
 
@@ -399,7 +436,7 @@ The system tracks all four as separate columns in the model. No assumption flows
 
 ---
 
-## 10. Separate Slice 2A / Slice 2B Data Models and Scope
+## 11. Separate Slice 2A / Slice 2B Data Models and Scope
 
 ### 10.1 Slice 2A Model (Synthetic Evidence Ledger Only)
 
@@ -444,7 +481,7 @@ The system tracks all four as separate columns in the model. No assumption flows
 
 ---
 
-## 11. Acceptance Tests and Threat Analysis
+## 12. Acceptance Tests and Threat Analysis
 
 Tests are split by slice. Slice 2B tests are explicitly deferred and must not appear as Slice 2A acceptance criteria.
 
@@ -552,7 +589,7 @@ assert.equal(serialized.includes("1500.00"), false); // proven no amount leaked
 
 ---
 
-## 12. Roadmap, Decision Dependencies and Independent Authorization Gates
+## 13. Roadmap, Decision Dependencies and Independent Authorization Gates
 
 ### 12.1 Slice 2A — Synthetic Evidence-Ledger Foundation
 
@@ -621,7 +658,7 @@ Each later gate requires its own explicit Founder authorization. No stage automa
 
 ---
 
-## 13. Outstanding Founder Decisions
+## 14. Outstanding Founder Decisions
 
 The following Founder decisions must be resolved before the indicated stages can proceed. This proposal does not resolve any of them on the Founder's behalf.
 
@@ -646,7 +683,7 @@ The following Founder decisions must be resolved before the indicated stages can
 
 ---
 
-## 14. Explicit Exclusions and Final Implementation-Readiness Assessment
+## 15. Explicit Exclusions and Final Implementation-Readiness Assessment
 
 ### 14.1 Explicit Exclusions from Slice 2A (reiterated)
 
@@ -686,7 +723,7 @@ The following are explicitly excluded from Slice 2A and will remain deferred to 
 
 ---
 
-## 15. Change Log — How Each Material Issue Was Corrected
+## 16. Change Log — How Each Material Issue Was Corrected
 
 | Issue | Original Flaw | Correction Applied |
 |---|---|---|
