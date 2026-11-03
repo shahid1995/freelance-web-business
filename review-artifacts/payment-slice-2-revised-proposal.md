@@ -1,7 +1,5 @@
-## Executive Summary and Revision Scope
+# Payment Slice 2 — Revised Proposal (Documentation-Only)
 
-# Payment Slice 2
+## Revision Scope and Authority Statement
 
-## 1. Executive Summary and Revision Scope
-
-... (full 742-line content) ...
+This proposal is a documentation-only revision of Payment Slice 2. It presents revised technical design text for Founder review and decision. **No application source code, tests, migrations, schemas, or configuration is modified.** No repository documents (`docs/decisions/`, `docs/project-map.md`) are edited. No branches, commits, PRs, or pushes are created. No provider integration, credential
