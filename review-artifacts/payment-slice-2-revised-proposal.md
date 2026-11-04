@@ -1,744 +1,790 @@
-# Payment Slice 2 — Revised Proposal (Documentation-Only)
+# Payment Slice 2 — Revised Proposal, Revision 2 (Documentation-Only)
 
 ## Revision Scope and Authority Statement
 
-This proposal is a documentation-only revision of Payment Slice 2. It presents revised technical design text for Founder review and decision. **No application source code, tests, migrations, schemas, or configuration is modified.** No repository documents (`docs/decisions/`, `docs/project-map.md`) are edited. No branches, commits, PRs, or pushes are created. No provider integration, credential configuration, or live customer data processing occurs. The deliverable is proposal text only, presented in the response.
+This document is the second corrective revision of the Payment Slice 2 proposal. Its **content** is documentation only: it modifies no application source, no tests, no migrations or schemas, no dependencies, no workflows, and no governance documents (`docs/decisions/2026-10-12-payments-project-activation.md`, `docs/project-map.md`, `CONSTITUTION.md`).
 
-The revision addresses six material issues identified in the review:
-- Issue A: Append-only evidence model contradiction
-- Issue B: Out-of-scope source kinds in Slice 2A
-- Issue C: Source identity and idempotency design
-- Issue D: J.14 rewrite as coherent Founder decision options
-- Issue E: Allocation model and duplicate-allocation tests
-- Issue F: Payment attempts, states, and SQLite concurrency
+Its **publication** is a separate fact that must be stated rather than elided: this revision is published by committing this one Markdown file to branch `review/payment-slice-2-proposal-clean` and updating the existing Draft pull request #68. That publication created a branch, a commit, and a pull request. It created no implementation, no schema, no provider integration, and no deployment. Publishing documentation is not implementation authorization.
 
-All recommendations are presented as **proposed technical recommendations** or **unresolved Founder decisions**, not as already-approved decisions.
+Revision 2 corrects the material architectural, data-integrity, concurrency, security, and governance defects found in independent review of Revision 1. It also repairs Revision 1's internal inconsistencies: misnumbered subsections, duplicated audit sections, an acceptance test that referenced an enum value absent from its schema, an optional idempotency mechanism that could not guarantee idempotency, a test-count claim with no supporting evidence, and historical statements that were true when drafted but false once the document was published.
+
+Every recommendation below is a **proposed technical recommendation** or an **unresolved Founder decision**. Nothing here is a Founder-approved decision, and nothing here authorizes Slice 2A or Slice 2B implementation.
+
+### Universal invariants
+
+These hold everywhere in this document. Later sections reference them by number instead of restating them.
+
+| # | Invariant |
+|---|---|
+| **I1** | No allocation may cause the sum of allocations applied to an obligation to exceed that obligation's expected amount. |
+| **I2** | No allocation may cause the sum of allocations drawn from a transaction to exceed that transaction's accepted amount. |
+| **I3** | Monetary values are exact decimal values with explicit scale. No floating-point parsing, no lexicographic comparison, no implicit rounding or conversion. |
+| **I4** | Observations, verification results, accepted transactions, conflicts, allocations, and audit rows are append-only. Corrections are new records; nothing is edited or deleted. |
+| **I5** | Project ownership is derived server-side from a trusted registration or an authorized project resolution. A caller-supplied identifier is never proof of access and never a source of project ownership. |
+| **I6** | Audit rows are identifier-only and are committed in the same database transaction as the material write they describe. |
 
 ---
 
 ## 1. Executive Summary and Revision Scope
 
-This revision realigns Payment Slice 2 against `docs/decisions/2026-10-12-payments-project-activation.md` (the canonical decision, Founder-approved 2026-10-16). The original proposal introduced several technical deviations from the approved design:
+Payment Slice 2 is the design for what a project owes and what has been paid, built on the already-approved provider-neutral design in `docs/decisions/2026-10-12-payments-project-activation.md`. That design is Founder-approved; its implementation is not, except for one limited initial slice (see §3).
 
-- Mutable statuses on records called "immutable" (Issue A)
-- Out-of-scope source kinds (`customer_upload`, `manual_determination`) in Slice 2A (Issue B)
-- Incomplete source-identity and idempotency design (Issue C)
-- Incoherent J.14 policy options (Issue D)
-- Confused allocation model and duplicate-allocation rules (Issue E)
-- Payment attempts/obligation-states conflated with incorrect SQLite claims (Issue F)
+This revision keeps the two-slice split and corrects the defects that made Revision 1 unsafe to review:
 
-This revision corrects all six issues. The core architecture splits into two distinct technical scopes:
+- **Slice 2A — Verified Payment Evidence and Canonical Transaction Foundation.** Trusted source registration, source observations, verification results, canonical accepted transactions, correlation, conflicts, supersession, exact decimal handling, project isolation, identifier-only audit. Synthetic/test data only. No allocation, no obligation satisfaction.
+- **Slice 2B — Allocation and Derived Financial Position.** Allocation requests, allocations, transaction-level and obligation-level ceilings, derived balances, compensating corrections, and a serialized allocation write contract.
 
-- **Slice 2A**: Verified Payment Evidence Ledger — synthetic, provider-neutral, append-only evidence records, idempotency, decimal/currency handling, project isolation, identifier-only audit. No allocations, no manual determination, no payment attempts, no activation.
-- **Slice 2B**: Allocation and Derived Financial Position — built on Slice 2A foundation; requires J.14 resolution; explicit allocation records, per-transaction fund ceilings, per-obligation balance calculation, derived financial position.
+The substantive corrections in Revision 2:
 
-The Founder decisions J.1 and J.2 are resolved (Founder sets amount/currency per project; three initial schedule structures). J.13 is resolved (single currency per configuration). J.3–J.12 and J.14 remain unresolved. This proposal does not resolve any of them on the Founder's behalf but provides decision-ready frameworks for each.
+1. **Evidence identity is split into three distinct identities** (§4): source delivery, canonical transaction, and internal allocation. Revision 1 used a single delivery-scoped tuple as a global payment identity, which permitted one provider transaction observed through two channels to be accepted twice.
+2. **The relational model is stated explicitly** (§5), with primary identity, foreign keys, project ownership, baseline linkage, immutability, idempotency, and authority for every record — and with the Slice 2A/2B boundary drawn so that Slice 2A never claims an obligation is paid.
+3. **Verification outcomes, reconciliation conflicts, accepted transactions, and derived financial position are separated** (§6), with explicit precedence and supersession rules instead of "latest record wins".
+4. **The fake verifier is confined to test infrastructure** (§9) and can never impersonate Founder approval or a live payment.
+5. **J.14 is labelled as a proposed decision that is not in the canonical register** (§13), reworked across eleven independent policy dimensions with a comparison matrix, and separated from J.10.
+6. **Allocation safety is specified as a transactional contract** (§12), not an application-level check, and allocation-request idempotency is mandatory with a stable request identity.
+7. **Decimal and currency handling is specified as an exact arithmetic contract** (§10).
+8. **SQLite failure reporting no longer claims an audit row can always be written** (§11).
+9. **Trust boundaries and project isolation are stated as checkable rules** (§7).
+10. **Governance history is reconciled without editing governance documents** (§3), including the unresolved contradiction between the canonical decision and the Project Map.
+
+Sections 14–16 consolidate the decision register (including the previously missing J.7), the corrected acceptance-test matrix with an accurate evidence-quality statement, and the full correction record.
 
 ---
 
 ## 2. Canonical Decision and Authority Boundaries
 
-The governing design document is `docs/decisions/2026-10-12-payments-project-activation.md`. Its authority boundaries are:
+The governing document is `docs/decisions/2026-10-12-payments-project-activation.md`. The boundaries this proposal must respect:
 
-- **J.1 and J.2 are resolved Founder decisions**: Founder sets amount and currency per project; no public pricing catalogue or automatic pricing; three initial schedule structures (full upfront, deposit plus later, milestone-linked).
-- **Implementation separately approved only for the limited initial provider-neutral Payment Configuration + Obligations slice (synthetic/test data only; delivered by PR #54)**. Later slices, provider selection/activation, and production use remain not approved.
-- **PR #54 was merged into `main`** as commit `51a796a7949cb375f59edbac51170ed2de1c02f0`. That implementation was subsequently rolled back from `main` by `a2e7b01533b69d7c13a62379421052bfe3aa3181` ("revert: remove accidentally merged payment configuration slice from main").
-- **Current `main` was last independently verified at `6f74476c29b4dc02c37aa4936a21f844ef3db234`**. The restored candidate `f079be7ba31242f51f35caa5c42ebc01a8017982` remains local and unpublished; 0 remote refs push to main.
-- **Slice 2A and Slice 2B have not received implementation authorization**.
-- **Design approval ≠ implementation approval**. Nothing in this or any related document authorizes processing real payments or activating live projects.
-
-The Project Map (`docs/project-map.md`) reflects the same boundaries: design approved; implementation separately unapproved; J.3–J.12 and J.14 remain unresolved.
+- **Resolved Founder decisions:** J.1 and J.2 (Founder sets amount and currency per project; no public pricing catalogue or automatic pricing; three initial schedule structures — full upfront, deposit plus later payments, milestone-linked), recorded 2026-10-16. J.13 (one payment configuration uses exactly one currency; no mixed-currency obligations; no automatic conversion), recorded 2026-10-20.
+- **Unresolved:** J.3–J.12. These must not be decided by a proposal or by an implementation agent.
+- **Not canonical at all:** J.14. The canonical register currently ends at J.13. §13 of this proposal presents J.14 as a *proposed new decision requiring separate Founder consideration and approval* before it becomes canonical.
+- **Design approval is not implementation approval.** No sliver of this document authorizes real payment processing, provider selection or activation, credential configuration, live customer data, deployment, or project activation.
+- **J.3 blocks evidence work.** The canonical register states J.3 blocks the payment-evidence/state-machine slice. Slice 2A therefore cannot be implemented on the strength of this proposal alone, even as a synthetic foundation; it requires J.3 resolution first. This proposal does not treat its own framework as J.3's answer.
+- **J.10 is required whenever manual payment-status determination is proposed**, independently of which allocation policy is chosen. Revision 1 wrongly tied J.10 to J.14 Option D only; §13.4 corrects that.
+- **No customer write capability.** Customers may read payment status through existing project-access authorization. They may never write payment state, upload evidence, or allocate funds.
 
 ---
 
-## 3. Corrected Repository History and Baseline
+## 3. Repository History, Baseline, and Governance Reconciliation
+
+### 3.1 Verified facts
+
+Each row was verified against the live repository during this revision.
 
 | Fact | Evidence |
 |---|---|
-| Initial configuration/obligation implementation approval exists for synthetic/test data only | PR #54 was merged; delivered payment configuration + obligations slice as synthetic/test data only. |
-| PR #54 was merged into `main` | Merged as commit `51a796a7949cb375f59edbac51170ed2de1c02f0`. |
-| The payment implementation was subsequently rolled back from `main` | Rollback commit `a2e7b01533b69d7c13a62379421052bfe3aa3181` restored `container.ts`, `domain.ts`, `ports.ts`; removed `payment-configurations.ts` and `payment-configurations.test.ts` from main. |
-| Current `main` is `6f74476c29b4dc02c37aa4936a21f844ef3db234` | Verified: `git rev-parse main` returns this SHA (latest state in workspace review). |
-| Rollback commit `a2e7b01533b69d7c13a62379421052bfe3aa3181` is an ancestor of current `main` | Confirmed from workspace root. |
-| The restored candidate at `f079be7ba31242f51f35caa5c42ebc01a8017982` remains local and unpublished | Verified: exists locally and as `review/payment-restoration-f079be7-2026-11-02` on origin; 0 remote refs pushing to main; never merged to main. |
-| Slice 2 has not received implementation approval | By design; no implementation branch pushed; no deployment authorized. |
-| J.1 and J.2 are resolved by Founder approval 2026-10-16 | Founder sets amount and currency per project; no public pricing catalogue. |
-| J.13 is resolved by Founder approval 2026-10-20 | Single currency per configuration; no mixed-currency obligations. |
-| J.3–J.12 and J.14 remain unresolved | Per the live register in the canonical decision document. |
+| PR #54 was merged into `main` | GitHub: `merged: true`, `merged_at 2026-10-20T14:48:12Z`, merge commit `51a796a7949cb375f59edbac51170ed2de1c02f0`, 7 files changed, +2260 / −6. |
+| PR #54 delivered the limited initial Payment Configuration + Obligations slice | PR #54 title/body: Founder-only configuration versions, obligations for the three approved structures, atomic identifier-only audit, single-currency enforcement. Synthetic/test data only. |
+| The implementation was subsequently rolled back from `main` | Rollback commit `a2e7b01533b69d7c13a62379421052bfe3aa3181`, subject `revert: remove accidentally merged payment configuration slice from main`. |
+| The rollback commit is an ancestor of current `main` | `git merge-base --is-ancestor a2e7b01 origin/main` → true. |
+| Current `main` contains no payment source code | `git ls-tree -r origin/main` matches exactly one payment path: the canonical decision document. No `payment-configurations.ts`, no payment tests. |
+| Current `main` head | `6f74476c29b4dc02c37aa4936a21f844ef3db234`. |
+| Restoration work is **local and unmerged** | Commit `f079be7ba31242f51f35caa5c42ebc01a8017982` (`fix(payments): verify the whole payment schema and close on failed startup`) exists only in a local worktree; no remote ref contains it. |
+| The remote "restoration" branches contain **patch artifacts, not source** | `review/payment-restoration-f079be7-2026-11-02` (`827ca28`), `review/payment-restoration-final-2026-11-02` (`7ab911a`), and `review/payment-restoration-patch-2026-11-02` (`1330ecd`) each contain only `review-artifacts/*.patch` alongside the decision document. They are review artifacts, not restored application branches. |
+| The original PR #54 branch still exists remotely | `feat/payments-config-obligations` at `51a796a`. |
+| Slice 2A and Slice 2B have no implementation authorization | No implementation branch, no merge, no deployment exists for either. |
 
-**Do not claim** PR #54 was merged into the restored feature branch. It was merged into `main`; the later rollback and restored candidate are separate historical events.
+**Correction to Revision 1:** Revision 1 described the restored candidate as existing "as `review/payment-restoration-f079be7-2026-11-02` on origin". That branch does not contain the restored source; it contains a patch file. A patch artifact is not a source branch, and neither restores `main`.
 
-**Governance-document inconsistency (requires separate Founder-authorized correction):** The canonical decision document records implementation approval for the limited initial Payment Configuration + Obligations slice (synthetic/test data only) delivered by PR #54. The current Project Map states implementation remains separately unapproved and that the initial configuration/obligations slice may be considered for separate approval. These documents do **not** reflect the same approval status. This is a governance-document inconsistency requiring separate Founder-authorized correction; neither document is edited by this task.
+### 3.2 The distinction that must not be collapsed
 
----
+Five different things are routinely confused and are kept apart here:
 
-## 4. J.3 Evidence Architecture and Unresolved Decisions
+1. **Design approval** (2026-10-16) — approved the model.
+2. **Initial synthetic/test-only implementation approval** — approved the limited Payment Configuration + Obligations slice.
+3. **Actual merge history** — PR #54 merged into `main` at `51a796a`.
+4. **Rollback** — `a2e7b01` removed that implementation from `main`.
+5. **Current source state** — `main` at `6f74476` contains the decision document and no payment implementation.
 
-### J.3 Framework — Provider-Neutral, Verification-Gated Evidence Model
+Restoring the rolled-back implementation is a **separate act requiring separate Founder authorization**. Nothing in this proposal treats restoration as implied by the earlier approval, and nothing here authorizes it. The restoration patch artifacts in the working tree are review material, not authorization and not a branch.
 
-J.3 asks: what is the authoritative payment evidence source, and how is it verified?
+### 3.3 Governance-document inconsistency (unresolved, requires separate correction)
 
-**This design does not declare any source authoritative by default.** Instead, it provides a source-agnostic evidence model with verification gating. The Founder must later decide which source kind(s) are authoritative.
+The canonical decision records that the initial Payment Configuration + Obligations slice **received separate implementation approval and was delivered by PR #54**. The Project Map (`docs/project-map.md`, payments paragraph) states that **implementation remains separately unapproved** and that such a slice "may be considered for separate implementation approval using synthetic/test data only". The Project Map also does not record the rollback or the J.13 decision.
 
-### Evidence Record (Append-Only, Immutable)
+This revision **records the contradiction and does not resolve it**. Resolving an approval-status contradiction is Founder authority, not an agent's. Neither document is edited here. The correction required is a separate Founder-authorized governance task that decides, in one place, what the current approval status of the initial slice is.
 
-| Field | Type | Notes |
-|---|---|---|
-| `evidence_id` | UUID | Stable identifier; append-only; never modified after write. |
-| `source_kind` | enum `["provider_webhook", "provider_api_reconciliation"]` | **Slice 2A implemented kinds only**. `customer_upload` and `manual_determination` are explicitly outside Slice 2A scope (Issue B). Future source kinds may be added via Founder decision. |
-| `source_namespace` | string | Trusted server-side configured namespace or provider account identifier. Must not be arbitrary caller-controlled input (Issue C.1). Unknown/invalid namespaces fail verification (Issue C.2). |
-| `source_event_id` | string | Stable source event identifier — **the deduplication key** (Issue C). |
-| `amount` | decimal string | Exact text as entered; never parsed to floating-point number. |
-| `currency` | 3-letter uppercase string | e.g., `"USD"`. Must match configuration currency (per §J.13). |
-| `project_id` | string | Project reference; all reads/writes scoped by project. |
-
-**Critical correction — Issue A (Append-Only Behavior):**
-
-The prior proposal included mutable evidence statuses (`pending`, `accepted`, `conflicting`, `rejected`) while also calling the evidence record immutable. This is corrected as follows:
-
-- **The received source evidence identity and normalized evidence facts are immutable once recorded.** After an evidence record is written, it is never modified.
-- **Verification outcomes are represented by immutable events or records, not by mutating the original evidence.** A `verification_result` append-only record references the `evidence_id` and carries the outcome; it does not change the evidence record.
-- **The current verification/reconciliation position is derived from the authoritative records.** The "current state" is computed by reading the latest `verification_result` for a given `evidence_id` plus the associated `allocation` records. It is not stored as a mutable column on the evidence record.
-- **Conflicting duplicate deliveries never silently overwrite or replace previously accepted evidence.** A duplicate delivery with the same `(source_kind, source_namespace, source_event_id)` deduplication key is recognized and returns a reference to the previously accepted evidence record. A delivery with conflicting `amount` or `currency` against the same key is flagged as conflicting evidence (reconciliation event), and the earlier accepted record is preserved.
-- **A rejected or failed verification attempt can be represented without falsely making it an accepted payment.** A `verification_result` record with `outcome` = `"failed"` or `"rejected"` is append-only; it records the failure but does not change the evidence record's status. The evidence record itself remains as originally written.
-- **Corrections and superseding decisions preserve the prior history.** If a new verification outcome supersedes a prior one, a new `verification_result` append is written; the prior record is not deleted or overwritten. The derived position reflects the full history.
-
-**One authoritative internal source of payment/obligation state:**
-
-The append-only internal payment ledger of normalized, evidence-backed payment events is the single authoritative source. Derived obligation state (`proposed`/`due`/`partially_paid`/`paid`/`disputed`/`reversed`) is computed from it where needed. If a materialized view exists for performance, it is derived from the ledger and is not an independent source of truth. There are no two competing sources of truth.
-
-**Distinguishing three layers:**
-
-1. **Untrusted incoming delivery** — raw provider webhook or API output; not persisted as authoritative evidence in Slice 2A. May be stored temporarily for verification.
-2. **Verification attempt/result** — append-only `verification_result` record: `verification_id` PK, `evidence_id` FK (nullable if no accepted evidence exists), `outcome` enum `["passed", "failed", "rejected"]`, `verified_at`, `verified_by`, `project_id`. For failed verification with no accepted evidence, the FK is nullable and source identity fields may be recorded. Passed verification for accepted evidence is written in the same transaction as the evidence record.
-3. **Accepted normalized internal event** — the evidence record itself (`evidence_id`, `source_kind`, `source_namespace`, `source_event_id`, `amount`, `currency`, `project_id`). This is the authoritative ledger entry (Slice 2A). It is never mutated. Allocation relationships belong in Slice 2B only.
-
-The verification gating rule: **A provider callback is not authoritative merely because it was delivered successfully.** Verification logic must pass (e.g., source namespace is trusted, source_event_id is valid, amount/currency match obligation expectations) before the `verification_result` outcome is `"passed"` and the evidence record is accepted.
-
-**Synthetic evidence fixtures and injected fake verifier:**
-
-For testing, Slice 2A includes:
-- Pre-constructed synthetic evidence records with deterministic `source_event_id` values.
-- Injected fake verifier that produces `verified_at`/`verified_by` without a live provider.
-- Test fixtures that exercise the full evidence pipeline (ingest → verify → accept → audit) without any provider dependency.
-- These fixtures support unit tests, integration tests, and regression suites entirely in-memory.
-
-**This is a decision framework for the Founder, not a Founder decision itself.**
-
-> **J.3 framework**: Adopt a provider-neutral, verification-gated evidence model where:
-> - The authoritative ledger entry is the normalized internal payment event (`source_kind` + `source_namespace` + `source_event_id` + `amount` + `currency`).
-> - Provider callbacks are not authoritative by delivery alone; verification logic must pass.
-> - Synthetic evidence fixtures and an injected fake verifier support testing without a live provider.
-> - Manual determination remains a separately authorized mechanism under J.10, not a prerequisite for Slice 2A implementation.
-> - The evidence model is source-agnostic: new `source_kind` values can be added later via Founder decision.
-> - The three-layer model (untrusted delivery → verification result → accepted internal event) maintains append-only integrity and one authoritative source.
+Consequence for this proposal: whenever this document says the initial slice "was approved", it means *the canonical decision records that approval*; whenever it says implementation is "unapproved", it means *the Project Map and the absence of any restoration authorization on `main` support that reading*. Both statements are reported as evidence of an open inconsistency, never as a resolved fact.
 
 ---
 
-## 5. J.10 Scope and Separation
+## 4. Evidence Identity Model
 
-### J.10 — Who May Make or Override a Manual Payment-Status Determination
+### 4.1 Why Revision 1's identity was unsafe
 
-**J.10 is required if and only if manual payment-status determination is implemented.** It does not block a synthetic evidence-ledger foundation that contains no manual marking operation.
+Revision 1 used `(source_kind, source_namespace, source_event_id)` as a *global* deduplication identity for payments. That tuple identifies **one observation**, not one **funds movement**. The same provider transaction can legitimately arrive twice:
 
-### Precise Distinction
+- as a webhook delivery (`source_kind = provider_webhook`, delivery id `evt_1`), and
+- as an API reconciliation entry (`source_kind = provider_api_reconciliation`, observation id `rec_9`).
 
-| Scenario | J.10 Required? | Slice 2A Scope |
-|---|---|---|
-| **Slice 2A with only normalized evidence records** (no manual marking) | **No** | Evidence records carry `source_kind` = `"provider_webhook"` or `"provider_api_reconciliation"` only. All evidence is external/derived. No manual determination field needed. |
-| **Slice 2A with manual determination capability** | **Yes** | Manual determination is a distinct `source_kind` = `"manual_determination"`; requires J.10 to define who may authorize it. **`customer_upload` and `manual_determination` are explicitly outside Slice 2A scope** (Issue B). |
-| **Customer-facing evidence submission** | **Never** (explicitly prohibited) | No customer write capability at any point. All evidence ingestion is Founder/internal-authorized. |
+Those are different tuples, so both pass the uniqueness constraint, both can be accepted, and the funds get counted twice. Delivery-scoped uniqueness cannot prevent this.
 
-### J.10 Scope — Decision-Ready Framing
+### 4.2 The three identities
 
-> **J.10 scope**: If and when Slice 2A includes a `source_kind` = `"manual_determination"` evidence record type, J.10 must define who may authorize such determinations. The recommended scope is: "Founder/internal capability only, least-privileged; never a customer capability."
-
-> **J.10 not required** for the base Slice 2A evidence-ledger design that uses only external source kinds (`provider_webhook`, `provider_api_reconciliation`). Manual determination is an opt-in extension that requires its own Founder decision.
-
-**No customer-facing evidence submission or payment-status write capability is permitted** at any point. This is a hard boundary.
-
----
-
-## 6. Proposed J.14 Decision Options — Allocation, Partial-Payment and Overpayment Policy
-
-### J.14 — Rationale
-
-The existing design leaves partial-payment behavior unresolved in §B.2 and §D.4. The original J.4, J.5, and J.6 decisions address related but insufficient scope:
-
-- **J.4** (failure, retry limits, dunning, notifications) addresses post-activation failure behaviors; does not cover partial acceptance, overpayment, or multi-transaction allocation.
-- **J.5** (reversals, chargebacks, disputes) addresses undo behaviors after a payment exists; Slice 2 has no live payment to reverse from.
-- **J.6** (full and partial refund policy) addresses refund execution; does not cover allocation across multiple obligations, per-transaction ceilings, or outstanding balance tracking.
-
-**J.14 must address**: partial payment acceptance; multiple transactions allocated to one obligation; one transaction allocated across multiple obligations; outstanding balances; overpayments; unapplied funds; duplicate allocation; allocation and reconciliation failures.
-
-### Rewritten J.14 Options — Coherent Policy Alternatives
-
-Each option is a complete, self-consistent policy alternative. **Do not recommend any default as though it has already been selected.**
-
-#### Option A: All-or-Nothing with Running Balance
-
-| Behavior | Description |
-|---|---|
-| **Partial payment acceptance** | No — obligation is satisfied only when the sum of allocations equals the full expected amount. Partial allocations do **not** satisfy the obligation; an obligation remains in `due`/`partially_paid` state until fully funded. Individual partial allocations may accumulate (successive allocations from one or more verified transactions) toward the full amount, but no single partial allocation makes the obligation `paid`. |
-| **Receiving funds vs satisfaction** | Receiving/unapplied funds and accepting partial satisfaction are distinct. Funds may sit in an unapplied pool until fully allocated to satisfy an obligation under all-or-nothing rules; partial allocation alone does not constitute satisfaction. |
-| **One transaction allocated across multiple obligations** | Yes — a single transaction may be split across multiple obligations, up to each obligation's full expected amount. |
-| **Multiple transactions allocated to one obligation** | Yes — successive allocations accumulate toward the full expected amount; remaining balance tracked as `expected_amount - SUM(allocated_amount)`. |
-| **Outstanding balances** | Always calculated as `expected_amount - SUM(allocated_amount)` from the authoritative obligation and allocation history; not stored as mutable column. Must always be derivable. |
-| **Overpayments** | When total allocated > expected_amount, excess is treated as unapplied fund; no automatic refund unless J.6 decides otherwise. |
-| **Duplicate allocation** | Same `transaction_id` may not have allocations exceeding its verified available funds; re-allocation of already-allocated funds rejected. |
-| **Allocation correction/reversal** | New allocation records append; prior allocations preserved in history; net balance recomputed from full ledger. |
-
-**Best for**: Founders who want no partial satisfaction; all obligations must be fully funded before `paid` state is reachable.
-
-#### Option B: Partial Payments with Remaining Balance
-
-| Behavior | Description |
-|---|---|
-| **Partial payment acceptance** | Yes — obligation marked `partially_paid` when allocated < expected_amount; remaining balance > 0 carried forward. |
-| **One transaction allocated across multiple obligations** | Yes — same per-obligation ceiling rules; each obligation's remaining balance limits its share. |
-| **Multiple transactions allocated to one obligation** | Yes — allocations accumulate; when SUM >= expected_amount, obligation transitions to `paid`. |
-| **Outstanding balances** | Always calculated from ledger: `expected_amount - SUM(allocated_amount)`. Never stored mutably. |
-| **Overpayments** | When SUM(allocated) > expected_amount, excess becomes unapplied fund; may be rolled to next obligation in sequence or refunded per J.6 policy. |
-| **Duplicate allocation** | Same `transaction_id` allocated more than once up to its ceiling; excess rejected. |
-| **Allocation correction/reversal** | New append-only allocation records; net position recomputed from full history. |
-
-**Best for**: Founders who accept partial satisfaction; obligations may be partially paid with remaining balance carried forward.
-
-#### Option C: Per-Transaction Ceiling with Overpayment Absorption
-
-| Behavior | Description |
-|---|---|
-| **Partial payment acceptance** | Yes — each transaction allocated up to its ceiling; remaining balance carried forward after ceiling applied. |
-| **One transaction allocated across multiple obligations** | Yes — per-transaction fund ceiling enforced; each obligation's remaining balance also applies. |
-| **Multiple transactions allocated to one obligation** | Yes — allocations accumulate; per-obligation remaining balance limits further allocations. |
-| **Outstanding balances** | Calculated from ledger; per-obligation ceiling may be separate from per-transaction ceiling. |
-| **Overpayments** | Overpayment per transaction absorbed as unapplied fund; no automatic refund unless J.6 decides otherwise. Cumulative overpayments across transactions handled per J.6. |
-| **Duplicate allocation** | Same `transaction_id` allocated up to its ceiling; excess rejected. |
-| **Allocation correction/reversal** | New append-only records; net position from full history. |
-
-**Best for**: Founders who want strict transaction boundaries; overpayments are absorbed, not automatically refunded.
-
-#### Option D: Founder-Directed Allocation (requires separate Founder decisions on J.10 and J.3)
-
-| Behavior | Description |
-|---|---|
-| **Partial payment acceptance** | Yes — Founder may direct allocation of verified evidence across obligations. |
-| **Founder allocation vs manual status determination** | Founder-directed allocation instructions are **not** automatically evidence that funds moved. J.3 source authority (what constitutes authoritative payment evidence) and J.10 manual payment-status determination (who may mark status) are separate decisions. Allocation of existing verified evidence is distinct from determining payment status. |
-| **One transaction allocated across multiple obligations** | Yes — Founder decides distribution per allocation, subject to verified funds and system constraints. |
-| **Multiple transactions allocated to one obligation** | Yes — Founder directive. |
-| **Outstanding balances** | Always calculated from the authoritative obligation and allocation history (`expected_amount - SUM(allocated_amount)`); balances must always be derivable and are not optional. |
-| **Overpayments** | Founder directive: roll, refund, absorb, or other explicitly approved treatment, consistent with append-only history. |
-| **Duplicate allocation** | Only authorized allocation of unallocated verified funds; system enforces constraints against double-allocation. |
-| **Allocation correction/reversal** | New append-only allocation records; prior history preserved; net position recomputed from full ledger. |
-
-**Note**: Option D requires J.10 (who may make manual determinations) and J.3 (evidence source authority) to be resolved first as separate decisions. It is not available for Slice 2A (which has no manual determination). It is a later-slice option. No Founder policy is chosen by this document.
-
-**Do not recommend Option B or any other default as though it has already been selected.** Present all four options for Founder review.
-
-> **Which Slice 2B behaviors cannot be implemented until J.14 is resolved?**
-> - Partial-payment acceptance behavior (Option A vs. B vs. C differ).
-> - Overpayment handling (roll, refund, absorb — only Option D specifies Founder directive; A–C have defined behaviors but they differ).
-> - Remaining balance calculation policy (per the chosen option).
-> - Duplicate allocation prevention rules (all options include some form, but details differ).
-> - Allocation across multiple obligations from one transaction (rules on ceilings and balances differ).
-
----
-
-## 7. Slice 2A — Immutable Evidence and Verification Model
-
-### 7.1 Core Records (Minimum for Slice 2A)
-
-Slice 2A contains only the minimum records required:
-
-| Table | Purpose |
-|---|---|
-| `payment_evidence` | Immutable normalized synthetic evidence records (Slice 2A). PK = `evidence_id`. Fields: `evidence_id`, `source_kind`, `source_namespace`, `source_event_id`, `amount`, `currency`, `project_id`, `created_at`. No mutable status; no `obligation_ids` (Slice 2A has no allocation relationships). |
-| `verification_result` | Immutable verification outcomes. PK = `verification_id`. Fields: `verification_id`, `evidence_id` FK (nullable if no accepted evidence record exists), `outcome` enum `["passed", "failed", "rejected"]`, `verified_at`, `verified_by`, `project_id`, `source_kind`, `source_namespace`, `source_event_id` (for failed verification without evidence). Written in same transaction as `payment_evidence` when evidence is created; failed verification without evidence is recorded separately with nullable FK. |
-| `audit_event` | Identifier-only audit events (existing contract). Fields: `type`, `actor`, `project_id`, `timestamp`, `metadata` (allowlist: `evidence_id`, `verification_id`, `obligation_id`, `versionNumber`, `paymentConfigVersionId`, `proposalVersionId`, `agreementVersionId`). No amounts, no currencies, no credentials. |
-
-**No `remaining_balance_after` column** in any table. Balances are derived from authoritative obligation amounts and valid allocations (Issue E).
-
-**No mutable `status` column** on `payment_evidence`. The record is append-only immutable. Position/status is derived from the full history (Issue A).
-
-### 7.5 Synthetic Fixtures and Fake Verifier (Testing Support)
-
-Slice 2A test infrastructure includes:
-- `synthetic_evidence_fixture()` — returns a pre-constructed `payment_evidence` record with deterministic fields.
-- `fake_verifier(event)` — returns `{ outcome: "passed", verified_at: now, verified_by: founder_person_id }` without any provider integration.
-- Test that identical duplicate delivery returns reference to original (no double-counting).
-- Test that conflicting content with same source identity is rejected/flagged.
-- Test that unknown namespace fails verification.
-- Test that malformed amount pattern is rejected.
-- Test that exact decimal handling preserves entered text (no floating-point parsing).
-- Test that currency mismatch against configuration is rejected before persistence.
-
-All Slice 2A tests use synthetic data only; no live provider, no real payment.
-
----
-
-## 8. Slice 2A Idempotency, Trusted Source Identity, and SQLite Concurrency
-
-### 8.1 Idempotency and Stable Source Identity
-
-**Slice 2A deduplication key**: `(source_kind, source_namespace, source_event_id)` — globally unique source identity within the trusted source namespace. This is the deduplication key defined in §C and Issue C.
-
-- **Global uniqueness**: The uniqueness constraint is `(source_kind, source_namespace, source_event_id)` with a unique index in the database. The same source event may not be accepted under two different projects.
-- **Project association is immutable metadata**: The `project_id` is attached to the first accepted event as immutable metadata. If the same source identity later appears under another project, this constitutes a cross-project conflict and must not be accepted as a second payment event.
-- **Duplicate replay of the same source event**: Must be idempotent and must not create another `payment_evidence` record. Identical replays return the original evidence reference. `INSERT OR IGNORE` alone is not sufficient; after a uniqueness conflict, the implementation must select the existing record and compare normalized content. Conflicting normalized content (different `amount` or `currency`) is detected by explicit comparison and flagged as a conflicting evidence reconciliation event, while the earlier accepted record is preserved.
-- **Source namespace must be established through trusted server-side configuration or an equivalent trusted source-registration mechanism.** It must not be accepted as arbitrary caller-controlled input. Unknown, unregistered, or invalid source namespaces must fail verification (Issue C.2).
-- **Safe handling of concurrent duplicate writes**: On uniqueness constraint violation during concurrent writes, both transactions must safely resolve to returning the existing evidence record. SQLite busy/locked errors require bounded retry (max 3 attempts, exponential backoff) as described in §8.2.
-
-### 8.2 SQLite Concurrency (Issue F)
-
-**Do not claim SQLite provides snapshot isolation.** The actual intended protections are:
-
-- **Database uniqueness constraints** (partial unique index) prevent duplicate `(source_kind, source_namespace, source_event_id)` inserts.
-- **Appropriate write transactions**: All evidence + verification_result + audit writes occur in a single SQLite `BEGIN/COMMIT` transaction. Either all three write, or none do (atomic write pattern already used in PR #54 tests).
-- **Safe handling of busy/locked conditions**: On `SQLITE_BUSY` or `SQLITE_LOCKED`, the application retries with bounded exponential backoff (max 3 attempts, ~100ms base, ~500ms total). After 3 failed attempts, the write is rejected and an audit event `payment_evidence.write_failure` is appended. No silent drop.
-- **Concurrency guarantees required for Slice 2A**: Uniqueness constraint + transactional atomicity + bounded retry. These prevent duplicate evidence records and ensure consistent state.
-- **Concurrency guarantees deferred to Slice 2B**: Allocation-specific concurrency (per-obligation remaining balance, per-transaction fund ceiling) is J.14-dependent and deferred.
-
-### 8.3 Append-Only History and Correction History
-
-- **Evidence records are strictly append-only immutable.** After an evidence record is written, it is never modified.
-- **Verification outcomes are represented by immutable events or records, not by mutating the original evidence.** A `verification_result` append-only record references the `evidence_id` and carries the outcome; it does not change the evidence record.
-- **The current verification/reconciliation position is derived from the authoritative records.** The "current state" is computed by reading the latest `verification_result` for a given `evidence_id` plus the associated `allocation` records. It is not stored as a mutable column on the evidence record.
-- **Conflicting duplicate deliveries never silently overwrite or replace previously accepted evidence.** A duplicate delivery with the same `(source_kind, source_namespace, source_event_id)` deduplication key is recognized and returns a reference to the previously accepted evidence record. A delivery with conflicting `amount` or `currency` against the same key is flagged as conflicting evidence (reconciliation event), and the earlier accepted record is preserved.
-- **A rejected or failed verification attempt can be represented without falsely making it an accepted payment.** A `verification_result` record with `outcome` = `"failed"` or `"rejected"` is append-only; it records the failure but does not change the evidence record's status. The evidence record itself remains as originally written.
-- **Corrections and superseding decisions preserve the prior history.** If a new verification outcome supersedes a prior one, a new `verification_result` append is written; the prior record is not deleted or overwritten. The derived position reflects the full history.
-
-### 8.4 Identifier-Only Audit Privacy
-
-For audit privacy, use an explicit allowlist of permitted metadata keys:
-
-**Permitted keys** (must pass allowlist check):
-- `evidence_id`
-- `verification_id`
-- `obligation_id`
-- `versionNumber`
-- `paymentConfigVersionId`
-- `proposalVersionId`
-- `agreementVersionId`
-
-**Rejected keys** (test asserts these are forbidden):
-- Any key containing `amount` substring (e.g., `amount`, `total_amount`, `paid_amount`).
-- Any key containing `currency` substring (e.g., `currency`, `payment_currency`).
-- Any key containing `due` substring (e.g., `due_date`, `payment_due`).
-- Any key containing `scope` substring (e.g., `scope_ref`, `milestone_scope`).
-- Any key containing `credential` or `secret` substring.
-
-**Test pattern** (for each audit event written):
-```javascript
-const allowedKeys = new Set([
-  "evidence_id", "verification_id", "obligation_id",
-  "versionNumber", "paymentConfigVersionId", "proposalVersionId", "agreementVersionId"
-]);
-for (const key of Object.keys(event.metadata)) {
-  assert.ok(allowedKeys.has(key), `unexpected audit metadata key: ${key}`);
-  assert.equal(/amount|currency|due|scope/i.test(key), false, `sensitive key ${key}`);
-}
-const serialized = JSON.stringify(event.metadata);
-assert.equal(serialized.includes("600.25"), false);  // proven no amount leaked
-assert.equal(serialized.includes("1500.00"), false); // proven no amount leaked
-```
-
-**A string search for one sample amount is not adequate proof** — the allowlist test must cover all permitted and forbidden key patterns.
-
----
-
-## 9. Slice 2B — Allocation Model and Derived Financial Position
-
-### 9.1 Normalized Allocation Records (Built on Slice 2A Foundation)
-
-| Table | Purpose |
-|---|---|
-| `allocation` | Immutable allocation records. PK = `allocation_id`. Fields: `allocation_id`, `transaction_id` (opaque verified transaction identifier), `obligation_id` FK, `allocated_amount` decimal string, `allocated_currency` 3-letter string, `created_at`. |
-| `allocation_request` | Optional stable allocation-request identity for idempotency. PK = `allocation_request_id`. Fields: `allocation_request_id`, `source_evidence_id` FK, `requested_amount`, `requested_currency`, `project_id`, `created_at`, `status` enum `["pending", "accepted", "duplicate_rejected"]`. **This is the idempotency contract for allocations** (Issue E). Not all Slice 2B implementations require this; it depends on the approved policy. |
-
-**Per-transaction fund ceiling**: For each `transaction_id`, the total of all `allocated_amount` where `allocated_currency` matches and `transaction_id` matches must not exceed the verified available funds from the associated evidence. This is enforced by the application logic (not a database trigger) that reads the associated `payment_evidence` + `verification_result` records and checks: `SUM(allocated_amount) ≤ verified_amount`.
-
-### 9.2 Stable Allocation-Request Identity and Idempotency
-
-- **Duplicate replay of the same allocation request**: Must be idempotent and must not create another allocation record. The `allocation_request` table (if used) records `status` = `"duplicate_rejected"` on second submission. If `allocation_request` is not used, the application-level deduplication key is `(transaction_id, obligation_id, allocated_amount, allocated_currency)` — but this is policy-dependent and deferred to J.14 resolution.
-- **Two distinct legitimate allocations from one verified transaction**: May be allowed where approved policy permits (e.g., Option B and C allow a single transaction to be split across multiple obligations; Option A also allows it up to each obligation's full amount). The system does not reject legitimate multiple allocations from one transaction, subject to ceilings.
-- **Cumulative allocations against one transaction**: Must never exceed that transaction's verified available funds. The application enforces: `SUM(allocation.allocated_amount WHERE allocation.transaction_id = X) ≤ verified_amount_from_evidence_X`.
-- **Allocations to an obligation**: Must obey the applicable Founder-approved policy and balance rules (per J.14 option). Option A: allocated ≤ remaining full expected_amount. Option B: allocated ≤ remaining balance (expected - prior allocations). Option C: allocated ≤ min(per-transaction ceiling, per-obligation remaining balance).
-
-**Do not use the incorrect rule that a transaction ID may only ever have one allocation record.** One transaction may legitimately fund multiple obligations, subject to the approved policy and fund ceiling.
-
-**Do not use arrays of allocation IDs as a substitute for normalized relational records.** Allocation is a separate normalized record with `allocation_id`, `transaction_id`, `obligation_id`, `allocated_amount`, `allocated_currency` — not a denormalized array embedded in another record.
-
-### 9.3 Derived Remaining Balance
-
-**`remaining_balance_after` or another mutable balance snapshot is NOT in the authoritative ledger.** Balances are derived from authoritative obligation amounts and valid allocations:
+**A. Source delivery identity** — identifies exactly one incoming observation.
 
 ```
-remaining_balance(expected_amount, allocated) = expected_amount - SUM(allocated_amount WHERE obligation_id = ... AND allocated_currency = obligation.currency)
+source_delivery_key = (source_registration_id, delivery_reference)
 ```
 
-Any materialized/cached representation of the balance is explicitly marked as **non-authoritative** and must be safely rebuildable from the ledger (payment_evidence + allocation + obligation records). If the cache is lost, it can be reconstructed without data loss or inconsistency.
+- `delivery_reference` is the provider's delivery/event identifier for a webhook, or the reconciliation observation identifier for an API pull.
+- Uniqueness: `UNIQUE(source_registration_id, delivery_reference)`.
+- Guarantees: one delivery is processed once. It guarantees **nothing** about funds.
 
-### 9.4 Concurrency and J.14 Policy Dependencies
+**B. Canonical transaction identity** — identifies the underlying funds movement independently of how it was observed.
 
-**Do not claim SQLite provides snapshot isolation.** The actual intended protections for Slice 2A are:
-
-- **Database uniqueness constraints** (partial unique index) prevent duplicate `(source_kind, source_namespace, source_event_id)` inserts.
-- **Appropriate write transactions**: All evidence + verification_result + audit writes occur in a single SQLite `BEGIN/COMMIT` transaction. Either all three write, or none do (atomic write pattern already used in PR #54 tests).
-- **Safe handling of busy/locked conditions**: On `SQLITE_BUSY` or `SQLITE_LOCKED`, the application retries with bounded exponential backoff (max 3 attempts, ~100ms base, ~500ms total). After 3 failed attempts, the write is rejected and an audit event `payment_evidence.write_failure` is appended. No silent drop.
-- **Concurrency guarantees required for Slice 2A**: Uniqueness constraint + transactional atomicity + bounded retry. These prevent duplicate evidence records and ensure consistent state.
-- **Concurrency guarantees deferred to Slice 2B**: Allocation-specific concurrency (per-obligation remaining balance, per-transaction fund ceiling) is J.14-dependent and deferred.
-- **J.14 policy dependencies**: The specific allocation rules (partial acceptance, overpayment handling, balance calculation) depend on the chosen J.14 option (A: all-or-nothing; B: partial payments with balance; C: per-transaction ceiling). Until J.14 is resolved, Slice 2B allocation rules remain undefined.
-
-**Explicit exclusion from Slice 2A**: Allocations, payment attempts, manual determinations, partial-payment behavior, and derived obligation states beyond `proposed` are explicitly excluded from Slice 2A and deferred to Slice 2B.
-
-## 10. Payment Attempts and Obligation-State Boundaries
-
-### 9.1 Payment Attempts Outside Slice 2A
-
-- **Payment attempts are outside Slice 2A scope.** J.4 remains unresolved.
-- **Do not introduce a retry, dunning, notification, authorization/capture, or settlement subsystem in Slice 2A.**
-- **Conceptual separation**: Payment attempts, verified evidence, allocations, and obligation states are four distinct concepts.
-
-| Concept | Description | Slice 2A |
-|---|---|---|
-| **Payment attempt / transaction** | One provider/reconciliation outcome with timestamps, provider identifiers. | Not implemented. |
-| **Verified evidence** | Normalized internal payment event that passed verification. | Yes — `payment_evidence` record. |
-| **Allocation** | Link between payment/evidence and obligations with amounts. | Deferred to Slice 2B. |
-| **Obligation state** | `proposed`/`due`/`partially_paid`/`paid`/`disputed`/`reversed`. | Only `proposed` (configuration membership) in Slice 2A; others require J.14. |
-
-### 9.2 Why the Distinction Matters
-
-A "successful" payment attempt does **not** guarantee obligation satisfaction. An allocation must exist, must be valid per the approved policy (J.14), and must not exceed per-obligation or per-transaction ceilings. A "failed" attempt does **not** imply obligation failure — such an obligation state does not exist in the design (per §C.4, no `failed` obligation state).
-
-The system tracks all four as separate columns in the model. No assumption flows automatically from one to another.
-
-### 9.3 Obligation States in Slice 2A
-
-| State | Prerequisites in Slice 2A | Requires |
-|---|---|---|
-| `proposed` | Configuration membership only. | Slice 2A only. |
-| `due` | Schedule and due-trigger rules. | J.9 (activation conditions) — not resolved in Slice 2A. |
-| `partially_paid` | Partial-payment policy. | J.14 — not resolved; deferred. |
-| `paid` | Authoritative evidence + valid allocations under approved policy. | J.3 + J.14 — not resolved; deferred. |
-| `disputed` | J.5 decision. | Not implemented in Slice 2A. |
-| `reversed` | J.5/J.6 decisions. | Not implemented in Slice 2A. |
-
-**Only `proposed` is the Slice 2A obligation state.** All others are deferred to later slices after the applicable Founder decisions.
-
-### 9.4 Separation of Financial Position from Lifecycle Status
-
-| Calculation | Derived from | Purpose |
-|---|---|---|
-| **Remaining balance** | `expected_amount - SUM(allocated_amount)` from ledger. | Financial position; allocation ceiling enforcement, overpayment detection. |
-| **Obligation state** (`proposed`/`due`/`partially_paid`/`paid`/`disputed`/`reversed`) | Schedule rules + evidence + allocation policy (J.14). | Commercial lifecycle status. |
-| **Allocation ceiling** | Per-transaction fund ceiling + per-obligation remaining balance (from ledger calc). | Business rule enforcement; prevents overallocation. |
-
-**Key invariant**: Financial-position calculations are computed from the ledger and are not stored as mutable columns. The derived obligation state is a separate concept computed from different prerequisites (schedule + evidence + policy).
-
----
-
-## 11. Separate Slice 2A / Slice 2B Data Models and Scope
-
-### 10.1 Slice 2A Model (Synthetic Evidence Ledger Only)
-
-**Tables (minimum)**:
-- `payment_evidence` — immutable normalized evidence records.
-- `verification_result` — immutable verification outcomes.
-- `audit_event` — identifier-only audit events (existing contract).
-
-**Explicitly excluded from Slice 2A**:
-- ❌ Allocations (deferred to Slice 2B).
-- ❌ Payment attempts/retry subsystem (J.4 unresolved; deferred).
-- ❌ Manual Founder/internal paid determinations (J.10; excluded per Issue B).
-- ❌ Customer evidence uploads (Issue B; excluded from Slice 2A schema).
-- ❌ Partial-payment or overpayment behavior (J.14 unresolved; deferred).
-- ❌ Derived obligation states beyond `proposed` (require J.14; deferred).
-- ❌ Provider integration (design is provider-neutral).
-- ❌ Activation predicate or activation event (J.9 unresolved; deferred).
-- ❌ Customer payment UI or customer-facing write capability (hard boundary).
-- ❌ Production data or live customer projects (synthetic only).
-
-**Slice 2A is testable entirely with synthetic fixtures.** No live provider required.
-
-### 10.2 Slice 2B Model (Allocation and Derived Financial Position)
-
-**Tables (built on Slice 2A foundation)**:
-- `allocation` — immutable allocation records; `transaction_id`, `obligation_id`, `allocated_amount`, `allocated_currency`.
-- `allocation_request` — optional stable allocation-request identity for idempotency (Issue E).
-- `payment_evidence` — inherited from Slice 2A (unchanged).
-- `verification_result` — inherited from Slice 2A (unchanged).
-- `audit_event` — inherited from Slice 2A (unchanged).
-
-**Explicitly included in Slice 2B**:
-- ✅ Explicit allocation records.
-- ✅ Per-transaction funds ceiling.
-- ✅ Per-obligation balance calculation (derived from ledger).
-- ✅ Concurrency and duplicate-allocation controls.
-- ✅ Derived financial position (remaining balance; non-authoritative cache allowed).
-- ✅ Integration with J.14 partial-payment policy options.
-- ✅ Integration with J.3 evidence model (which evidence records count toward `partially_paid` or `paid`).
-
-**Slice 2B depends on J.14 resolution.** Without J.14, the specific allocation rules (partial acceptance, overpayment handling, balance calculation) are undefined.
-
----
-
-## 12. Acceptance Tests and Threat Analysis
-
-Tests are split by slice. Slice 2B tests are explicitly deferred and must not appear as Slice 2A acceptance criteria.
-
-### 11.1 Slice 2A Tests (Synthetic, Provider-Neutral)
-
-| Test Category | Test Focus |
-|---|---|
-| **Valid evidence through fake verifier** | Synthetic valid evidence passes verification contract; `payment_evidence` record written; `verification_result` outcome = `"passed"`. |
-| **Invalid/unverified evidence** | Missing fields, invalid decimal pattern, unknown namespace, currency mismatch → `verification_result` outcome = `"rejected"`; no `payment_evidence` record; audit event `payment_evidence.rejected` appended. |
-| **Identical duplicate source event** | Same `(source_kind, source_namespace, source_event_id)` delivered twice → second returns reference to first `evidence_id`; no new record; audit event `payment_evidence.duplicate_delivery`. |
-| **Same source event identifier with conflicting content** | Same deduplication key but different `amount` or `currency` → earlier accepted record preserved; `verification_result` outcome = `"reconciliation_conflict"`; reconciliation outcome recorded as audit event. |
-| **Unknown/untrusted source namespace** | Namespace not in trusted register → verification fails; `verification_result` outcome = `"rejected"`; no evidence record. |
-| **Project-ID substitution** | One project cannot read another project's evidence; all reads scoped by `project_id`; IDOR regression test. |
-| **Concurrent duplicate ingestion** | Two concurrent deliveries of same source event → uniqueness constraint ensures only one wins; second returns reference to accepted record; no double-counting. |
-| **Database uniqueness conflict handling** | `INSERT OR IGNORE` / retry pattern handles `SQLITE_BUSY`/`SQLITE_LOCKED`; max 3 retries with exponential backoff; after 3 failures, write rejected, audit event `payment_evidence.write_failure`. |
-| **Atomicity of evidence, verification result, and audit writes** | All three written in one transaction; if any fails, all rolled back; consistent state after failure. |
-| **Exact decimal representation and validation** | `1500`, `1500.00`, `120.750` all valid; zero rejected; no floating-point parsing; amount stored as exact text. |
-| **Currency consistency** | Obligation currency must match configuration currency (per §J.13); mixed-currency obligations rejected before persistence; comparison is plain string equality on uppercase form. |
-| **Append-only history and correction history** | Evidence records cannot be modified after write; prior versions preserved; `evidence_id` of earlier record never changes; `verification_result` history appendable. |
-| **Identifier-only audit privacy** | Audit `metadata` allowlist: `evidence_id`, `verification_id`, `obligation_id`, `versionNumber`, `paymentConfigVersionId`, `proposalVersionId`, `agreementVersionId`. String search for one sample amount (e.g., "600.25") in serialized metadata returns false. No amounts, no currencies, no credentials. |
-| **Existing regression behavior** | All existing 328 tests pass unchanged; `customerStageFor`; proposal/agreement/organization/project stage derivation unchanged. |
-
-**Policy-dependent tests (deferred)**: Partial-payment acceptance, overpayment handling, manual determination authorization, activation predicate conditions — these require J.14/J.3/J.10 resolution and are not Slice 2A acceptance criteria.
-
-### 11.2 Slice 2B Tests — Explicitly Deferred
-
-| Test Category | Requires |
-|---|---|
-| **Duplicate allocation-request replay** | J.14 allocation-idempotency policy. |
-| **Distinct valid allocations from one transaction across multiple obligations** | J.14 option selected (A allows it; B and C have ceiling rules). |
-| **Transaction-level cumulative fund ceiling** | J.14: per-transaction verified available funds ceiling. |
-| **Obligation-level ceiling and remaining balance** | J.14: per-option balance rules (A vs. B vs. C differ). |
-| **Concurrent allocation attempts** | J.14: depends on chosen option's concurrency controls. |
-| **Allocation rollback/atomicity** | J.14: new append-only records; net position from full history. |
-| **Partial-payment behavior after J.14 resolution** | J.14: Option A vs. B vs. C differ. |
-| **Overpayment and unapplied-fund behavior after J.14 resolution** | J.14: overpolicy specified per option. |
-
-**Slice 2B tests must not be included as Slice 2A acceptance criteria.**
-
-### 11.3 Threat Analysis (Slice 2A)
-
-| Threat | Slice 2A Defense |
-|---|---|
-| **Duplicate source event delivery** | Deduplication on `(source_kind, source_namespace, source_event_id)`; second delivery returns reference to accepted record; no double-counting. |
-| **Same source event identifier with conflicting content** | Conflict flagging: earlier accepted record preserved; reconciliation outcome recorded; no silent overwrite. |
-| **Wrong source namespace** | Namespace is part of deduplication key and trusted register check; different namespace = separate event; both may be accepted if verification passes. |
-| **Forged or unverified evidence** | Verification gating: evidence only accepted after verification logic passes (namespace trusted, event ID valid, amount/currency match attempt). Rejected evidence produces audit event, no record written. |
-| **Project-ID substitution** | All reads and writes scoped by `project_id`; one project cannot read another's evidence, obligations, or allocations. |
-| **Duplicate allocation** | Not applicable in Slice 2A (allocations deferred). Uniqueness constraint prevents duplicate evidence records. |
-| **Transaction-level over-allocation** | Not applicable in Slice 2A (allocations deferred). |
-| **Obligation over-allocation** | Not applicable in Slice 2A (allocations deferred). |
-| **Concurrency** | Uniqueness constraint + transactional atomicity + bounded retry (max 3 attempts, exponential backoff). No snapshot isolation claims. |
-| **Rollback** | Transactional consistency: evidence + verification_result + audit written in one `BEGIN/COMMIT`; matching existing PR #54 contract. |
-| **Exact decimal arithmetic** | Amounts stored as decimal strings; no floating-point parsing; arithmetic via decimal library or string comparison; verified by existing test suite (5 finding tests all pass). |
-| **Currency mismatch** | Currency comparison is plain string equality on stored uppercase form; case never decides outcome; no conversion, rounding, or re-scaling. |
-| **Append-only history** | Database constraints or application logic enforce never-modify-after-write; audit events verify integrity. |
-| **Identifier-only audit privacy** | Audit metadata keys restricted to allowlist; decimal-dot check proves no amounts leaked (e.g., `serialized.includes("600.25")` = false). |
-| **No change to proposal, agreement or customer-facing stage behavior** | All 328 existing tests pass unchanged; `customerStageFor` stage derivation unchanged; proposal/agreement behavior unchanged. |
-
-### 11.4 Audit Privacy — Explicit Allowlist
-
-For audit privacy, use an explicit allowlist of permitted metadata keys and tests that reject forbidden fields:
-
-**Permitted keys** (must pass allowlist check):
-- `evidence_id`
-- `verification_id`
-- `obligation_id`
-- `versionNumber`
-- `paymentConfigVersionId`
-- `proposalVersionId`
-- `agreementVersionId`
-
-**Rejected keys** (test asserts these are forbidden):
-- Any key containing `amount` substring (e.g., `amount`, `total_amount`, `paid_amount`).
-- Any key containing `currency` substring (e.g., `currency`, `payment_currency`).
-- Any key containing `due` substring (e.g., `due_date`, `payment_due`).
-- Any key containing `scope` substring (e.g., `scope_ref`, `milestone_scope`).
-- Any key containing `credential` or `secret` substring.
-
-**Test pattern** (for each audit event written):
-```javascript
-const allowedKeys = new Set([
-  "evidence_id", "verification_id", "obligation_id",
-  "versionNumber", "paymentConfigVersionId", "proposalVersionId", "agreementVersionId"
-]);
-for (const key of Object.keys(event.metadata)) {
-  assert.ok(allowedKeys.has(key), `unexpected audit metadata key: ${key}`);
-  assert.equal(/amount|currency|due|scope/i.test(key), false, `sensitive key ${key}`);
-}
-const serialized = JSON.stringify(event.metadata);
-assert.equal(serialized.includes("600.25"), false);  // proven no amount leaked
-assert.equal(serialized.includes("1500.00"), false); // proven no amount leaked
+```
+canonical_transaction_key = (source_registration_id, provider_transaction_reference)
 ```
 
-**A string search for one sample amount is not adequate proof** — the allowlist test must cover all permitted and forbidden key patterns.
+- `source_registration_id` is the trusted provider/account namespace (§7.1), not a request-supplied string.
+- `provider_transaction_reference` is the provider's own reference to the funds movement, carried by the provider contract (for example the payment/charge identifier), supplied by the provider rather than derived by this system.
+- Uniqueness: `UNIQUE(source_registration_id, provider_transaction_reference)` on `payment_transaction`.
+- Consequences: at most one canonical transaction exists per provider transaction per registered account; N observations of it across M channels still yield one transaction and one amount of available funds.
 
-### 11.5 Regression Tests — Distinguish Fresh vs. Historical
+**C. Internal allocation identity** — identifies an application operation.
 
-- **Historical agent-reported test counts**: The earlier proposal mentioned 328 tests passing. This was agent-reported against a specific implementation base.
-- **Freshly verified test results**: As of this revision, the baseline is the canonical decision document `docs/decisions/2026-10-12-payments-project-activation.md` and the verified repository state `main` at `6f74476c29b4dc02c37aa4936a21f844ef3db234`. No test execution has been performed in this sandbox; the 328 count is referenced from the prior work state and should be re-verified against the actual implementation base if needed.
-- **Tests not run**: Slice 2A and Slice 2B tests are newly described in this proposal; they have not been executed against any codebase.
-- **Any known baseline failure**: None reported in this revision; the prior 328-pass result is from the pre-sandbox state and should be re-verified.
+- `allocation_request_id` identifies one idempotent allocation request (§12.2).
+- `allocation_id` identifies one applied allocation record (§12.1).
+- These are internal identities. They are never derived from, never equal to, and never interchangeable with `delivery_reference` or `provider_transaction_reference`. A single canonical transaction may back many allocations; a single allocation request yields at most one allocation.
 
-**Do not claim the 328-test result is current unless freshly reproduced against the exact implementation base.** This revision is documentation-only; no code execution or test runs are performed.
+### 4.3 Source-to-transaction correlation
+
+Correlation is recorded, not inferred:
+
+- `payment_transaction_observation` links an observation to a canonical transaction with `correlation_basis`:
+  - `provider_shared_reference` — the provider contract states that both observations carry the same `provider_transaction_reference`. **The only basis permitted in Slice 2A.**
+  - `verified_mapping` — an externally verified mapping established outside this system. Not available in Slice 2A; requires a J.3 decision defining the mapping's authority.
+  - `unresolved` — no reliable cross-channel reference was supplied.
+
+Rules:
+
+1. Only correlate observations across source kinds when a trusted provider contract or verified mapping establishes that they refer to the same transaction.
+2. Never merge observations because amounts, currency, or timestamps look similar. Amount equality is not identity (I3 and §4.4).
+3. A correlated duplicate observation is recorded (it is evidence of what the provider reported) but contributes **no additional funds**. Available funds are a property of the canonical transaction, not of the observation count.
+
+### 4.4 When the provider supplies no reliable cross-channel reference
+
+This is the dangerous case, and it is handled by refusing to guess:
+
+- Each observation remains independently recorded under its own delivery identity.
+- Each observation that cannot be promoted is linked with `correlation_basis = unresolved` and is **not** promoted to a canonical transaction's funds.
+- An open `reconciliation_conflict` of kind `unresolved_correlation` is created (§6.2), naming every observation involved.
+- While that conflict is open, none of the involved observations contributes to derived financial position. They are retained as evidence, not as money.
+- Resolution requires an approved correlation rule under J.3 (or a later J.10-authorized human determination). Until then, the condition is reported as unresolved. It is never resolved by auto-merging, by picking the larger amount, or by accepting both as separate funds.
+
+### 4.5 Reported versus accepted
+
+Two questions have two different answers, and both are preserved:
+
+| Question | Authoritative record |
+|---|---|
+| What did the provider report? | `payment_observation` (immutable, verbatim normalized facts) |
+| What has this system accepted as funds? | `payment_transaction` (immutable, accepted amount and currency) |
+
+A conflict between them is never resolved by overwriting either record.
 
 ---
 
-## 13. Roadmap, Decision Dependencies and Independent Authorization Gates
+## 5. Relational Model and Slice Boundaries
 
-### 12.1 Slice 2A — Synthetic Evidence-Ledger Foundation
+### 5.1 Records
 
-**Authorization gate**: Founder must authorize Slice 2A implementation as a synthetic, provider-neutral design only.
+`C` = configuration/obligation records delivered by the (rolled-back) initial slice; `2A` and `2B` mark the slice that owns the record. "Baseline" means the commercial-baseline linkage to the accepted-proposal and signed-agreement versions via the configuration version.
 
-| Item | Status |
-|---|---|
-| Synthetic evidence-ledger foundation | Not authorized; design proposal only. |
-| Provider integration | Excluded. |
-| Customer uploads | Excluded. |
-| Manual determination | Excluded (J.10 unresolved). |
-| Payment attempts/retries | Excluded (J.4 unresolved). |
-| Allocations | Excluded (deferred to Slice 2B). |
-| Partial-payment/overpayment behavior | Excluded (J.14 unresolved). |
-| Activation | Excluded (J.9 unresolved). |
-| Customer payment UI | Excluded (hard boundary). |
-| Production data | Excluded (synthetic only). |
+| Record | Primary identity | Foreign keys | Project ownership | Baseline | Immutability | Idempotency | Authority |
+|---|---|---|---|---|---|---|---|
+| `payment_source_registration` (2A) | `source_registration_id` | `project_id` | **Defines** project ownership for its namespace | none | Append-only; changes via a new registration that `supersedes_registration_id`s the old one | `UNIQUE(project_id, source_kind, source_namespace)` for active rows | **Authoritative** for trust |
+| `payment_observation` (2A) | `observation_id` | `source_registration_id` → registration | **Derived** from the registration; never from the request | none | Immutable | `UNIQUE(source_registration_id, delivery_reference)` | **Authoritative** for "what the provider reported" |
+| `verification_result` (2A) | `verification_id` | `observation_id` (NOT NULL) → observation; `payment_transaction_id` (nullable) → transaction | Derived from observation | none | Immutable | One result per attempt; attempts are distinct records | **Authoritative** for the verification outcome |
+| `payment_transaction` (2A) | `payment_transaction_id` | `source_registration_id`; `accepted_verification_id` → verification | Derived from registration | none | Immutable | `UNIQUE(source_registration_id, provider_transaction_reference)` | **Authoritative** for "what the system accepted as funds" |
+| `payment_transaction_observation` (2A) | `(observation_id, payment_transaction_id)` | both | Derived | none | Immutable | Natural key | **Derived** correlation record |
+| `reconciliation_conflict` (2A) | `conflict_id` | observations involved; optional transaction | Derived | none | Immutable header; state derived from resolutions | One open conflict per detected condition | **Authoritative** that a conflict exists |
+| `conflict_resolution` (2A) | `resolution_id` | `conflict_id` | Derived | none | Immutable | One resolution event per decision | **Authoritative** resolution history |
+| `verification_supersession` (2A) | `supersession_id` | superseding and superseded verification ids | Derived | none | Immutable | One record per supersession | **Authoritative** precedence |
+| `payment_configuration_version` (C) | `payment_config_version_id` | `project_id`, `proposal_version_id`, `agreement_version_id` | `project_id` | **Is** the baseline anchor | Immutable version | Version number per project | **Authoritative** commercial baseline |
+| `payment_obligation` (C) | `obligation_id` | `payment_config_version_id` | via configuration | Member of exactly one configuration version | Immutable after issuance | Deterministic ordering within version | **Authoritative** for expected amount and currency |
+| `allocation_request` (2B) | `allocation_request_id` | `project_id`, `payment_transaction_id` | `project_id` | none | Immutable payload and recorded outcome | `UNIQUE(project_id, idempotency_key)` | **Authoritative** idempotency record |
+| `allocation` (2B) | `allocation_id` | `payment_transaction_id`, `obligation_id`, `allocation_request_id`, `compensates_allocation_id` (nullable) | `project_id` | via obligation | Immutable; corrections are new records | Exactly one allocation per accepted request | **Authoritative** applied allocation |
+| `audit_event` (existing) | `audit_event_id` | none (identifier metadata only) | `project_id` column, identifier-only | none | Append-only | n/a | **Authoritative** audit trail |
 
-**If the canonical decision requires J.3 to be resolved before even a synthetic authoritative-event contract can be implemented, Slice 2A must remain a design/test-only proposal until the Founder resolves that dependency.** Do not bypass J.3 by labelling an unresolved policy a framework.
+Derived, never stored as authoritative columns: obligation remaining balance, transaction unapplied funds, whether an obligation is satisfied, aggregate financial position, an obligation's state beyond `proposed`. Any materialized view of these is rebuildable and explicitly non-authoritative.
 
-### 12.2 Slice 2B — Allocations and Derived Financial Position
+### 5.2 The Slice 2A / 2B boundary, precisely
 
-**Authorization gate**: Founder must resolve J.14 (allocation, partial-payment, and overpayment policy) and accept the J.3 evidence framework before Slice 2B implementation can be authorized.
+**Slice 2A may establish:** trusted registrations, observations, verification results, canonical accepted transactions, correlation, conflicts, supersession, and audit — a *synthetic verified-payment-transaction foundation*, subject to J.3 approval.
 
-| Item | Status |
-|---|---|
-| Allocation records | Requires J.14 resolution. |
-| Per-transaction fund ceiling | Requires J.14 resolution. |
-| Per-obligation balance calculation | Requires J.14 resolution. |
-| Derived financial position | Requires J.14 resolution. |
-| Concurrency and duplicate-allocation controls | Requires J.14 resolution. |
-| Partial-payment behavior | Requires J.14 option selected (A, B, or C). |
-| Overpayment handling | Requires J.14 option selected. |
-| Activation integration | May require J.9 and J.3. |
+**Slice 2A must not establish or imply:**
 
-**No implementation authorization is implied by the Slice 2A proposal.** Slice 2B is separately authorized.
+- that an obligation is paid, satisfied, or partially satisfied;
+- any obligation-specific allocation check (no allocation subsystem exists in 2A, so no such check can exist);
+- any `obligation_id` association on evidence or transactions invented to make an acceptance test pass;
+- any obligation state other than `proposed` (configuration membership);
+- any inference from "funds accepted" to "obligation settled".
 
-### 12.3 Later Gates (Not Implied by Earlier Stages)
+Verification in 2A compares an observation against the **configuration currency** (J.13) and the verification contract. It does **not** compare against an obligation's expected amount; that comparison is a 2B allocation-time determination and requires J.14.
 
-Each later gate requires its own explicit Founder authorization. No stage automatically authorizes the next.
+**Checks that belong to 2A:** registration trust; delivery uniqueness; provider reference presence and uniqueness; currency agreement with the configuration; exact decimal validity; project consistency; correlation recording; conflict detection; supersession recording; atomic audit.
 
-| Gate | Decision | Dependency |
+**Checks that belong to 2B:** request idempotency; per-transaction available funds (I2); per-obligation remaining balance (I1); currency equality across transaction, obligation, and allocation; serialized write; obligation satisfaction under the selected J.14 option; compensating corrections.
+
+**Slice 2A does not weaken the activation predicate.** The canonical predicate requires each required obligation to be individually satisfied against its own expected amount and currency (§F.2 of the canonical decision). A 2A foundation has no allocation and therefore cannot satisfy that predicate. No activation logic exists in either slice's current authorization.
+
+---
+
+## 6. Verification Results, Reconciliation Conflicts, and Supersession
+
+Revision 1's acceptance tests asserted `outcome = "reconciliation_conflict"` while its schema enumerated only `passed`, `failed`, `rejected`. Revision 2 removes the contradiction by separating the concepts.
+
+### 6.1 Verification result — semantics fixed
+
+`verification_result.outcome` is exactly one of:
+
+| Outcome | Meaning | Persistence consequence |
 |---|---|---|
-| J.4 attempts/retries | Founder defines retry limits, dunning, notifications. | After Slice 2A; J.4 unresolved. |
-| J.5 disputes/reversals/chargebacks | Founder defines handling, escalation, reversal implications. | After Slice 2A; J.5 unresolved. |
-| J.6 refunds | Founder defines authority, policy, partial-refund rules. | After Slice 2A; J.6 unresolved. |
-| J.8 provider choice | Founder selects provider; integrates SDK/webhooks. | After Slice 2A (evidence model) + J.3. |
-| J.9 activation conditions | Founder defines predicate and trigger (automatic vs. manual). | After Slice 2A + J.3 evidence framework. |
-| J.10 manual payment-status authority | Founder defines authorized actor(s) for manual determinations. | After Slice 2A; required only if Option D allocation chosen. |
-| J.11 evidence retention | Founder defines retention period and protection rules. | After Slice 2A evidence model. |
-| J.12 post-activation events | Founder defines events after activation. | After J.9 activation is implemented. |
-| Tax requirements | Founder defines jurisdiction, collection, recording. | After live payment processing begins. |
+| `passed` | The observation satisfied the approved verification contract and its facts were accepted. | A `payment_transaction` is written in the same transaction; `verification_result.payment_transaction_id` is set. |
+| `failed` | A verification attempt could not reach a conclusion for a technical or transient reason (for example the observation arrived before its registration was active, or a required provider reference was absent). | No acceptance. Retry is permitted as a new attempt with its own record. |
+| `rejected` | The observation is definitively inadmissible: malformed amount, currency mismatch with the configuration, untrusted or unknown registration, or a cross-project identity collision. | No acceptance. Retrying the same observation is not expected to succeed; a new *corrected* observation is a new delivery. |
 
-**Each stage requires its own explicit Founder authorization.** No stage automatically authorizes the next.
+A conflict is **not** an outcome. It is a separate record (§6.2). This is deliberate: folding conflicts into the outcome enum is what produced Revision 1's schema/test mismatch, and it also conflated "verification of one observation" with "disagreement between two records".
 
-### 12.4 Roadmap Summary Table
+### 6.2 Reconciliation conflict — separate record
 
-| Stage | Technical Scope | Dependent Founder Decisions | Authorization Status |
+`reconciliation_conflict` fields:
+
+| Field | Meaning |
+|---|---|
+| `conflict_id` | Primary identity. |
+| `project_id` | Owning project (derived, not caller-supplied). |
+| `conflict_kind` | `duplicate_content_mismatch`, `cross_source_conflict`, `unresolved_correlation`, `cross_project_collision`. |
+| `observation_ids` | All observations involved. |
+| `payment_transaction_id` | Nullable; set when a specific accepted transaction is affected. |
+| `detected_at`, `detection_source` | When and by which check the conflict was found. |
+| `blocks_use` | Derived: open conflicts block the affected transaction from contributing to derived financial position. |
+
+Resolution history is append-only in `conflict_resolution` (`resolution_id`, `conflict_id`, `resolution_kind`, `decided_by_kind`, `decided_by_reference`, `decided_at`, `rationale_code`). A conflict is never "fixed" by editing it.
+
+A conflict **blocks use, not existence**: the accepted transaction and its observations remain recorded and auditable. Blocking is expressed in the derived position and in the allocation precondition (§12.3).
+
+### 6.3 Accepted canonical transaction — immutable
+
+Once a `payment_transaction` is written, its identity, accepted amount, and accepted currency are immutable. Later information cannot rewrite them. This prevents a later failed observation from silently erasing earlier accepted funds.
+
+### 6.4 Supersession — explicit precedence, never "latest wins"
+
+A later verification or reconciliation event may supersede an earlier conclusion only by writing a `verification_supersession` record. Rules:
+
+1. **No implicit precedence.** The current position is not "the latest verification row". Selecting the latest row would let a later `failed` observation silently invalidate an earlier accepted transaction — which is exactly the failure mode the canonical decision forbids (§D.6, §E.2).
+2. **A `failed` or `rejected` result never by itself revokes acceptance.** It records an attempt outcome.
+3. **Revocation requires a supersession record** naming the superseded verification, the superseding verification, a `reason_code`, and the authority that produced it. In Slice 2A only automated rules approved under J.3 may create one; no human override exists in 2A.
+4. **Supersession is one-directional and terminal per record:** a superseded verification cannot be un-superseded; the superseding record may itself be superseded later.
+5. **The derived position walks the supersession chain** from the accepted verification to its head, and applies open conflicts as blocks.
+6. **A supersession never deletes or mutates** the superseded result, the transaction, or the observations.
+
+### 6.5 Failed verification without an accepted evidence record
+
+The referential problem in Revision 1 was a nullable `evidence_id` with no other anchor, producing rows that referenced nothing meaningful.
+
+Fix: `verification_result.observation_id` is **NOT NULL** — every verification attempt verifies a specific observation, whether or not it succeeds. `payment_transaction_id` is nullable precisely because a failed or rejected attempt accepts no funds. Referential integrity is therefore complete: a failed verification points at a real observation; a passed one points at both an observation and the transaction it accepted.
+
+A failure never pretends an accepted payment exists, and never requires one to exist.
+
+---
+
+## 7. Trust Boundaries, Project Isolation, and Security
+
+All rules below reuse the canonical decision's existing security contract (§G.2, §G.3, §H). No new customer capability is introduced.
+
+### 7.1 How trusted provider/account identity is established
+
+Only by a `payment_source_registration` row created by the Founder/internal capability on the internal surface. The namespace value comes from server-side configuration, never from a request body. A syntactically valid namespace supplied by an untrusted caller is **not** trusted: matching a string is not authentication. Unregistered namespaces produce `rejected` verification results and no records.
+
+### 7.2 How external observations become associated with a project
+
+The observation's `project_id` is derived from `source_registration_id`. A caller may not supply it. If a request carries a project reference, that reference is resolved within the caller's organization and compared against the registration's project; mismatch is rejected and recorded as `cross_project_collision`.
+
+### 7.3 How project ownership is derived rather than trusted
+
+The existing pattern is mandatory: resolve the caller-supplied reference inside the caller's organization, then re-check authorization server-side on every read and every write. Internal payment operations require the internal capability attached to a Person and never run on a customer route with hidden controls.
+
+### 7.4 How configuration and baseline identities are checked
+
+A transaction or allocation may reference only a configuration version belonging to the same project. The configuration's `proposal_version_id` and `agreement_version_id` are revalidated as the current versions at write time; a stale configuration is not silently used (canonical decision §B.1). Obligations must be members of the configuration version being evaluated.
+
+### 7.5 How cross-project collisions are rejected
+
+Canonical keys are unique per registration. If a `provider_transaction_reference` resolves to an existing transaction owned by a different project, the write is refused and a `cross_project_collision` conflict is recorded. A second project never inherits another project's transaction.
+
+### 7.6 How customer access stays read-only
+
+Customer surfaces expose derived status only, under existing project-access checks. There is no customer route that writes payment state, submits evidence, or allocates funds — in this design or any later one implied here.
+
+### 7.7 How automated provider authentication differs from human authorization
+
+Automated verification is a `verifier_kind = automated` result tied to a registered namespace and verifier configuration version. It authenticates a *channel*, not a person. Human determination is `verifier_kind = human`, requires the internal capability and a J.10 decision, and is out of Slice 2A scope entirely. An automated pass can never produce a human determination, and vice versa.
+
+### 7.8 How audit records stay identifier-only
+
+`audit_event.metadata` is restricted to an allowlist of identifier keys (§8.4). No amounts, currencies, payloads, credentials, or provider secrets. Enforcement is by allowlist rejection at write plus a test that rejects forbidden key patterns — not by searching for one sample amount string.
+
+---
+
+## 8. Slice 2A Scope and Minimum Schema
+
+### 8.1 Scope
+
+Slice 2A is the synthetic, provider-neutral foundation: registrations, observations, verification results, canonical transactions, correlation, conflicts, supersession, exact decimals, currency agreement, project isolation, identifier-only audit. Synthetic/test data only. It requires J.3 resolution before implementation.
+
+### 8.2 Records and constraints
+
+| Record | Required constraints |
+|---|---|
+| `payment_source_registration` | `UNIQUE(project_id, source_kind, source_namespace)` for active rows; `supersedes_registration_id` self-FK; no customer-writable path. |
+| `payment_observation` | `UNIQUE(source_registration_id, delivery_reference)`; `CHECK(amount_text <> '')`; `CHECK(currency = UPPER(currency))`; `project_id` NOT NULL, derived. |
+| `verification_result` | `observation_id` NOT NULL; `payment_transaction_id` nullable; `outcome IN ('passed','failed','rejected')`; `CHECK(outcome <> 'passed' OR payment_transaction_id IS NOT NULL)`. |
+| `payment_transaction` | `UNIQUE(source_registration_id, provider_transaction_reference)`; accepted amount and currency NOT NULL; `accepted_verification_id` NOT NULL. |
+| `payment_transaction_observation` | PK `(observation_id, payment_transaction_id)`; `correlation_basis IN ('provider_shared_reference','verified_mapping','unresolved')`; Slice 2A permits only `provider_shared_reference` and `unresolved`. |
+| `reconciliation_conflict` | `conflict_kind` enumerated; `blocks_use` derived. |
+| `conflict_resolution` | `conflict_id` NOT NULL; append-only. |
+| `verification_supersession` | `superseded_verification_id <> superseding_verification_id`; append-only. |
+| `audit_event` | `metadata` validated against the identifier allowlist at write. |
+
+There is **no** `status` column on observations, transactions, or evidence rows. Position and blocks are derived (I4, §6).
+
+### 8.3 What Slice 2A explicitly does not contain
+
+No `allocation`; no `allocation_request`; no obligation linkage on evidence or transactions; no obligation state beyond `proposed`; no payment-attempt, retry, dunning, or notification subsystem; no manual determination; no customer upload; no activation predicate or event; no provider integration; no production data.
+
+### 8.4 Audit allowlist
+
+Permitted metadata keys: `evidence_id`, `observation_id`, `verification_id`, `payment_transaction_id`, `conflict_id`, `obligation_id`, `versionNumber`, `paymentConfigVersionId`, `proposalVersionId`, `agreementVersionId`, `source_registration_id`, `allocation_id`, `allocation_request_id`.
+
+Rejected patterns at write time: any key matching `/amount|currency|due|scope|credential|secret|payload|token/i`.
+
+This allowlist check is the primary control. A substring search for a literal sample amount is retained only as a regression assertion, never as the proof of privacy.
+
+---
+
+## 9. Synthetic Fixtures, Test Verification, and the Fake Verifier
+
+Four different things must never be confused. Revision 1 blurred them by having `fake_verifier(event)` return `"passed"` with `verified_by = founder_person_id`, which fabricates Founder approval.
+
+| # | Thing | Where it may exist | What it may assert |
 |---|---|---|---|
-| **1. Slice 2A design approval** | Evidence ledger framework; source identity; idempotency; decimal/currency; project isolation; audit privacy. | J.3 framework accepted (not a resolved Founder decision). | **Not authorized** — design proposal for Founder review. |
-| **2. Slice 2A implementation authorization** | Synthetic implementation against `node:sqlite`; test fixtures; regression verification. | Stage 1 authorization + J.3 framework acceptance. | **Not authorized**. |
-| **3. J.14 resolution** | Allocation, partial-payment, overpayment policy: Options A, B, C, or D. | Explicit Founder decision. | **Not resolved**. |
-| **4. Slice 2B design approval** | Allocation model; per-transaction ceiling; per-obligation balance; derived position; idempotency contract. | J.14 resolved; J.3 framework accepted; J.10 only if Option D. | **Not authorized**. |
-| **5. Slice 2B implementation authorization** | Allocation implementation on Slice 2A foundation; full test matrix; security review. | Stages 3 + 4 authorization. | **Not authorized**. |
-| **6. Later gates (J.4–J.12, J.14)** | Provider selection, activation, retention, refunds, tax, etc. | Each its own Founder decision; none implied by earlier stages. | **Not authorized**. |
+| 1 | **Synthetic fixture creation** | Test code only | An observation *would* look like this. Carries `data_classification = synthetic`. |
+| 2 | **Test-only fake verification** | Test infrastructure, injected | A synthetic observation satisfies the verification contract. Never real funds. |
+| 3 | **Future production verification** | Does not exist; requires J.3, J.8 | Nothing is asserted today. |
+| 4 | **Human/internal payment-status determination** | Does not exist; requires J.10 | Nothing is asserted today. |
+
+### 9.1 Fake verifier contract
+
+- Injected only by explicit dependency injection from test setup; the module is test-environment gated and cannot be constructed in a production build.
+- Never a production fallback: with no production verifier configured, the system **fails closed** (`failed` result, no acceptance), and never falls back to the fake.
+- Unreachable from any customer-controlled input: there is no route, flag, header, or payload field that selects a verifier.
+- Emits `verifier_kind = test_fake`, `verified_by = NULL`, `verified_at_source = test_clock`. It must **never** emit a Founder person identifier, and a database constraint rejects `verifier_kind = test_fake` together with a non-null `verified_by`.
+- Records it produces carry `data_classification = synthetic`; a constraint prevents a synthetic transaction from being marked real.
+
+### 9.2 What `verified_by` means
+
+- **Automated verification:** `verified_by` is NULL. The record instead carries `verifier_kind = automated` and `verifier_reference` = the identifier of the verifier configuration/version that ran. Naming a person here would imply a human determination that never happened.
+- **Human determination:** `verified_by` is the acting person's identifier plus the capability and the governing J.10 decision reference. This path does not exist until J.10 is resolved.
+
+Manual determination stays governed by J.10 and is out of scope. No production payment processing, provider selection, provider integration, or credentials are authorized by this proposal.
 
 ---
 
-## 14. Outstanding Founder Decisions
+## 10. Decimal, Currency, and Exact Arithmetic Contract
 
-The following Founder decisions must be resolved before the indicated stages can proceed. This proposal does not resolve any of them on the Founder's behalf.
+I3 governs. Revision 1 preserved decimal *strings* but never specified what "exact" required.
 
-| Decision | Question | Relevance | Status |
+### 10.1 Accepted grammar
+
+```
+amount := unsigned | signed          (payments use unsigned only)
+unsigned := int ( "." frac )?
+int      := "0" | [1-9][0-9]{0,17}
+frac     := [0-9]{1,6}
+```
+
+- Maximum 18 integer digits and at most 6 fractional digits (scale ≤ 6).
+- Leading `+`, exponent notation, thousands separators, whitespace, and `,` decimal separators are rejected.
+- Zero and negative amounts are rejected for payment observations and allocations.
+
+### 10.2 Preservation of original text
+
+`amount_text` stores the exact text the provider or operator supplied, unmodified. Normalization produces a separate `amount_normalized` value plus `amount_scale`; the original is never overwritten, so evidence remains verbatim.
+
+### 10.3 Canonical normalization
+
+1. Parse into `(sign, integer_digits, fraction_digits)`.
+2. Strip trailing zeros from `fraction_digits`.
+3. Drop an empty fraction.
+4. Result is `integer_digits` or `integer_digits + "." + fraction_digits`.
+
+Therefore `1500`, `1500.00`, and `1500.000` all normalize to `1500` with scale 0 and are the same value.
+
+### 10.4 Exact comparison
+
+- Compare **values**, never text. Lexicographic comparison is forbidden: it would rank `"900"` above `"1500"`.
+- Compare `(sign, integer_digits, fraction_digits)` after normalization, or compare integer-scaled representations at a common scale.
+- Equality of `1500` and `1500.00` is **true**; equality of `1500` and `1500.01` is false.
+
+### 10.5 Exact addition and subtraction
+
+- Represent values as sign plus arbitrary-precision integers (`BigInt` or an equivalent decimal library) scaled to a common exponent.
+- Addition and subtraction are performed on those integers; no intermediate rounding exists.
+- Sums used for ceilings (I1, I2) are exact sums of exact values, computed inside the write transaction (§12.3).
+
+### 10.6 Currency
+
+- Normalize by trimming and ASCII-uppercasing; valid form is `^[A-Z]{3}$`.
+- A three-letter string does **not** prove a currency is real. This proposal introduces no currency table and makes no ISO-4217 claim.
+- The operative rule is J.13: the code must equal the project's registered configuration currency exactly. Anything else is `rejected`. No conversion, rounding, or re-scaling exists, and no exchange rate is introduced.
+- Transaction, obligation, and allocation currency must be identical at allocation time (§12.3).
+
+### 10.7 Failure handling
+
+| Condition | Result |
+|---|---|
+| Malformed grammar | `rejected`; no record written; validation error returned. |
+| More than 18 integer digits or scale > 6 | `rejected`. |
+| Sum overflow beyond 18 integer digits | Operation refused; no partial write. |
+| Currency mismatch with configuration | `rejected`; nothing persisted. |
+| Currency mismatch at allocation time | Allocation refused; nothing persisted. |
+
+No financial amount is ever parsed into a JavaScript floating-point number, at any layer, including tests.
+
+---
+
+## 11. SQLite Transactionality, Concurrency, and Failure Reporting
+
+### 11.1 Failure classes are distinct
+
+Revision 1 claimed that after three failed lock retries a `payment_evidence.write_failure` audit row is appended. That is not always possible: if the database is locked, the audit insert can fail for the same reason. Revision 2 separates the classes:
+
+| Class | Detection | Handling |
+|---|---|---|
+| **Uniqueness conflict** | `SQLITE_CONSTRAINT_UNIQUE` / primary-key violation | Not an error. Resolve to the replay path: read the existing row, compare normalized content, return the original outcome (§4.2, §12.2). |
+| **`SQLITE_BUSY`** | Contention; database reachable | Bounded retry of the whole transaction (see 11.2). |
+| **`SQLITE_LOCKED`** | Lock held, typically shared-cache or schema lock | Same bounded retry, distinct metric; not treated as busy. |
+| **Other persistence failure** | I/O, disk, corruption | Fail the operation; no retry loop. |
+| **Verification rejection** | Business outcome | Not an error: a `rejected` verification result is committed. |
+| **Reconciliation conflict** | Detected inconsistency | Not an error: a conflict record is committed. |
+
+### 11.2 Bounded retry — a recommendation, not a guarantee
+
+Proposed: retry the entire transaction up to 5 attempts with exponential backoff and jitter (base ~50 ms, cap ~1 s). This is a **technical recommendation to be validated during implementation**, not a guarantee that a write eventually succeeds. The whole transaction is retried, never a partially applied one; rollback precedes retry.
+
+### 11.3 Audit integrity on failure
+
+- When a write **succeeds**, the material records and their identifier-only audit rows commit in one transaction (I6). Either both exist or neither does.
+- When a write **fails**, no audit row can be claimed. The failure is reported through an out-of-band operational channel (structured application log or metric) containing only: operation type, project identifier, record identifier if one was assigned before the failure, failure class, attempt count, and timestamp. No amounts, no currency, no provider payload, no credentials, no customer-sensitive content.
+- The proposal explicitly does **not** claim a committed audit record for a failed write. Reporting a write failure as an "audit event" in the same database would be a false statement about durability.
+
+### 11.4 No isolation claim
+
+SQLite is not claimed to provide snapshot isolation. The guarantees relied on are: uniqueness constraints enforced by the database, `BEGIN IMMEDIATE` serialization of writers (§12.3), and atomic commit. Readers may observe pre-commit state; nothing here depends on repeatable reads.
+
+---
+
+## 12. Slice 2B Allocation Model, Idempotency, and Concurrency
+
+Slice 2B requires J.14 resolution before design approval and implementation authorization.
+
+### 12.1 Allocation record
+
+| Field | Requirement |
+|---|---|
+| `allocation_id` | Primary identity. |
+| `allocation_request_id` | NOT NULL FK to `allocation_request`; one allocation per accepted request. |
+| `payment_transaction_id` | NOT NULL FK to a canonical accepted transaction. |
+| `obligation_id` | NOT NULL FK to an obligation of the same project. |
+| `project_id` | NOT NULL; must equal both parents' project. |
+| `allocated_amount`, `allocated_currency` | Exact decimal (§10) and the single currency of the configuration (J.13). |
+| `effect_sign` | `+1` for an allocation, `-1` for a compensating record. |
+| `compensates_allocation_id` | Nullable self-FK; required when `effect_sign = -1`. |
+| `created_at` | Immutable timestamp. |
+
+No `UPDATE` or `DELETE` path exists. Corrections are new rows.
+
+### 12.2 Mandatory, stable allocation-request idempotency
+
+Revision 1 made `allocation_request` optional and fell back to `(transaction_id, obligation_id, allocated_amount, allocated_currency)`. That fallback is unsafe: two genuinely distinct allocation requests with identical values are indistinguishable, so a legitimate second request is discarded as a duplicate — or, worse, a replay is created because the values differ in scale.
+
+Revision 2 removes the fallback entirely. `allocation_request` is **mandatory**:
+
+- `UNIQUE(project_id, idempotency_key)`, where `idempotency_key` is an opaque caller-supplied request identifier.
+- `payload_digest` records a canonical digest of the normalized request payload (transaction, obligation, exact normalized amount, currency).
+- **Same key + same digest** → return the original recorded outcome; no second allocation, no state change.
+- **Same key + different digest** → reject as an idempotency conflict (`409` semantics); nothing written.
+- **Different keys** → distinct requests, even when monetary values are identical; each may succeed subject to I1 and I2.
+- The request row, its recorded outcome, the allocation, and the audit row commit in one transaction. A replay reads the committed outcome and never re-executes.
+- The database constraints — not application memory — enforce the contract.
+
+### 12.3 Transactional allocation contract
+
+Revision 1 relied on an application-level precheck, `SUM(allocated_amount) <= verified_amount`, executed outside the write transaction. Two concurrent requests can both pass it and both write, over-allocating.
+
+Corrected contract — every allocation performs, in this order, inside one serialized write transaction:
+
+1. `BEGIN IMMEDIATE` (or a technically equivalent serialized-write strategy) **before** reading any ceiling.
+2. Resolve the request by `(project_id, idempotency_key)`; on replay with matching digest, return the recorded outcome and commit nothing new.
+3. Re-read the canonical transaction: accepted amount and currency, and require that no open conflict sets `blocks_use` (§6.2). Recompute `SUM(allocated_amount * effect_sign)` for that transaction **inside** the transaction.
+4. Enforce I2: `existing_total + requested ≤ accepted_amount`. Compare exact decimals (§10).
+5. Re-read the obligation: expected amount, currency, and project. Recompute `SUM(allocated_amount * effect_sign)` for that obligation **inside the same transaction**.
+6. Enforce I1: `existing_total + requested ≤ expected_amount`.
+7. Enforce currency identity across transaction, obligation, and allocation (J.13), and project identity across all three.
+8. Apply the option-specific rule from §13 (for example Option C's single-obligation constraint, or Option D's required operator directive).
+9. Insert `allocation_request` outcome, `allocation`, and the identifier-only audit row.
+10. `COMMIT`.
+
+**Concurrency prevention versus retry behavior are different concerns:** prevention is the serialized write plus inside-transaction recheck; retry is only a response to `SQLITE_BUSY`/`SQLITE_LOCKED` (§11.2) and always restarts the whole transaction. Neither substitutes for the other, and no application-level precheck outside the transaction is relied upon.
+
+### 12.4 Unapplied funds
+
+Because I1 and I2 are absolute, an accepted transaction may exceed what its obligations can absorb. The difference is **unapplied funds**: derived as `accepted_amount − Σ allocated`, never stored authoritatively, never auto-allocated, never auto-refunded (refund authority is J.6).
+
+### 12.5 Allocation correction
+
+- Corrections append a compensating record (`effect_sign = -1`, `compensates_allocation_id` set) with its own `allocation_request`.
+- A compensating record may not exceed the allocation it compensates, and may not be created twice for the same allocation.
+- Original allocations are never edited or deleted; history remains complete and balances are recomputed from the full ledger.
+- **Conditions for creation:** an internal, authorized correction of an allocation entry error. That is all this proposal defines. Reversal of *received funds* (chargeback, refund, dispute) belongs to J.5 and J.6 and is **not** invented here; no reversal, refund, or chargeback behavior is specified.
+
+---
+
+## 13. Proposed Founder Decision J.14 and J.10 Separation
+
+### 13.1 Status
+
+> **Proposed new Founder decision J.14 — not yet approved and not yet part of the canonical decision register.**
+
+The canonical register in `docs/decisions/2026-10-12-payments-project-activation.md` currently contains J.1 through J.13. J.14 exists only as a proposal. It becomes canonical only through separate Founder consideration and approval, recorded by the Founder in the canonical document. This proposal does not modify that document, does not assume approval, and recommends no default.
+
+### 13.2 Why a decision is needed
+
+The canonical design deliberately leaves partial-payment behavior open (§B.2, §D.4) and states that the impact of partial payments on obligation satisfaction depends on an explicit Founder-approved policy. J.4 (failure/retry), J.5 (reversals/disputes), and J.6 (refunds) do not cover allocation, ceilings, or partial satisfaction. Without J.14, Slice 2B has no defined satisfaction rule.
+
+### 13.3 Eleven independent policy dimensions
+
+Revision 1's four options were not independent: Option C largely repeated ceilings that every option already enforces, and Option D described *who* allocates rather than *what policy* applies. Revision 2 separates the decision into dimensions and requires each option to answer all eleven.
+
+| # | Dimension | Question |
+|---|---|---|
+| D1 | Partial funds vs partial satisfaction | Are partial allocations recorded, and do they ever count toward satisfaction? |
+| D2 | Multiple transactions → one obligation | Permitted? |
+| D3 | One transaction → multiple obligations | Permitted? |
+| D4 | Per-transaction ceiling | Is I2 absolute? (Proposed: yes, in every option.) |
+| D5 | Per-obligation ceiling | Is I1 absolute? (Proposed: yes, in every option.) |
+| D6 | Overpayments | What happens to accepted funds that no obligation can absorb? |
+| D7 | Unapplied funds | Are they tracked, and may they be applied later? |
+| D8 | Refund dependency | Which refund questions are deferred to J.6? |
+| D9 | Correction and reversal | How are allocation errors corrected; what is deferred to J.5/J.6? |
+| D10 | Duplicate request handling | Mandatory request identity and replay semantics (§12.2). |
+| D11 | Allocation concurrency | Serialized write contract (§12.3). |
+
+### 13.4 J.10 is not an allocation option
+
+J.10 asks **who may make or override a manual payment-status determination**. It is required whenever that capability is proposed — regardless of which allocation option is selected. Revision 1 wrongly presented J.10 as relevant only under Option D.
+
+The distinction:
+
+- **Founder-directed allocation** is the act of deciding *which verified funds are applied to which obligation*. It assumes funds already verified (J.3) and moves no money.
+- **Manual payment-status determination** is the act of asserting or overriding *whether an obligation is paid*, potentially against the verification record.
+
+These are different capabilities with different misuse risk. The second is the highest-risk path in the design, remains governed by J.10, and is not authorized by any option in §13.5. If a future slice proposes it, J.10 must be resolved first, whichever allocation option is in force.
+
+### 13.5 Options
+
+All four options apply I1–I6, D4, D5, D8, D10, and D11 identically. They differ only where the matrix shows.
+
+**Option A — All-or-nothing satisfaction.** Partial funds are accepted and recorded as allocations up to the remaining balance, and accumulate across transactions. An obligation is satisfied **only** when the sum of allocations equals its expected amount exactly. A partially funded obligation is never reported as partially paid; it is reported as not satisfied, with its remaining balance. Funds beyond what obligations can absorb stay unapplied. Rationale: simplest satisfaction rule, no partial-satisfaction commercial meaning.
+
+**Option B — Partial satisfaction permitted.** An obligation with `0 < Σ allocated < expected` is `partially_paid`; it is satisfied at exact equality. Allocations accumulate across transactions; one transaction may be split across obligations. Funds beyond capacity stay unapplied. Rationale: partial payment carries commercial meaning and is visible as such.
+
+**Option C — Single-obligation transactions.** Satisfying D3 = **No**: a transaction's funds may be applied to at most one obligation (at most one positive allocation per transaction, enforced by a partial unique index). Partial satisfaction is permitted as in B; multiple transactions may still fund one obligation. Consequence, stated as a policy cost: a transaction larger than its single obligation's need leaves the surplus permanently unapplied unless a later correction or J.6 refund addresses it. Rationale: simplest reconciliation — one payment, one obligation.
+
+**Option D — Operator-directed allocation only.** No automatic allocation exists: every allocation requires a recorded internal operator directive (internal capability, audited, identifier-only). D1 follows the directive; D2 and D3 are permitted per directive; partial satisfaction permitted as directed. Funds beyond capacity stay unapplied. J.10 is **not** thereby satisfied: the operator directs verified funds, which is not a manual payment-status determination. Rationale: maximum commercial control, at the cost of throughput and operator dependency.
+
+### 13.6 Comparison matrix
+
+| Dimension | Option A | Option B | Option C | Option D |
+|---|---|---|---|---|
+| **D1** Partial allocation recorded | Yes | Yes | Yes | Yes, per directive |
+| **D1** Partial obligation satisfaction | **No** — satisfied only at exact equality | **Yes** — `partially_paid` | **Yes** — `partially_paid` | **Yes** — as directed |
+| **D2** Multiple transactions → one obligation | Yes | Yes | Yes | Yes, per directive |
+| **D3** One transaction → multiple obligations | Yes | Yes | **No** — single obligation only | Yes, per directive |
+| **D4** Per-transaction ceiling (I2) | Absolute | Absolute | Absolute | Absolute |
+| **D5** Per-obligation ceiling (I1) | Absolute | Absolute | Absolute | Absolute |
+| **D6** Overpayment handling | Excess stays unapplied | Excess stays unapplied | Excess stays unapplied; cannot move to another obligation | Excess stays unapplied |
+| **D7** Unapplied funds tracked | Derived, non-authoritative | Derived | Derived | Derived |
+| **D8** Refund dependency | J.6 (not invented here) | J.6 | J.6 | J.6 |
+| **D9** Correction | Compensating append | Compensating append | Compensating append | Compensating append, directive required |
+| **D9** Reversal of received funds | J.5/J.6 | J.5/J.6 | J.5/J.6 | J.5/J.6 |
+| **D10** Request idempotency | Mandatory (§12.2) | Mandatory | Mandatory | Mandatory |
+| **D11** Concurrency | Serialized (§12.3) | Serialized | Serialized | Serialized |
+
+**No default is recommended.** Selecting an option is Founder authority, and the selection becomes canonical only when recorded in the canonical decision document.
+
+### 13.7 What remains blocked per option
+
+For every option: the satisfaction rule cannot be implemented, the obligation-state computation beyond `proposed` cannot be implemented, and the derived financial position cannot claim satisfaction. Option C additionally requires the single-obligation constraint. Option D additionally requires an internal directive mechanism and its authorization model. All options remain blocked on J.3 (evidence authority) and on separate Founder authorization.
+
+---
+
+## 14. Founder Decision Register
+
+The canonical register contains J.1–J.13. This table reproduces its status accurately and adds the proposed J.14, which is not canonical.
+
+| Decision | Subject | Status |
+|---|---|---|
+| **J.1** | Pricing and commercial authority | **Resolved** — Founder approval 2026-10-16: Founder sets amount and currency per project; no public pricing catalogue or automatic pricing. |
+| **J.2** | Payment schedule and permitted arrangements | **Resolved** — 2026-10-16: full upfront; deposit plus later payments; milestone-linked. Additional structures require separate approval. |
+| **J.3** | Authoritative payment evidence and its verification | **Unresolved.** Blocks the payment-evidence/state-machine slice. Not decided by this proposal. |
+| **J.4** | Failed payments, retry policy, retry limits, dunning, notifications | **Unresolved.** No attempt/retry subsystem is designed here. |
+| **J.5** | Reversals, chargebacks, and disputes | **Unresolved.** No reversal behavior is invented here. |
+| **J.6** | Full and partial refunds — authority, policy, historical treatment | **Unresolved.** Refund authority and policy are not designed here. |
+| **J.7** | Tax treatment and responsibilities | **Unresolved.** No tax logic is designed here; amounts remain Founder-defined. |
+| **J.8** | Payment-provider selection and activation | **Unresolved.** Design stays provider-neutral with opaque references. |
+| **J.9** | Exact project-activation conditions and trigger | **Unresolved.** The four-condition predicate remains a candidate. |
+| **J.10** | Who may make or override a manual payment-status determination | **Unresolved.** Required whenever manual determination is proposed, under any J.14 option. |
+| **J.11** | Retention and treatment of payment evidence | **Unresolved.** No retention period is invented. |
+| **J.12** | Policy for payment events after activation | **Unresolved.** No deactivation path is designed. |
+| **J.13** | Currency consistency within a configuration | **Resolved** — Founder approval 2026-10-20: one configuration, one currency; no mixed-currency obligations; no conversion. |
+| **J.14** | Allocation, partial-payment, and overpayment policy | **NOT CANONICAL. Proposed only** — not approved, not in the canonical register. Eleven dimensions, four options (§13). |
+
+**Unresolved decisions must never be converted into approved ones by a proposal, a test, or an implementation.** Where this document depends on an unresolved decision, it says so at the point of dependence.
+
+---
+
+## 15. Acceptance Tests, Threat Analysis, and Evidence-Quality Claims
+
+No tests were executed during this documentation revision. Everything in §15 is a **proposed acceptance criterion**, not a reported result.
+
+### 15.1 Slice 2A acceptance criteria
+
+| # | Test | Expected |
+|---|---|---|
+| 1 | Trusted source namespace accepted | Observation from a registered namespace verifies; `passed`. |
+| 2 | Unregistered namespace | `rejected`; no records. |
+| 3 | Source delivery identity | Same `(registration, delivery_reference)` twice → one observation; second returns the original. |
+| 4 | Canonical transaction identity | One `(registration, provider_transaction_reference)` yields one transaction. |
+| 5 | Duplicate webhook delivery | No second observation; no second funds. |
+| 6 | Duplicate API reconciliation observation | Same as 5, through the other channel. |
+| 7 | Cross-source observation of the same transaction | Webhook + reconciliation sharing a provider reference → one transaction, one amount, two observations linked with `provider_shared_reference`. |
+| 8 | Conflicting transaction observations | Same key, different amount → transaction unchanged; `duplicate_content_mismatch` conflict open; `blocks_use` true. |
+| 9 | Unresolved correlation (no shared reference) | Observations retained, none promoted; `unresolved_correlation` conflict open; no contribution to financial position. |
+| 10 | Cross-project identity collision | Refused; `cross_project_collision` conflict; no second project's transaction. |
+| 11 | Invalid verification | Malformed amount or currency mismatch → `rejected`, nothing persisted. |
+| 12 | Failed verification without accepted evidence | `failed` row referencing a real observation, `payment_transaction_id` NULL; no phantom transaction. |
+| 13 | Verification supersession | A later `failed` result alone does not revoke acceptance; revocation requires a supersession record and is auditable. |
+| 14 | Immutable history | Attempts to update or delete observations, results, transactions, or conflicts fail; corrections are new rows. |
+| 15 | Exact decimal validation | `1500` = `1500.00` = `1500.000`; `1500` ≠ `1500.01`; `"900"` not ranked above `"1500"`; 19 integer digits and scale 7 rejected; no float parsing anywhere. |
+| 16 | Currency consistency | Non-matching configuration currency rejected before persistence; case-insensitive normalization only; no conversion. |
+| 17 | Transactional evidence + audit integrity | Material rows and audit rows commit together or not at all. |
+| 18 | Concurrent duplicate ingestion | Two simultaneous identical deliveries → exactly one observation, one transaction, one audit row. |
+| 19 | Customer/internal boundary | Customer surface cannot write; cross-project reads rejected server-side; internal capability required for writes. |
+| 20 | No false payment-satisfaction inference | No 2A record, view, or derived value reports an obligation as paid, satisfied, or partially satisfied. |
+| 21 | Synthetic never live evidence | `test_fake` verifier carries `verified_by = NULL`; constraint rejects any Founder identifier; synthetic transactions cannot be marked real. |
+
+### 15.2 Slice 2B acceptance criteria
+
+| # | Test | Expected |
+|---|---|---|
+| 1 | Mandatory request idempotency | Allocation without an idempotency key is refused by schema. |
+| 2 | Same request replay | Returns the recorded outcome; no second allocation. |
+| 3 | Same key, different payload | Idempotency conflict; nothing written. |
+| 4 | Two legitimate identical-value requests | Different keys → two allocations permitted, subject to I1/I2. |
+| 5 | Transaction ceiling (I2) | Allocation exceeding accepted amount refused; nothing written. |
+| 6 | Obligation ceiling (I1) | Allocation exceeding expected amount refused; nothing written. |
+| 7 | Concurrent allocation requests | Two racing requests cannot both pass; serialized write + inside-transaction recheck admits exactly one. |
+| 8 | Atomic allocation + audit | Both or neither. |
+| 9 | Correction without mutation | Compensating record appended; original intact; balance recomputed; double compensation refused. |
+| 10 | Cross-project allocation | Transaction, obligation, and allocation project mismatch refused. |
+| 11 | Currency mismatch | Transaction/obligation/allocation currency disagreement refused. |
+| 12 | Overpayment and unapplied funds | Per selected option: excess remains unapplied and is never auto-allocated or auto-refunded. |
+
+Slice 2B tests are not Slice 2A acceptance criteria.
+
+### 15.3 Threat analysis (Slice 2A)
+
+| Threat | Defense |
+|---|---|
+| Double-counting across channels | Canonical transaction identity (§4.2); correlation recorded (§4.3); unresolved conflicts block use (§4.4). |
+| Duplicate delivery | Delivery uniqueness; replay returns the original record. |
+| Forged or untrusted namespace | Registration-based trust; matching a string is not authentication (§7.1). |
+| Cross-project access or collision | Server-side project resolution; derived project ownership; collision refusal (§7.5). |
+| Evidence fabricated as live payment | Test-only verifier with constraints (§9.1). |
+| Silent revocation of accepted funds | Supersession requires an explicit record (§6.4). |
+| Audit leakage | Identifier allowlist enforced at write (§8.4). |
+| Funding double-count via allocation | Out of 2A; prevented in 2B by I1/I2 inside a serialized transaction (§12.3). |
+| Float or lexicographic money errors | Exact decimal contract (§10). |
+
+### 15.4 Test-count accuracy
+
+- Revision 1 claimed "328 tests pass" and reused that number as evidence for unchanged behavior. **No fresh evidence supports 328.**
+- The recorded result for PR #54 at head `51a796a` is: **321 passed** (implementation-agent-reported), plus typecheck and build passing, plus fresh GitHub checks (Website CI, Dependency Review, CodeQL, Snyk) reported as successful on that head.
+- Those are **historical, agent-reported** results for a rolled-back slice. They are not current, not independently reproduced here, and not evidence about code that is not in `main`.
+- No test was executed during this revision. Reported results, independently verified results, and proposed acceptance criteria are labelled separately and never merged.
+
+---
+
+## 16. Exclusions, Readiness Verdict, and Correction Record
+
+### 16.1 Explicit exclusions
+
+Excluded from Slice 2A: allocations; allocation requests; obligation linkage on evidence; obligation states beyond `proposed`; payment attempts, retries, dunning, notifications; manual determination; customer upload or any customer write; activation predicate or event; provider integration, webhook receiver, credentials; production or live customer data; mutable `status` columns; caller-controlled trust; snapshot-isolation claims; audit events for failed writes; fabricated test-pass claims.
+
+Excluded from Slice 2B as of this revision: any satisfaction rule before J.14; refund, reversal, chargeback behavior (J.5/J.6); activation integration (J.9); provider integration (J.8).
+
+Excluded from this task entirely: application source, tests, schemas, migrations, dependencies, workflows, governance documents, and any additional repository change.
+
+### 16.2 Readiness verdict
+
+| Slice | Verdict | Reason |
+|---|---|---|
+| **Slice 2A** | Design proposal only — **not authorized for implementation** | Requires J.3 resolution before any evidence implementation, per the canonical register. Synthetic only. No obligation satisfaction. |
+| **Slice 2B** | Design proposal only — **not authorized for implementation** | Requires J.14 resolution, J.3 resolution, and separate Founder authorization. |
+
+Neither slice is authorized. No provider is selected. No payment was processed. No project was activated. No deployment occurred.
+
+### 16.3 Correction record
+
+**Revision 1 corrections (retained):**
+
+| Issue | Correction |
+|---|---|
+| A — Append-only contradiction | Mutable evidence status removed; verification results are separate append-only records. |
+| B — Out-of-scope source kinds | `customer_upload` and `manual_determination` excluded from Slice 2A. |
+| C — Source identity | Delivery-scoped identity introduced (superseded by Revision 2 §4, which shows it is insufficient alone). |
+| D — J.14 rewrite | Rewritten as options (superseded by Revision 2 §13, which makes the options independent). |
+| E — Allocation model | Normalized allocation records; no arrays of allocation IDs. |
+| F — Attempts, states, SQLite | Attempts excluded; no `failed` obligation state; snapshot isolation not claimed. |
+
+**Revision 2 corrections:**
+
+| Finding | Original problem | Correction | Section |
 |---|---|---|---|
-| **J.3** | Authoritative payment evidence source | Evidence model source-agnostic framework; Founder must choose provider confirmation, verified reconciliation, or authorized manual record (or accept source-agnostic default). | **Unresolved** — framework presented; Founder to decide. |
-| **J.10** | Who may make manual payment-status determinations | Scope: if manual determination is later proposed (Option D for J.14), who may authorize it. Recommended: "Founder/internal capability only, least-privileged; never a customer capability." | **Unresolved** — only relevant if J.14 Option D chosen. |
-| **J.14** | Allocation, partial-payment, and overpayment policy | Four coherent options (A: all-or-nothing; B: partial payments with balance; C: per-transaction ceiling; D: Founder-directed). Founder must select one. **This is the most critical pending decision for Slice 2B.** | **Unresolved** — four options presented for Founder review. |
-| **J.9** | Exact project-activation conditions and trigger | Four-condition candidate predicate; manual-trigger-first plan. Founder must decide whether activation is automatic or manual, and the exact predicate conditions. | **Unresolved** — candidate presented; Founder to decide. |
-| **J.4** | Failed payments, retry policy, retry limits, dunning, notifications | Founder defines retries, retry limits, dunning, customer notification. | **Unresolved** — not relevant for Slice 2A (no attempts subsystem). |
-| **J.5** | Reversals, chargebacks, and disputes | Founder defines handling, escalation, whether reversal changes "satisfied" meaning. | **Unresolved** — not relevant for Slice 2A (no reversal subsystem). |
-| **J.6** | Full and partial refunds — authority, policy, historical treatment | Founder defines authority and policy; this design keeps refund as forward events with amounts. | **Unresolved** — not relevant for Slice 2A; required for J.14 Option selection nuance. |
-| **J.8** | Payment-provider selection and activation | Founder selects provider; design stays provider-neutral with opaque references until decision. | **Unresolved** — after Slice 2A; required for provider integration. |
-| **J.11** | Retention and treatment of payment evidence | Founder defines retention period; no retention period invented here. | **Unresolved** — after Slice 2A evidence model is accepted. |
-| **J.12** | Payment events after activation | Founder defines events after activation. | **Unresolved** — after activation is implemented. |
-
-**Minimum Founder actions to unlock Slice 2A implementation:**
-1. Accept the J.3 framework: provider-neutral, verification-gated evidence model with source-agnostic design, synthetic fixtures, fake verifier for testing.
-2. (J.10 only needed if J.14 Option D is later chosen.) Define who may make manual payment-status determinations: "Founder/internal capability only, least-privileged; never a customer capability."
-
-**Slice 2A does not require J.14 resolution.** Slice 2B does.
-
----
-
-## 15. Explicit Exclusions and Final Implementation-Readiness Assessment
-
-### 14.1 Explicit Exclusions from Slice 2A (reiterated)
-
-The following are explicitly excluded from Slice 2A and will remain deferred to later slices or are out of scope:
-
-- ❌ Customer evidence uploads or customer-originated payment submissions.
-- ❌ Manual Founder/internal paid determinations (J.10; excluded from Slice 2A schema).
-- ❌ Manual payment-status overrides (J.10; excluded from Slice 2A).
-- ❌ Payment attempts, retry, dunning, or notification subsystem (J.4; unresolved).
-- ❌ Allocation records or derived financial position (deferred to Slice 2B).
-- ❌ Partial-payment acceptance or overpayment handling (J.14; unresolved).
-- ❌ Derived obligation states beyond `proposed` (require J.14; deferred).
-- ❌ Provider integration, webhook receivers, or API credentials.
-- ❌ Customer-facing payment write capability (hard boundary; never permitted).
-- ❌ Activation predicate or activation event (J.9; unresolved).
-- ❌ Production data or live customer projects (synthetic only).
-- ❌ Arbitrary five-table maximum or any table count imposed for its own sake.
-- ❌ Mutable `status` columns on records described as append-only/immutable.
-- ❌ Caller-controlled trust of source namespaces.
-- ❌ Duplicate-allocation rule that rejects legitimate multiple allocations from one transaction.
-- ❌ Snapshot-isolation claims for SQLite.
-- ❌ Claims that synthetic fixtures prove a real payment occurred.
-- ❌ Unresolved J.3/J.14 policies treated as Founder-approved.
-- ❌ Inaccurate PR #54, rollback, `main`, or candidate-branch history.
-- ❌ Contradiction between implementation approval status and Project Map wording.
-- ❌ Claim that Slice 2A or Slice 2B is authorized for implementation.
-- ❌ Source code, tests, migration, governance document, branch, commit, PR, or deployment changes.
-
-### 14.2 Final Implementation-Readiness Verdict
-
-| Slice | Implementation-Readiness | Reason |
-|---|---|---|
-| **Slice 2A** | **Design-proposal only — not authorized for implementation.** | Provides a decision-ready technical framework for a provider-neutral, verification-gated, append-only evidence ledger. Synthetic fixtures and fake verifier support testing without a live provider. No code changes, no repo modifications, no provider integration. Founder must accept the J.3 framework before implementation authorization can be considered. J.10 is only relevant if J.14 Option D is later chosen. All explicit exclusions are documented. |
-| **Slice 2B** | **Design-proposal only — not authorized for implementation.** | Builds on Slice 2A foundation; requires J.14 resolution (allocation, partial-payment, overpayment policy) before implementation can be considered. Also depends on J.3 framework acceptance and J.10 only if Option D chosen. No code changes, no repo modifications, no provider integration. |
-
-**Neither slice has received implementation authorization.** This proposal is documentation-only, presented for Founder review and decision. No repository or external-system state was modified in producing this deliverable.
-
----
-
-## 16. Change Log — How Each Material Issue Was Corrected
-
-| Issue | Original Flaw | Correction Applied |
-|---|---|---|
-| **A — Append-only behavior** | Evidence records included mutable statuses (`pending`, `accepted`, `conflicting`, `rejected`) contradicting the "immutable" designation. | Evidence records are strictly append-only immutable. Verification outcomes are represented by immutable `verification_result` append events that reference (but do not mutate) the evidence record. Derived position is computed from the full history, not stored as a mutable column. Conflicting duplicates are flagged, not silently overwritten. Failed verification is a separate `verification_result` record, not a mutation of evidence status. Prior history is preserved when corrections supersede earlier outcomes. |
-| **B — Out-of-scope source kinds** | `customer_upload` and `manual_determination` were included in the Slice 2A source-kind model. | `customer_upload` and `manual_determination` are explicitly outside Slice 2A scope. Only `provider_webhook` and `provider_api_reconciliation` are implemented in Slice 2A. These are discussed as future possibilities but are explicitly excluded from the Slice 2A schema and implementation scope. J.10 is relevant if manual determination is later proposed; it is not resolved and no authorization mechanism is built before Founder resolution. |
-| **C — Source identity and idempotency** | `evidence_id + source_kind` was the deduplication key; source namespace was caller-controlled; uniqueness boundary was unresolved; SQLite snapshot isolation was claimed. | Deduplication key is now `(source_kind, source_namespace, source_event_id)` — stable source identity using the provider's own event ID. Source namespace must be established through trusted server-side configuration; unknown/invalid namespaces fail verification. Uniqueness boundary is `(source_kind, source_namespace, source_event_id)` with a partial unique index in the database. Four duplicate/conflict scenarios are defined: identical duplicate, conflicting content, unknown namespace, malformed/unverified event. Database-enforced uniqueness + transaction-level safeguards; SQLite busy/locked handled by bounded retry (max 3 attempts, exponential backoff), not snapshot isolation. |
-| **D — J.14 rewrite** | Prior options A–D were not internally consistent; overpayment policy was ambiguous; partial-payment behavior was undefined; manual determination was conflated with allocation policy. | Four coherent policy alternatives rewritten: Option A (all-or-nothing with running balance), Option B (partial payments with remaining balance), Option C (per-transaction ceiling with overpayment absorption), Option D (Founder-directed, requires J.10 + J.3). Each option clearly defines partial-payment acceptance, multi-obligation allocation, multiple-transactions-to-one-obligation, outstanding balances, overpayments, duplicate allocation, and allocation correction/reversal. No option is recommended as default. Slice 2B behaviors that depend on J.14 are explicitly identified. |
-| **E — Allocation model and duplicate-allocation tests** | Incorrect rule that a transaction ID may only ever have one allocation record; arrays of allocation IDs used as substitute for normalized records; duplicate-allocation tests conflated legitimate multiple allocations with replays. | Distinct allocation-record types: duplicate replay of same request (idempotent, no second allocation), two distinct legitimate allocations from one transaction (policy-permitted), cumulative allocations per transaction (never exceed verified funds), allocations to obligation (per J.14 policy). Stable allocation-request identity or equivalent idempotency contract. No arrays of allocation IDs; fully normalized relational records. Slice 2A excludes allocations entirely (deferred to Slice 2B). |
-| **F — Payment attempts, states, and SQLite concurrency** | Payment attempts/retry/subsystem introduced in Slice 2A; `failed` obligation state invented; SQLite snapshot isolation claimed; obligation states conflated with payment-attempt outcomes. | Payment attempts explicitly outside Slice 2A scope (J.4 unresolved). No `failed` obligation state (design explicit: `failed` is a payment-attempt outcome only, not an obligation state). Obligation states separated from financial-position calculations: `proposed` (Slice 2A only), others require J.14/J.9. SQLite concurrency: uniqueness constraints + transactional atomicity + bounded retry (no snapshot isolation claims). Which concurrency guarantees are required for Slice 2A and which are deferred to Slice 2B are explained. |
+| **A** | One provider transaction could be accepted twice through different channels. | Three identities — delivery, canonical transaction, allocation — with uniqueness, correlation basis, and blocking of unresolved correlations. | §4 |
+| **B** | No defined evidence → transaction → configuration → obligation relationship; `allocation.transaction_id` had no verified FK. | Full record model with identities, FKs, ownership, baseline, immutability, idempotency, authority; Slice 2A cannot claim payment or satisfaction; no invented `obligation_id`. | §5 |
+| **C** | Tests used `reconciliation_conflict` while the enum lacked it; verification, conflict, acceptance, and position were conflated. | Outcome enum fixed to `passed`/`failed`/`rejected`; conflicts are a separate record; supersession is explicit; no "latest wins"; failed verification references an observation, not a phantom payment. | §6 |
+| **D** | `fake_verifier` returned passed with a Founder identity. | Test-only verifier, fail-closed production path, `verified_by = NULL`, synthetic classification constraints, explicit `verified_by` semantics. | §9 |
+| **E** | J.14 presented without clear non-canonical status; options not independent; J.10 tied to Option D. | J.14 labelled proposed and non-canonical; eleven dimensions; four internally consistent options; comparison matrix; J.10 separated and required under every option. | §13 |
+| **F** | Allocation relied on a check-then-write precheck. | Serialized write (`BEGIN IMMEDIATE`), inside-transaction rechecks of both ceilings, atomic writes, defined busy/rollback/replay behavior, mandatory request idempotency, compensating corrections. | §12 |
+| **Finding 9 — Decimal, currency, financial calculations** | Strings preserved but arithmetic undefined. | Grammar, precision limits, normalization, exact comparison, exact arithmetic, overflow, malformed and currency handling, no floats. | §10 |
+| **Finding 10 — SQLite error handling and audit integrity** | Claimed an audit row after failed lock retries. | Failure classes separated; bounded retry as a recommendation; audit guaranteed only for successful writes; out-of-band, redacted failure reporting. | §11 |
+| **Finding 11 — Security and project isolation** | Trust boundary under-specified. | Eight explicit rules: registration trust, derived project ownership, baseline checks, collision rejection, read-only customers, automated vs human authority, identifier-only audit. | §7 |
+| **Finding 12 — Governance and canonical-document reconciliation** | Rollback and Project Map contradiction handled loosely; patch artifact implied to be restored source. | Verified facts table; five-way distinction; explicit unresolved governance inconsistency; patch artifacts distinguished from source branches; restoration not authorized. | §3 |
+| **Finding 13 — Founder decision register** | J.7 missing. | Full J.1–J.13 register plus proposed J.14. | §14 |
+| **Finding 14 — Acceptance tests and threat analysis** | Schema/test mismatch; 328 claim unsupported. | Test matrix rebuilt against the actual schema; test-count claim corrected to the verified 321 for PR #54; no tests claimed as run. | §15 |
+| **Finding 15 — Document structure and factual accuracy** | Misnumbered subsections, duplicated sections, stale publication statements, wrong section count. | Numbering normalized; duplicate audit section removed; publication facts stated; 16 sections. | Whole document |
 
 ---
 
 ## Final Statement
 
-**No repository or external-system state was modified** in the production of this proposal. The deliverable is complete proposal text only, presented above. All 11 required sections are included, all six material issues are addressed, and all authority boundaries are respected. The proposal is ready for Founder review and decision.
+This document is a **documentation-only revision**, containing 16 numbered sections. It changes exactly one file: `review-artifacts/payment-slice-2-revised-proposal.md`, published to `review/payment-slice-2-proposal-clean` and reflected in the existing Draft pull request #68 against `main`.
 
-**Stop**: No further tool calls, no implementation, no repo modifications, no deployment. This is the final deliverable.
+It does not modify application code, tests, schemas, migrations, dependencies, workflows, or governance documents. It does not restore rolled-back implementation, select a provider, add credentials, process payments, activate a project, or deploy anything. It does not merge, close, or promote PR #68.
+
+No Founder decision is resolved by this document. J.14 remains proposed and non-canonical. The canonical-decision/Project-Map approval contradiction remains open and requires separate Founder-authorized correction. Slice 2A and Slice 2B remain unauthorized for implementation.
