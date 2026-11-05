@@ -1,21 +1,22 @@
-# Payment Slice 2 — Revised Proposal, Revision 3 (Documentation-Only)
+# Payment Slice 2 — Revised Proposal, Revision 4 (Documentation-Only)
 
 ## Revision Scope and Authority Statement
 
-This document is the third corrective revision of the Payment Slice 2 proposal. Its **content** is documentation only: it modifies no application source, no tests, no migrations or schemas, no dependencies, no workflows, and no governance documents (`docs/decisions/2026-10-12-payments-project-activation.md`, `docs/project-map.md`, `CONSTITUTION.md`).
+This document is the fourth corrective revision of the Payment Slice 2 proposal. Its **content** is documentation only: it modifies no application source, no tests, no migrations or schemas, no dependencies, no workflows, and no governance documents (`docs/decisions/2026-10-12-payments-project-activation.md`, `docs/project-map.md`, `CONSTITUTION.md`).
 
-Its **publication** is a separate fact that must be stated rather than elided: this revision is published by committing this one Markdown file to branch `review/payment-slice-2-proposal-clean` and updating the existing Draft pull request #68. That publication created a branch, a commit, and a pull request. It created no implementation, no schema, no provider integration, and no deployment. Publishing documentation is not implementation authorization.
+Its **publication** is a separate fact that must be stated rather than elided: this revision is published by committing this one Markdown file to branch `review/payment-slice-2-proposal-clean` and updating the existing Draft pull request #68. That publication created a commit and updated a pull request. It created no implementation, no schema, no provider integration, and no deployment. Publishing documentation is not implementation authorization.
 
-Revision 1 corrected the first round of architectural and governance defects. Revision 2 corrected a second round (identity layering, verification/conflict separation, the fake verifier, allocation concurrency, decimals, SQLite failure reporting). Revision 3 corrects a third round of findings that survived Revision 2, each of which was a *structural* defect rather than a wording defect:
+Revisions 1–3 corrected architectural, data-integrity, concurrency, security, and governance defects. Revision 4 corrects seven findings from independent review of Revision 3. All seven are **relational-integrity** defects: in each case a record was linked to its parent by a foreign key that proved *a row existed* but not that the row was *the right one* — the correct project, provider account, observation, configuration version, or lifecycle scope.
 
-- **A** — the canonical transaction key still contained `source_registration_id`, so the same provider funds movement could be accepted twice through two registrations or two projects.
-- **B** — an unresolved observation was described as existing without a canonical transaction, while the schema required one; conflict membership used an `observation_ids` array.
-- **C** — `verification_result.payment_transaction_id` and `payment_transaction.accepted_verification_id` formed a circular foreign-key dependency under immediate enforcement.
-- **D** — the transaction's commercial baseline was stated as "none" in the record model while other sections assumed a configuration version.
-- **E** — `verifier_kind`, `verified_by`, `verifier_reference`, `verified_at_source`, and `data_classification` were used by constraints without being defined in any table.
-- **F** — "one active registration", "one open conflict", and "terminal supersession" were asserted, not enforced by any stored state, key, or concurrency rule.
+- **1** — the global transaction identity was not tied to a trusted provider account or to the observation that established it, so a transaction could cite an identity, an account binding, and an observation that described three different things.
+- **2** — one observation could be correlated to several canonical transactions, so a single delivery could underlie two separate accepted funds movements.
+- **3** — verification supersession was project-scoped rather than observation-scoped, and one successor could converge from two predecessors, so "a linear chain" was not enforceable.
+- **4** — the registration projection and its predecessor links did not prove that the registration belonged to the projection's exact scope, and `replaced_at` contradicted the row's own meaning.
+- **5** — the transaction's project, account, observation, and baseline were not proven to be the same, and an unaccepted transaction could in principle reserve a global identity.
+- **6** — the deterministic conflict digest hashed inputs the schema could not reconstruct (`trigger_record_id`, a collection of participating transaction ids that had no relation).
+- **7** — ordering was enforced by comparing ISO-8601 text, which SQLite compares lexicographically, not chronologically.
 
-Revision 3 replaces assertions with named constraints. Where a rule cannot be enforced by a database constraint, that is stated explicitly and classified as an application-level limitation.
+Revision 4 replaces each of those with a composite key, a scoped sequence, or an explicitly labelled application-level limitation. Where a guarantee cannot be expressed as a SQLite constraint, the document says so at the point of the claim and never relabels the claim as enforced.
 
 Every recommendation below is a **proposed technical recommendation** or an **unresolved Founder decision**. Nothing here is a Founder-approved decision, and nothing here authorizes Slice 2A or Slice 2B implementation.
 
@@ -33,6 +34,10 @@ These hold everywhere in this document. Later sections reference them by number 
 | **I6** | Audit rows are identifier-only and are committed in the same database transaction as the material write they describe. |
 | **I7** | At most one canonical transaction exists per underlying provider funds movement — across every registration, every ingestion channel, and every project. Ingestion-channel identity never defines funds identity. |
 | **I8** | An accepted transaction is permanently bound to the immutable configuration version captured with the observation that established it. A later configuration version never reinterprets an earlier transaction. |
+| **I9** | A foreign key is necessary but not sufficient. Every reference that carries a scope (project, provider account, global account identity, observation, configuration version, classification, lifecycle) must be proven by a composite key, not asserted by application code or by column naming. |
+| **I10** | Ordering between two lifecycle records is proven by an integer sequence allocated inside the serialized write transaction and carried into the child row by a composite key. Clock text is descriptive only; it never decides precedence. |
+| **I11** | One observation correlates to at most one canonical transaction. One transaction may have many observations. One transaction is accepted by at most one verification. |
+| **I12** | No failed or rolled-back write leaves a durable reservation of a global provider transaction identity. |
 
 ---
 
@@ -45,20 +50,19 @@ This revision keeps the two-slice split:
 - **Slice 2A — Verified Payment Evidence and Canonical Transaction Foundation.** Trusted provider-account identity, source registrations, observations, verification results, acceptance records, canonical transactions, correlation, conflicts, supersession, exact decimal handling, project isolation, identifier-only audit. Synthetic/test data only. No allocation, no obligation satisfaction.
 - **Slice 2B — Allocation and Derived Financial Position.** Allocation requests, allocations, transaction-level and obligation-level ceilings, derived balances, compensating corrections, and a serialized allocation write contract.
 
-The substantive corrections in Revision 3:
+The substantive corrections in Revision 4:
 
-1. **Canonical transaction identity is provider-scoped, not channel-scoped (§4.3).** A new `provider_transaction_identity` relation holds the natural key `(provider_key, provider_environment, provider_account_reference, provider_transaction_reference)` under one global `UNIQUE` constraint; `payment_transaction.identity_id` is `NOT NULL UNIQUE`. A registration identifies how an observation arrived and appears nowhere in the funds identity.
-2. **Observations exist before correlation, and conflict membership is a relation (§4.4, §5.3).** `payment_observation` has no transaction foreign key at all; correlation lives in `payment_transaction_observation`; conflict participation lives in `reconciliation_conflict_observation` with a composite primary key. The `observation_ids` array is deleted.
-3. **The verification/transaction cycle is removed by a separate acceptance record (§5.2, §6.2).** Verification results reference only their observation. A `payment_transaction_acceptance` row references the transaction, the verification, that verification's observation, and the correlation row proving the observation belongs to that transaction. Insertion order is linear and immediate enforcement suffices; no deferred constraint is used.
-4. **Commercial baseline binding is explicit and immutable (§5.4).** An observation captures the configuration version in force at ingestion, or is stored as explicitly unbound; a transaction copies that version and is `NOT NULL` bound; currency is tied to that version by a composite foreign key; a later version never reinterprets an earlier transaction.
-5. **Verifier and classification fields are defined in the schema (§9).** `verifier_kind`, `verified_by`, `verifier_reference`, `verified_at_source`, and `data_classification` are columns of `verification_result`; `data_classification` is additionally a column of observations, transactions, and acceptance records, with composite foreign keys forcing agreement so a synthetic verification cannot accept a live transaction.
-6. **Registration, conflict, and supersession lifecycles are enforced, not asserted (§8.3–§8.5).** A current-registration projection supplies the "at most one current" guarantee; a deterministic conflict key plus a unique constraint supplies conflict idempotency; a unique successor key plus a carried-timestamp ordering check supplies acyclic, branching-free supersession.
-7. **The amount grammar no longer contains the undefined `signed` production (§10.1)**, and the audit allowlist is aligned with the final model (§8.6), removing the stale `evidence_id`.
+1. **Provider account identity is split into a global identity and a project binding (§4.2, §4.3).** `provider_account_identity` holds the real account, unique on `(provider_key, provider_environment, provider_account_reference)`. `payment_provider_account` binds that account into exactly one project. Two projects may bind the same account and still share one global identity.
+2. **The transaction proves that its identity, its account binding, and its establishing observation are the same funds movement in the same account and project (§4.4).** It carries `provider_account_identity_id` and four composite keys; no single-column foreign key is relied on for a scoped claim.
+3. **One observation correlates to at most one transaction (§4.6).** Correlation's primary key is `observation_id`; many observations may still point at one transaction, and the acceptance record inherits the rule through its composite key.
+4. **Supersession is observation-scoped and strictly linear in both directions (§5.3, §8.5).** The relation carries `observation_id`, uses composite keys to a `(verification_id, observation_id, project_id, attempt_seq)` parent key, and declares `UQ(superseded_verification_id)` and `UQ(superseding_verification_id)`.
+5. **The registration projection proves its scope, and its timestamp is renamed to what it means (§5.3, §8.3).** The projection's `source_registration_id` is proven by a five-column composite key; `replaced_at` is replaced by `current_since`.
+6. **Identity creation is atomic with transaction, correlation, acceptance, and audit (§6.3).** No committed intermediate state exists on any 2A path, so a failed acceptance cannot reserve an identity (I12).
+7. **Ordering is an integer sequence scoped to its parent, and the conflict digest hashes only persisted, reconstructable fields (§8.4, §8.5, §8.3).** Clock text is demoted to description (I10).
 
-Sections 14–16 consolidate the decision register, the acceptance-test matrix rebuilt around the corrected schema, and the cumulative correction record.
+Sections 14–16 consolidate the decision register, the acceptance matrix rebuilt around the corrected schema, and the cumulative correction record.
 
 ---
-
 ## 2. Canonical Decision and Authority Boundaries
 
 The governing document is `docs/decisions/2026-10-12-payments-project-activation.md`. The boundaries this proposal must respect:
@@ -93,7 +97,7 @@ Each row was verified against the live repository during this revision.
 | The repository's storage engine is SQLite through Node's built-in driver | `website/lib/platform/sqlite-store.ts` imports `DatabaseSync` from `node:sqlite`, sets `PRAGMA foreign_keys = ON` at open, enables WAL, and wraps multi-statement writes in `BEGIN IMMEDIATE` inside a `transaction()` helper. |
 | Slice 2A and Slice 2B have no implementation authorization | No implementation branch, no merge, no deployment exists for either. |
 
-The `node:sqlite` fact matters for this revision: every constraint mechanism named below was chosen because SQLite enforces it (unique indexes, check constraints, composite foreign keys against a declared parent key, and immediate foreign-key enforcement), and no mechanism relies on a feature SQLite does not provide. The one rule that SQLite cannot express as a check constraint — cross-row ordering — is expressed instead by carrying the compared values into the child row, so a composite foreign key proves they are genuine and a check constraint compares them. That technique is used for the acyclicity rules in §8.3 and §8.5.
+The `node:sqlite` fact matters for this revision: every constraint mechanism named below was chosen because SQLite enforces it (unique indexes, check constraints, composite foreign keys against a declared parent key, and immediate foreign-key enforcement), and no mechanism relies on a feature SQLite does not provide. Two of the rules below are naturally cross-row, and both are expressed structurally rather than assumed. **Ordering** is an integer sequence scoped to its parent and carried into the child row, so a composite foreign key proves the carried value is the parent's real sequence and a local check compares two columns of the same row (§8.5). **Scope** is expressed by repeating the scope columns in the child and referencing a composite parent key, so "same project", "same account", "same observation", and "same baseline" are key matches rather than assertions (§4.4). Where neither technique is available, the document says so explicitly instead of describing an application rule as a constraint — §8.2 ends with that list, and §16.4 repeats it.
 
 ### 3.2 The distinction that must not be collapsed
 
@@ -121,113 +125,156 @@ A second consequence is technical. The configuration tables this document relies
 
 ## 4. Transaction Identity, Provider Scope, and Correlation
 
-### 4.1 Why Revision 2's canonical key was still unsafe
+### 4.1 What Revision 3 still left unproven
 
-Revision 1 used a delivery-scoped tuple as a global payment identity, which Revision 2 correctly identified as permitting double acceptance across channels. Revision 2's replacement key was:
+Revision 3 removed the registration from the canonical key, which was necessary. It was not sufficient. The transaction carried three separate references:
 
-```
-canonical_transaction_key = (source_registration_id, provider_transaction_reference)
-```
+- `identity_id` → `provider_transaction_identity`
+- `provider_account_id` → `payment_provider_account`
+- `source_observation_id` → `payment_observation`
 
-That is still channel-scoped, because a source registration is scoped to one project, one provider account binding, and one ingestion channel. Three failures follow directly:
+Each had a foreign key. Each foreign key proved only that *some* row with that id existed. Nothing proved the three described the same provider account or the same funds movement, so a transaction could cite an identity belonging to account A, an account binding belonging to account B, and an observation belonging to account C, and every constraint would be satisfied. The claim in I7 would then be false while every insert succeeded.
 
-1. **Two registrations, one transaction.** A webhook registration and a reconciliation registration are separate rows. The same provider charge observed through both yields two different keys, therefore two transactions and twice the funds — the exact defect Revision 2 claimed to have fixed, moved one level down.
-2. **Two projects, one provider account.** Each project registers the same merchant account under its own registration. The same charge therefore has two valid keys in two projects. The document's claim that "cross-project collisions are rejected" is unenforceable, because the key never contains anything global to collide.
-3. **Registration lifecycle leaks into money.** Since a registration is replaced by a superseding registration (§8.3), a transaction accepted under a retired registration has a key that a new registration cannot reproduce. Identity becomes a function of configuration history, which is exactly the coupling this section removes.
+The same shape of defect appears wherever a scope is carried implicitly: a registration projection pointing at a registration from another scope, a supersession joining two different observations, a transaction whose configuration version belonged to a different project. Revision 4 answers all of them the same way — **carry the scope columns into the child row and reference a composite parent key**, so the scope is part of the key match rather than a promise.
 
-### 4.2 Seven identities, kept distinct
+### 4.2 Identity levels: global account versus project binding
 
-| Identity | What it identifies | Key | Where it lives | Scope |
+A provider account is a real thing at the provider. A project's use of that account is a separate, project-scoped fact. Revision 3 collapsed both into `payment_provider_account`, whose `account_reference` was unique only within a project (`UNIQUE(project_id, provider_key, environment, account_reference)`). That made the global transaction key correct only by accident: the global tuple repeated the account *string* rather than referencing an account *record*.
+
+Revision 4 separates the two levels:
+
+| Identity | What it identifies | Record | Key | Scope |
 |---|---|---|---|---|
-| **Provider account identity** | A merchant/provider account as this system is configured to trust it | `provider_account_id` | `payment_provider_account` | One project (the account registration belongs to a project) |
-| **Provider environment / namespace** | Which provider universe a reference belongs to | `environment` ∈ {`test`, `live`} | `payment_provider_account`, mirrored into the identity registry | Global per account |
-| **Provider transaction reference** | The provider's own identifier for the funds movement | `provider_transaction_reference` | `provider_transaction_identity` | Global per account + environment |
-| **Source registration identity** | How an observation is allowed to enter the system | `source_registration_id` | `payment_source_registration` | One project + account + channel |
-| **Observation identity** | One incoming delivery | `(source_registration_id, delivery_reference)` | `payment_observation` | One registration |
-| **Canonical transaction identity** | One underlying funds movement | `(provider_key, provider_environment, provider_account_reference, provider_transaction_reference)` | `provider_transaction_identity`, referenced by `payment_transaction.identity_id` | **Global** |
-| **Project association** | Which project owns accepted funds | `project_id` | `payment_transaction` | One project per transaction |
+| **Global provider account identity** | The real merchant/provider account | `provider_account_identity` | `UQ(provider_key, provider_environment, provider_account_reference)` | **Global** — one row however many projects use it |
+| **Project account binding** | One project's authorized use of that account | `payment_provider_account` | `provider_account_id`; `UQ(project_id, provider_account_identity_id)` | One project |
+| **Provider transaction identity** | One funds movement at the provider | `provider_transaction_identity` | `UQ(provider_account_identity_id, provider_transaction_reference)` | Global within the account |
+| **Source registration** | How an observation may enter the system | `payment_source_registration` | `source_registration_id`; versioned by `revision_seq` | One project + binding + channel + namespace |
+| **Observation** | One incoming delivery | `payment_observation` | `observation_id`; `UQ(source_registration_id, delivery_reference)` | One registration |
+| **Canonical transaction** | What this system accepted as funds | `payment_transaction` | `payment_transaction_id`; `UQ(identity_id)` | One project |
+| **Project association** | Which project owns the accepted funds | `payment_transaction.project_id` | `(payment_transaction_id, project_id)` | One project per transaction |
 
-The decisive structural rule: **`source_registration_id` does not appear in the canonical transaction identity, and `payment_transaction` has no `source_registration_id` column.** Channel identity cannot define funds identity if it is not part of the key and cannot be part of the row.
+Two structural consequences follow, and both matter:
+
+1. **Environment lives on the global account identity only.** `provider_environment` is not repeated on the transaction identity or the transaction. A test account and a live account with the same provider reference are two global account identities, therefore two transaction identities, therefore two funds movements. The separation is a consequence of the foreign key, not of remembering to compare a string.
+2. **The transaction carries `provider_account_identity_id`.** It is logically derivable from `identity_id`, but *derivable is not enforced*: a `CHECK` cannot join, so the value is stored and then proven by composite keys (§4.4). This is the same technique the design uses for ordering (§8.5) and for classification (§9.2): make the compared value part of the row, then prove it genuine with a key.
 
 ### 4.3 The enforceable canonical uniqueness rule
 
-`provider_transaction_identity` is a global registry of funds movements:
-
 ```sql
-UNIQUE (provider_key, provider_environment, provider_account_reference, provider_transaction_reference)
+-- global account identity
+CREATE TABLE provider_account_identity (
+  provider_account_identity_id TEXT PRIMARY KEY,
+  provider_key                 TEXT NOT NULL,
+  provider_environment         TEXT NOT NULL CHECK (provider_environment IN ('test','live')),
+  provider_account_reference   TEXT NOT NULL,
+  first_registered_at          TEXT NOT NULL,
+  UNIQUE (provider_key, provider_environment, provider_account_reference)
+);
+
+-- one funds movement, globally, inside that account
+CREATE TABLE provider_transaction_identity (
+  identity_id                 TEXT PRIMARY KEY,
+  provider_account_identity_id TEXT NOT NULL
+    REFERENCES provider_account_identity(provider_account_identity_id),
+  provider_transaction_reference TEXT NOT NULL,
+  first_observed_at           TEXT NOT NULL,
+  UNIQUE (provider_account_identity_id, provider_transaction_reference),
+  UNIQUE (identity_id, provider_account_identity_id)
+);
 ```
 
-and the transaction references it exactly once:
+The global uniqueness key is therefore `(provider_key, provider_environment, provider_account_reference)` for the account, and `(provider_account_identity_id, provider_transaction_reference)` for the funds movement. The second key is global because the account identity is global: two projects that bind the same merchant account reference the *same* `provider_account_identity_id`, so their transaction keys collide by construction rather than by string comparison.
+
+`provider_key` and `provider_account_reference` remain opaque strings naming a provider implementation and an account. No provider is selected, named, or integrated; `'fake_provider'` is the only value Slice 2A produces, and this is the provider-neutral posture of J.8, not a provider choice.
+
+### 4.4 How a transaction proves its identity, account, and observation
+
+The transaction stores five scope-bearing columns: `identity_id`, `provider_account_identity_id`, `provider_account_id`, `project_id`, `source_observation_id`. Seven composite keys bind them, and two further keys bind the commercial baseline and its currency:
+
+| Claim the design must prove | Constraint | What a single-column FK would have allowed |
+|---|---|---|
+| The identity belongs to the global account the transaction names | FK `(identity_id, provider_account_identity_id)` → `provider_transaction_identity(identity_id, provider_account_identity_id)` | Citing account A's identity while naming account B |
+| The project binding is for that same global account | FK `(provider_account_id, provider_account_identity_id)` → `payment_provider_account(provider_account_id, provider_account_identity_id)` | Binding project B's account to account A's identity |
+| The binding belongs to the transaction's project | FK `(provider_account_id, project_id)` → `payment_provider_account(provider_account_id, project_id)` | Accepting account A's funds as project B's |
+| The establishing observation belongs to the same project | FK `(source_observation_id, project_id)` → `payment_observation(observation_id, project_id)` | Borrowing another project's observation |
+| The establishing observation arrived under the same account binding | FK `(source_observation_id, provider_account_id)` → `payment_observation(observation_id, provider_account_id)` | Citing an observation from a different account |
+| The establishing observation carries the same baseline | FK `(source_observation_id, payment_config_version_id)` → `payment_observation(observation_id, payment_config_version_id)` | Choosing a baseline independently of the evidence |
+| The establishing observation carries the same classification | FK `(source_observation_id, data_classification)` → `payment_observation(observation_id, data_classification)` | Labelling borrowed evidence as live |
+
+Each referenced parent key is declared in §5.3 as a `UNIQUE` constraint on exactly those columns, in that order. SQLite requires a composite foreign key's parent key to be covered by a `UNIQUE` index over the referenced columns, so each of these is a parent key and not an arbitrary column list.
+
+The observation in turn proves *its* binding: `(source_registration_id, provider_account_id, project_id)` → `payment_source_registration(source_registration_id, provider_account_id, project_id)`. The chain is therefore complete — observation → registration → binding → global account — and the transaction sits on it at three points simultaneously.
+
+**One consequence worth stating plainly:** a transaction whose `provider_account_identity_id`, `provider_account_id`, and `source_observation_id` describe different accounts cannot be inserted at all. It is not "rejected by the verifier" or "checked by the write path"; there is no parent row to satisfy the key.
+
+### 4.5 Behaviour for the required cases
+
+| # | Case | Outcome | Mechanism |
+|---|---|---|---|
+| 1 | Same underlying provider account registered by **two projects** | One `provider_account_identity`; two `payment_provider_account` bindings; identity rows shared | `UQ(project_id, provider_account_identity_id)` per binding; global account key |
+| 2 | Same transaction reference through **different channels** (webhook vs reconciliation) | One transaction; two observations; both correlated; funds counted once | Registration absent from the funds key; correlation cardinality (§4.6) |
+| 3 | Same reference through **different registrations** (same account) | One transaction; both observations retained and correlated | Same as (2); the registration id appears nowhere in the transaction |
+| 4 | Transaction identity paired with the **wrong project binding** | Insert fails | FK `(provider_account_id, provider_account_identity_id)` → binding |
+| 5 | Transaction identity paired with an **observation from another account** | Insert fails | FK `(source_observation_id, provider_account_id)` → observation |
+| 6 | Same reference under **two different provider accounts** | Two identities, two transactions — permitted | `provider_account_identity_id` is part of the funds key |
+| 7 | Same reference in **test and live** environments | Two account identities, two transactions — permitted | `provider_environment` is part of the account key and inherited, never duplicated |
+| 8 | **Cross-project identity collision** (both projects bound to the same global account) | Second acceptance refused; `rejected` verification; `cross_project_collision` conflict in the refusing project; owner untouched and not identified | `UQ(payment_transaction.identity_id)` |
+| 9 | Duplicate observations for one identity with **inconsistent amount or currency** | Second observation correlated and recorded, contributes no funds; `duplicate_content_mismatch` conflict | One transaction per identity; conflict membership relation (§6.4) |
+| 10 | Observation with **no trustworthy provider reference** | Evidence retained; cannot establish a transaction; `rejected` (2A) | `payment_transaction.identity_id` is `NOT NULL`; no identity is derivable |
+| 11 | Same funds movement observed twice, **second delivery arriving after acceptance** | New observation + new correlation row; no second transaction, no second acceptance | `UQ(identity_id)` on transaction; `UQ(payment_transaction_id)` on acceptance |
+
+For case (8), the refusing project's conflict row carries only the identity's opaque tuple and its own observations. It does **not** carry the owning project's identifier — exposing it would disclose cross-project information to a party with no access to it. The collision is additionally reported on the internal operational channel (identifier-only, §11.3) so that the contested identity is visible to the Founder/ops without widening either project's read scope.
+
+Case (10) is deliberate and is a Slice 2A limitation rather than a design goal: a delivery without a provider transaction reference can only be correlated by `verified_mapping`, which requires the J.3 mapping authority that does not exist yet. In 2A such a delivery is `rejected` with `reason_code = provider_reference_absent`.
+
+### 4.6 Correlation cardinality
+
+Revision 3's correlation table had primary key `(observation_id, payment_transaction_id)`, which rejected duplicate *pairs* while permitting one observation to sit in two pairs — two transactions. That is the defect this revision corrects.
+
+The intended cardinalities are three different things and must not be conflated:
+
+| Relationship | Permitted? | Mechanism |
+|---|---|---|
+| Many observations → one transaction | **Yes** | `payment_transaction_observation.payment_transaction_id` is not unique; the primary key is `observation_id` |
+| Many verification attempts → one observation | **Yes** | `verification_result` has `UQ(observation_id, attempt_seq)`; attempts have distinct sequences |
+| Many transactions → one observation | **No** | `payment_transaction_observation` primary key is `observation_id` |
+| One verification accepted twice | **No** | `UQ(verification_id)` on `payment_transaction_acceptance` |
+| One transaction accepted twice | **No** | `UQ(payment_transaction_id)` on `payment_transaction_acceptance` |
+
+`payment_transaction_observation` therefore has:
 
 ```sql
-payment_transaction.identity_id TEXT NOT NULL UNIQUE
-  REFERENCES provider_transaction_identity(identity_id)
+PRIMARY KEY (observation_id),
+UNIQUE (observation_id, payment_transaction_id)   -- parent key for acceptance
 ```
 
-Why each element is in the tuple, and why this is consistent with the provider-neutral assumption:
+The second key exists solely to be a composite parent for `payment_transaction_acceptance`, whose `(observation_id, payment_transaction_id)` foreign key then proves that the accepting observation is correlated to *that* transaction. Because the first key already forbids an observation from having a second transaction, an acceptance can never be supported by an observation that is correlated elsewhere.
 
-- **`provider_key`** is an opaque string naming the provider implementation (`'fake_provider'` in Slice 2A). No provider is selected, named, or integrated; the value exists so that two providers' reference spaces cannot collide. This is exactly the "opaque provider references, provider-neutral evidence model" posture of J.8, not a provider choice.
-- **`provider_environment`** separates `test` from `live` reference spaces. Provider contracts routinely reuse identifiers across environments; collapsing them would create false collisions in test and, worse, false matches in live.
-- **`provider_account_reference`** is the provider's own merchant/account identifier, taken from server-side registration configuration. Using the provider's account reference rather than this system's `provider_account_id` is what makes the key global: two projects that register the same underlying account produce two `payment_provider_account` rows but one `provider_account_reference`, so their keys still collide. Using `provider_account_id` here would silently reintroduce per-project identity.
-- **`provider_transaction_reference`** is the provider's reference to the funds movement, supplied by the provider.
+`payment_transaction_observation` remains append-only. A later, better-founded correlation cannot replace an earlier one — with one transaction per observation there is nothing to replace, and a contradictory claim about the same observation is a conflict (§6.4), not an update.
 
-The rule is stronger than "unique per account per project": it is unique globally. One provider funds movement, one canonical transaction, in one project, for the life of the system.
+### 4.7 Observations, unresolved states, and the absence of a transaction link
 
-`payment_transaction.project_id` records ownership. Ownership is decided by the first accepted transaction for that identity and never transfers. A second project attempting to accept the same identity is refused by the unique constraint on `payment_transaction.identity_id`; it does not merge, inherit, or duplicate.
-
-### 4.4 Observations, unresolved states, and the absence of a transaction link
-
-`payment_observation` carries **no** transaction column. Not a nullable one — none. This is the structural answer to Finding B:
+`payment_observation` carries **no** transaction column. Not a nullable one — none:
 
 - An observation can be stored, read, and audited while no canonical transaction exists for it.
-- Correlation is a separate record (`payment_transaction_observation`), so "uncorrelated" is the absence of a row, not a null in a mandatory relationship and not a sentinel value.
+- Correlation is a separate record, so "uncorrelated" is the absence of a row, not a null in a mandatory relationship and not a sentinel value.
 - An uncorrelated observation therefore cannot violate a mandatory foreign key, cannot require an invented transaction, and cannot be mistaken for accepted funds.
 
-Observation minimum required fields: `observation_id`, `project_id` (derived from the registration, never supplied), `source_registration_id`, `delivery_reference`, `amount_text`, `amount_normalized`, `amount_scale`, `currency`, `config_binding_state`, `data_classification`, `received_at`. `provider_transaction_reference` is nullable because a delivery may not carry one; when it is present and the observation is verified, it is the value used to resolve or create the identity registry row.
+Observation required fields: `observation_id`, `project_id` (derived from the registration, never supplied), `source_registration_id`, `provider_account_id` (proven equal to the registration's binding), `delivery_reference`, `amount_text`, `amount_normalized`, `amount_scale`, `currency`, `config_binding_state`, `data_classification`, `received_at`. `provider_transaction_reference` is nullable because a delivery may not carry one; when present and verified, it resolves or creates the identity registry row inside the acceptance transaction.
 
-Observation ingestion states, all representable without a transaction:
+Ingestion states, all representable without a transaction:
 
 | `config_binding_state` | Meaning | Consequence |
 |---|---|---|
-| `bound` | Exactly one configuration version could be determined for the project at ingestion, with `payment_config_version_id` recorded. | May be verified and accepted. |
-| `unbound_no_configuration` | The project has no configuration version. | Evidence retained; cannot pass verification; no transaction. |
-| `unbound_ambiguous` | More than one candidate version could not be ordered deterministically. | Evidence retained; cannot pass verification; no transaction. |
-
-A single `CHECK` keeps the version column and the state column consistent:
+| `bound` | Exactly one configuration version could be determined for the project at ingestion, with `payment_config_version_id` recorded | May be verified and accepted |
+| `unbound_no_configuration` | The project has no configuration version | Evidence retained; cannot pass verification; no transaction |
+| `unbound_ambiguous` | More than one candidate version could not be ordered deterministically | Evidence retained; cannot pass verification; no transaction |
 
 ```sql
 CHECK ((config_binding_state = 'bound') = (payment_config_version_id IS NOT NULL))
 ```
 
-### 4.5 The correlation relation
-
-`payment_transaction_observation` is an append-only relation with composite primary key `(observation_id, payment_transaction_id)` and `correlation_basis` ∈ {`provider_shared_reference`, `verified_mapping`}. There is no `unresolved` value: unresolved is the *absence* of a correlation row plus an open `unresolved_correlation` conflict naming the observations. Revision 2's `unresolved` value was self-contradictory — it required a transaction to link to in order to say that no transaction could be determined.
-
-Rules:
-
-1. Only correlate observations across source kinds when a trusted provider contract or an approved J.3 mapping establishes that they refer to the same funds movement.
-2. Never merge observations because amounts, currency, or timestamps look similar. Amount equality is not identity (I3, §4.7).
-3. A correlated duplicate observation is recorded (it is evidence of what the provider reported) but contributes **no additional funds**. Available funds are a property of the canonical transaction, not of the observation count.
-4. A correlation row is never edited or deleted. A later, better-founded correlation is a new row; if it contradicts an earlier one, the contradiction is a conflict, not an update.
-5. Slice 2A ships the table with the domain restricted to `provider_shared_reference`. `verified_mapping` requires a J.3 decision defining the mapping's authority, and adding the value is a later migration, not a runtime flag.
-
-### 4.6 Behaviour for the required cases
-
-| Case | Outcome | Mechanism |
-|---|---|---|
-| Same transaction via webhook **and** reconciliation import | One canonical transaction; two observations; both correlated `provider_shared_reference`; funds counted once | Identity registry unique key; correlations are relations, not funds |
-| Same transaction via **two registrations** (same account, same channel or different channels) | One canonical transaction; both observations retained and correlated | Registration id is absent from the identity key |
-| Same provider account associated with **two projects** | Second project's acceptance is **refused**; `rejected` verification recorded; `cross_project_collision` conflict raised in the refusing project; owner unaffected | Global unique key + `UNIQUE(payment_transaction.identity_id)` |
-| Same provider reference with **conflicting project associations** | Same as above. No merge, no ownership transfer, no silent second acceptance | Same; plus project consistency composite keys |
-| Two observations that appear to represent the same transaction but **cannot be safely correlated** | Observations retained; neither contributes funds; `unresolved_correlation` conflict naming both observations; blocks until an approved rule resolves it | Absence of correlation row + conflict membership relation |
-
-For a `cross_project_collision`, the refusing project's conflict row carries only the identity tuple and its own observations. It does **not** carry the owning project's identifier: exposing it would leak cross-project information to a project that has no access to it. The collision is additionally reported on the internal operational channel (identifier-only, §11.3) so that the contested identity is visible to the Founder/ops without widening either project's read scope.
-
-Different accounts that legitimately reuse the same reference stay distinct: `provider_account_reference` is part of the key, so the same `provider_transaction_reference` under two accounts is two identities and two transactions. That is the model's deliberate behaviour and matches provider contracts in which a reference is unique only within an account. If a future provider contract guarantees globally unique references, the tuple can only be *narrowed* by an explicit, reviewed migration — never silently widened.
-
-### 4.7 Reported versus accepted
-
-Two questions have two different answers, and both are preserved:
+### 4.8 Reported versus accepted
 
 | Question | Authoritative record |
 |---|---|
@@ -242,155 +289,241 @@ A conflict between them is never resolved by overwriting either record.
 
 ### 5.1 Record map
 
-`C` = configuration/obligation records described by the rolled-back initial slice (§3.3); `2A` and `2B` mark the slice that owns the record.
+`C` = configuration/obligation records described by the rolled-back initial slice (§3.3); `2A` and `2B` mark the slice that owns the record. "Composite" means the reference is a composite foreign key to a declared parent key, not a single-column pointer.
 
-| Record | Primary key | Foreign keys | Project ownership | Baseline | Immutability | Uniqueness | Authority |
-|---|---|---|---|---|---|---|---|
-| `payment_provider_account` (2A) | `provider_account_id` | `project_id` → `projects` | **Declares** the account for its project | none | Append-only | `UNIQUE(project_id, provider_key, environment, account_reference)` | Authoritative trusted account |
-| `payment_source_registration` (2A) | `source_registration_id` | `project_id`; `provider_account_id`; `supersedes_registration_id` (self) | **Defines** ingestion trust for its channel | none | Append-only | History only — no scope uniqueness; `UNIQUE(supersedes_registration_id)`. The "one current" rule lives on the projection (§8.3) | Authoritative ingestion trust |
-| `payment_source_registration_current` (2A) | `(project_id, provider_account_id, source_kind, source_namespace)` | `source_registration_id` → registration | Derived from its key | none | **Mutable projection** (§8.3) | Primary key *is* the "one current" rule | Derived, rebuildable, non-authoritative |
-| `provider_transaction_identity` (2A) | `identity_id` | none (global registry) | none — project ownership lives on the transaction | none | Append-only | `UNIQUE(provider_key, provider_environment, provider_account_reference, provider_transaction_reference)` | Authoritative funds identity |
-| `payment_observation` (2A) | `observation_id` | `source_registration_id` → registration; `payment_config_version_id` → configuration version; **no transaction FK** | Derived from registration | Records the version captured at ingestion | Immutable | `UNIQUE(source_registration_id, delivery_reference)` | Authoritative for "what the provider reported" |
-| `verification_result` (2A) | `verification_id` | `observation_id` → observation; **no transaction FK** | Derived from observation | Inherits the observation's captured version | Immutable | Parent keys in §5.3 | Authoritative verification outcome |
-| `payment_transaction` (2A) | `payment_transaction_id` | `identity_id` → identity registry; `provider_account_id`; `source_observation_id` → observation; `payment_config_version_id` → configuration version | `project_id`, derived, decided at creation | **Bound immutably** (`NOT NULL`) | Immutable | `UNIQUE(identity_id)`, `UNIQUE(source_observation_id)` | Authoritative for "what the system accepted as funds" |
-| `payment_transaction_acceptance` (2A) | `acceptance_id` | `payment_transaction_id`; `verification_id`; `observation_id`; `(observation_id, payment_transaction_id)` → correlation | Derived | Carries the same version as both parents | Immutable | `UNIQUE(payment_transaction_id)`, `UNIQUE(verification_id)` | Authoritative acceptance decision |
-| `payment_transaction_observation` (2A) | `(observation_id, payment_transaction_id)` | both parents | Derived | none | Immutable | Natural key | Derived correlation record |
-| `reconciliation_conflict` (2A) | `conflict_id` | `project_id`; optional `payment_transaction_id`; optional `trigger_observation_id` | `project_id` | none | Immutable | `UNIQUE(project_id, conflict_key)` | Authoritative that a conflict exists |
-| `reconciliation_conflict_observation` (2A) | `(conflict_id, observation_id)` | both parents | Derived | none | Immutable | Natural key | Derived membership |
-| `conflict_resolution` (2A) | `resolution_id` | `conflict_id` | Derived | none | Immutable | `UNIQUE(conflict_id)` | Authoritative resolution |
-| `verification_supersession` (2A) | `supersession_id` | superseded and superseding verification ids | `project_id` | none | Immutable | `UNIQUE(superseded_verification_id)` | Authoritative precedence |
-| `payment_configuration_version` (C) | `payment_config_version_id` | `project_id`, `proposal_version_id`, `agreement_version_id` | `project_id` | **Is** the baseline anchor | Immutable version | `UNIQUE(project_id, version_number)`, `UNIQUE(payment_config_version_id, currency)`, `UNIQUE(payment_config_version_id, project_id)` | Authoritative commercial baseline |
-| `payment_obligation` (C) | `obligation_id` | `payment_config_version_id` | via configuration | Member of exactly one configuration version | Immutable after issuance | Deterministic ordering within version | Authoritative expected amount and currency |
-| `allocation_request` (2B) | `allocation_request_id` | `project_id`, `payment_transaction_id` | `project_id` | none | Immutable payload and recorded outcome | `UNIQUE(project_id, idempotency_key)` | Authoritative idempotency record |
-| `allocation` (2B) | `allocation_id` | `payment_transaction_id`, `obligation_id`, `allocation_request_id`, `compensates_allocation_id` (nullable) | `project_id` | via transaction and obligation | Immutable; corrections are new records | Exactly one allocation per accepted request | Authoritative applied allocation |
-| `audit_event` (existing) | `audit_event_id` | none (identifier metadata only) | `project_id` column, identifier-only | none | Append-only | n/a | Authoritative audit trail |
+| Record | Primary key | Scoped references | Ownership | Baseline | Immutability | Uniqueness |
+|---|---|---|---|---|---|---|
+| `provider_account_identity` (2A) | `provider_account_identity_id` | none (global) | none — global by design | none | Append-only | `UQ(provider_key, provider_environment, provider_account_reference)` |
+| `payment_provider_account` (2A) | `provider_account_id` | `project_id` → `projects`; `provider_account_identity_id` → global identity | **Declares** one project's binding | none | Append-only | `UQ(project_id, provider_account_identity_id)` |
+| `payment_source_registration` (2A) | `source_registration_id` | composite `(provider_account_id, project_id)`; self composite for predecessor | **Defines** ingestion trust | none | Append-only | `UQ(project_id, provider_account_id, source_kind, source_namespace, revision_seq)`; `UQ(supersedes_registration_id)` |
+| `payment_source_registration_current` (2A) | `(project_id, provider_account_id, source_kind, source_namespace)` | composite five-column to registration | Derived from its key | none | **Mutable projection** (§8.3) | Primary key *is* the "one current" rule |
+| `provider_transaction_identity` (2A) | `identity_id` | `provider_account_identity_id` | none — ownership lives on the transaction | none | Append-only | `UQ(provider_account_identity_id, provider_transaction_reference)` |
+| `payment_observation` (2A) | `observation_id` | composite `(source_registration_id, provider_account_id, project_id)`; composite to configuration version; **no transaction FK** | Derived from registration | Records the version captured at ingestion | Immutable | `UQ(source_registration_id, delivery_reference)` |
+| `verification_result` (2A) | `verification_id` | composite `(observation_id, project_id)` and three more to the observation; **no transaction FK** | Derived from observation | Inherits the observation's captured version | Immutable | `UQ(observation_id, attempt_seq)` + parent keys (§5.3) |
+| `payment_transaction` (2A) | `payment_transaction_id` | composite to identity, binding, observation, and configuration version | `project_id`, decided at creation | **Bound immutably** (`NOT NULL`) | Immutable | `UQ(identity_id)`, `UQ(source_observation_id)` |
+| `payment_transaction_observation` (2A) | `observation_id` | composite `(observation_id, project_id)`, `(payment_transaction_id, project_id)` | Derived | none | Immutable | PK is the one-transaction-per-observation rule; `UQ(observation_id, payment_transaction_id)` is the acceptance parent |
+| `payment_transaction_acceptance` (2A) | `acceptance_id` | composite to transaction, verification, observation, and correlation | Derived | Carries both parents' version | Immutable | `UQ(payment_transaction_id)`, `UQ(verification_id)` |
+| `reconciliation_conflict` (2A) | `conflict_id` | composite `(payment_transaction_id, project_id)`, `(trigger_observation_id, project_id)` | `project_id` | none | Immutable | `UQ(project_id, conflict_key)` |
+| `reconciliation_conflict_observation` (2A) | `(conflict_id, observation_id)` | composite to both parents | Derived | none | Immutable | Natural key |
+| `conflict_resolution` (2A) | `resolution_id` | composite `(conflict_id, project_id)` | Derived | none | Immutable | `UQ(conflict_id)` |
+| `verification_supersession` (2A) | `supersession_id` | composite to both verifications **sharing one `observation_id`** | `project_id` | none | Immutable | `UQ(superseded_verification_id)`, `UQ(superseding_verification_id)` |
+| `payment_configuration_version` (C) | `payment_config_version_id` | `project_id`, `proposal_version_id`, `agreement_version_id` | `project_id` | **Is** the baseline anchor | Immutable version | `UQ(project_id, version_number)`, `UQ(payment_config_version_id, currency)`, `UQ(payment_config_version_id, project_id)` |
+| `payment_obligation` (C) | `obligation_id` | `payment_config_version_id` | via configuration | Member of exactly one version | Immutable after issuance | Deterministic ordering within version |
+| `allocation_request` (2B) | `allocation_request_id` | `project_id`, `payment_transaction_id` | `project_id` | none | Immutable payload and outcome | `UQ(project_id, idempotency_key)` |
+| `allocation` (2B) | `allocation_id` | transaction, obligation, request, self (compensation) | `project_id` | via transaction and obligation | Immutable; corrections are new rows | One allocation per accepted request |
+| `audit_event` (existing) | `audit_event_id` | none (identifier metadata only) | `project_id` column | none | Append-only | n/a |
 
-Derived, never stored as authoritative columns: obligation remaining balance, transaction unapplied funds, whether an obligation is satisfied, aggregate financial position, whether a transaction is blocked, and an obligation's state beyond `proposed`. Every such value is computed from immutable rows; any materialized view of it is rebuildable and explicitly non-authoritative.
+Derived, never stored as authoritative columns: obligation remaining balance, transaction unapplied funds, whether an obligation is satisfied, aggregate financial position, whether a transaction is blocked, and an obligation's state beyond `proposed`.
 
-### 5.2 Insertion order (no cycle, no deferred constraint)
+### 5.2 Insertion order (linear; one atomic group for acceptance)
 
-The order below is legal under immediate foreign-key enforcement, which is what `node:sqlite` provides with `PRAGMA foreign_keys = ON` (already the repository's setting). No `DEFERRABLE` clause is required, and the design does not depend on one.
+The order below is legal under immediate foreign-key enforcement, which is what `node:sqlite` provides with `PRAGMA foreign_keys = ON` (the repository's existing setting). No `DEFERRABLE` clause is required, and the design does not depend on one.
 
 ```
-1. payment_provider_account
-2. payment_source_registration            (+ payment_source_registration_current upsert)
-3. payment_observation
-4. verification_result
-5. provider_transaction_identity
-6. payment_transaction                    (reads observation from step 3 and identity from step 5)
-7. payment_transaction_observation        (correlates the verifying observation, and any others)
-8. payment_transaction_acceptance         (reads transaction, verification, and correlation)
+1. provider_account_identity            (global; created once per real account)
+2. payment_provider_account             (project binding of that account)
+3. payment_source_registration          (+ payment_source_registration_current insert/CAS)
+4. payment_observation
+5. verification_result                  (attempt_seq = MAX+1 for that observation, inside BEGIN IMMEDIATE)
+6. provider_transaction_identity        (first acceptance only)
+7. payment_transaction
+8. payment_transaction_observation      (the establishing observation, plus any earlier ones)
+9. payment_transaction_acceptance
+10. audit_event
 ```
 
-Every arrow points backwards in this list. Revision 2's cycle existed because `verification_result.payment_transaction_id` pointed forward to a transaction that pointed back to a verification. In Revision 3 neither table references the other; the acceptance record is the only row that knows about both, and it is written last, after the correlation row that proves the two belong together.
+Steps 6–10 for a first acceptance are **one database transaction** (§6.3). Steps 1–5 are prerequisites that may already exist, and steps 1–4 may legitimately exist with no transaction at all.
+
+Every arrow points backwards in this list. Revision 3 already removed the verification/transaction cycle; Revision 4 adds no new forward reference, because every scoped relationship is expressed by carrying the parent's columns into the child rather than by pointing at a row that does not yet exist.
 
 Consequences worth stating explicitly:
 
-- A failed verification needs no transaction and creates none (step 4 only).
-- A transaction can exist before acceptance, but it is not "accepted funds" until its acceptance row exists; acceptance is what the derived position reads.
-- A correlation can be recorded before acceptance, so the "verification belongs to this transaction" proof is itself stored data rather than an application assumption.
+- A failed verification needs no transaction and creates none (step 5 only).
+- A transaction row is not "accepted funds" until its acceptance row exists; the derived position reads acceptance, not existence.
+- A correlation row can only be written after its transaction, so the "this observation belongs to this transaction" proof is stored data rather than an application assumption.
+- An identity row exists only because some acceptance committed with it (§6.3); there is no path that creates one "in advance".
+
+---
 
 ### 5.3 Column definitions
 
-Every column of every table touched by this revision, with the constraint that makes it meaningful. `PK` = primary key, `FK` = foreign key, `CK` = check constraint, `UQ` = unique constraint. "Immutable" means no `UPDATE`/`DELETE` path exists (I4); the mutable projection is marked as such and justified in §8.3.
+Every column of every table this design depends on, with the constraint that makes it meaningful. `PK` = primary key, `FK` = foreign key, `CK` = check constraint, `UQ` = unique constraint or unique index. "Immutable" means no `UPDATE`/`DELETE` path exists (I4); the one mutable projection is marked and justified in §8.3.
 
-**`payment_provider_account`**
+Two SQLite facts govern the table below and are stated once rather than repeated per row:
+
+- **A composite foreign key requires a parent key.** SQLite accepts a composite `REFERENCES parent(a, b, c)` only when the parent's `(a, b, c)` is covered by a `UNIQUE` constraint or unique index. Every composite key used below is therefore declared on the parent, and the child's column order matches the parent key's order.
+- **A composite foreign key with a NULL child column is not checked.** SQLite applies `MATCH SIMPLE` semantics: if *any* child column in the key is NULL, the constraint is satisfied without a lookup. This is why every optional column that participates in a scope key is also tied to a `CHECK` (for example `(config_binding_state = 'bound') = (payment_config_version_id IS NOT NULL)`), so "NULL means unbound" is itself enforced rather than merely permitted.
+
+**`provider_account_identity`** — global, one row per real provider account
+
+| Column | Type / domain | Null | Key / constraint | Immutable |
+|---|---|---|---|---|
+| `provider_account_identity_id` | TEXT | no | PK | yes |
+| `provider_key` | TEXT | no | opaque provider implementation name; no provider selected (J.8) | yes |
+| `provider_environment` | TEXT | no | CK ∈ {`test`, `live`}; part of the global key | yes |
+| `provider_account_reference` | TEXT | no | provider's own account identifier; server-side configuration only; `CK(provider_account_reference <> '')` | yes |
+| `first_registered_at` | TEXT | no | canonical timestamp (§8.5) | yes |
+
+Table constraint: `UQ(provider_key, provider_environment, provider_account_reference)` — the global account key.
+
+**`payment_provider_account`** — one project's binding of one global account
 
 | Column | Type / domain | Null | Key / constraint | Immutable |
 |---|---|---|---|---|
 | `provider_account_id` | TEXT | no | PK | yes |
-| `project_id` | TEXT | no | FK → `projects(id)`; part of parent key `UQ(provider_account_id, project_id)` | yes |
-| `provider_key` | TEXT | no | opaque provider implementation name; no provider selected (J.8) | yes |
-| `environment` | TEXT | no | CK ∈ {`test`, `live`} | yes |
-| `account_reference` | TEXT | no | provider's own account identifier, server-side configuration only | yes |
-| `created_at` | TEXT | no | ISO-8601 UTC | yes |
+| `project_id` | TEXT | no | FK → `projects(id)` | yes |
+| `provider_account_identity_id` | TEXT | no | FK → `provider_account_identity` | yes |
+| `registered_at` | TEXT | no | canonical timestamp | yes |
 
-Table constraints: `UQ(project_id, provider_key, environment, account_reference)`, `UQ(provider_account_id, project_id)`.
+Table constraints: `UQ(project_id, provider_account_identity_id)` (a project binds a given real account once), and the parent keys `UQ(provider_account_id, project_id)`, `UQ(provider_account_id, provider_account_identity_id)`.
 
-**`payment_source_registration`**
+**`payment_source_registration`** — append-only ingestion trust history
 
 | Column | Type / domain | Null | Key / constraint | Immutable |
 |---|---|---|---|---|
-| `source_registration_id` | TEXT | no | PK; part of parent key `UQ(source_registration_id, project_id)` | yes |
+| `source_registration_id` | TEXT | no | PK | yes |
 | `project_id` | TEXT | no | FK → `projects(id)` | yes |
-| `provider_account_id` | TEXT | no | FK → `payment_provider_account`; composite FK `(provider_account_id, project_id)` → `payment_provider_account(provider_account_id, project_id)` | yes |
+| `provider_account_id` | TEXT | no | composite FK `(provider_account_id, project_id)` → `payment_provider_account(provider_account_id, project_id)` | yes |
 | `source_kind` | TEXT | no | CK ∈ {`provider_webhook`, `provider_api_reconciliation`} | yes |
 | `source_namespace` | TEXT | no | server-side value; no customer-supplied route | yes |
-| `supersedes_registration_id` | TEXT | yes | FK → self; `UQ` (at most one successor) | yes |
-| `supersedes_created_at` | TEXT | yes | carried parent timestamp; composite FK `(supersedes_registration_id, supersedes_created_at)` → `payment_source_registration(source_registration_id, created_at)` | yes |
-| `created_at` | TEXT | no | part of parent key `UQ(source_registration_id, created_at)`; CK `(supersedes_registration_id IS NULL) OR (created_at > supersedes_created_at)` | yes |
+| `revision_seq` | INTEGER | no | CK `revision_seq >= 1`; scope-ordered (§8.3) | yes |
+| `supersedes_registration_id` | TEXT | yes | `UQ` (at most one successor); composite self-FK below | yes |
+| `supersedes_revision_seq` | INTEGER | yes | carried parent sequence; `CK` equivalence with the id | yes |
+| `created_at` | TEXT | no | canonical timestamp; descriptive only | yes |
 
-Table constraints: `UQ(source_registration_id, created_at)`. There is deliberately **no** scope-level uniqueness on this table: successive registrations legitimately share a scope, and the "at most one current" rule belongs to the projection below.
+Table constraints:
+
+```sql
+UNIQUE (project_id, provider_account_id, source_kind, source_namespace, revision_seq)
+UNIQUE (source_registration_id, project_id)
+UNIQUE (source_registration_id, provider_account_id, project_id)
+UNIQUE (source_registration_id, project_id, provider_account_id, source_kind, source_namespace)
+UNIQUE (source_registration_id, project_id, provider_account_id,
+        source_kind, source_namespace, revision_seq)
+UNIQUE (supersedes_registration_id)
+
+FOREIGN KEY (supersedes_registration_id, project_id, provider_account_id,
+             source_kind, source_namespace, supersedes_revision_seq)
+  REFERENCES payment_source_registration
+             (source_registration_id, project_id, provider_account_id,
+              source_kind, source_namespace, revision_seq)
+
+CHECK ((supersedes_registration_id IS NULL) = (supersedes_revision_seq IS NULL))
+CHECK (supersedes_registration_id IS NOT NULL OR revision_seq = 1)
+CHECK (supersedes_registration_id IS NULL OR revision_seq > supersedes_revision_seq)
+CHECK (supersedes_registration_id IS NULL
+       OR supersedes_registration_id <> source_registration_id)
+```
+
+The self-referential composite key is the whole of Finding 4A: because the child repeats its own `project_id`, `provider_account_id`, `source_kind`, and `source_namespace` in the key, a predecessor from a different project, account, channel, or namespace has no matching parent row. A cross-scope chain cannot be inserted.
 
 **`payment_source_registration_current`** — projection, §8.3
 
 | Column | Type / domain | Null | Key / constraint | Immutable |
 |---|---|---|---|---|
-| `project_id` | TEXT | no | PK part; FK → `projects` | no — projection |
-| `provider_account_id` | TEXT | no | PK part; FK → `payment_provider_account` | no — projection |
+| `project_id` | TEXT | no | PK part; FK → `projects(id)` | no — projection |
+| `provider_account_id` | TEXT | no | PK part; composite FK `(provider_account_id, project_id)` → binding | no — projection |
 | `source_kind` | TEXT | no | PK part | no — projection |
 | `source_namespace` | TEXT | no | PK part | no — projection |
-| `source_registration_id` | TEXT | no | UQ; FK → `payment_source_registration` | no — projection |
-| `replaced_at` | TEXT | yes | set when the row is superseded | no — projection |
+| `source_registration_id` | TEXT | no | **UQ**; composite FK over all five scope columns → registration | no — projection |
+| `current_since` | TEXT | no | canonical timestamp; when this registration became current at this scope | no — projection |
 
-The primary key is the enforcement: at most one row can exist per `(project_id, provider_account_id, source_kind, source_namespace)`, so at most one current registration per scope, without depending on a partial index over a derived status.
+Table constraints:
 
-**`provider_transaction_identity`**
+```sql
+PRIMARY KEY (project_id, provider_account_id, source_kind, source_namespace)
+UNIQUE (source_registration_id)
+FOREIGN KEY (source_registration_id, project_id, provider_account_id,
+             source_kind, source_namespace)
+  REFERENCES payment_source_registration
+             (source_registration_id, project_id, provider_account_id,
+              source_kind, source_namespace)
+```
+
+`replaced_at` is gone. It described a *past* event on a row whose whole meaning is "what is current now", so after a replacement the field contradicted the row it sat on. `current_since` describes the only thing the projection is entitled to say, and its update rule is stated in §8.3.
+
+**`provider_transaction_identity`** — global funds-movement registry
 
 | Column | Type / domain | Null | Key / constraint | Immutable |
 |---|---|---|---|---|
 | `identity_id` | TEXT | no | PK | yes |
-| `provider_key` | TEXT | no | part of the natural key | yes |
-| `provider_environment` | TEXT | no | CK ∈ {`test`, `live`}; part of the natural key | yes |
-| `provider_account_reference` | TEXT | no | provider account identifier; part of the natural key | yes |
-| `provider_transaction_reference` | TEXT | no | provider funds reference; part of the natural key | yes |
-| `first_observed_at` | TEXT | no | | yes |
+| `provider_account_identity_id` | TEXT | no | FK → `provider_account_identity`; part of the natural key | yes |
+| `provider_transaction_reference` | TEXT | no | provider funds reference; `CK(provider_transaction_reference <> '')`; part of the natural key | yes |
+| `first_observed_at` | TEXT | no | canonical timestamp | yes |
 
-Table constraint: `UQ(provider_key, provider_environment, provider_account_reference, provider_transaction_reference)` — the global canonical uniqueness rule of I7. No `project_id` column exists here by design: project ownership is a property of the accepted transaction, not of the funds movement's identity.
+Table constraints: `UQ(provider_account_identity_id, provider_transaction_reference)` — the global canonical uniqueness rule of I7 — and the parent key `UQ(identity_id, provider_account_identity_id)`.
 
-**`payment_observation`**
+There is deliberately **no** `project_id` column: project ownership is a property of the accepted transaction, not of the funds movement's identity.
+
+**`payment_observation`** — immutable record of one delivery
 
 | Column | Type / domain | Null | Key / constraint | Immutable |
 |---|---|---|---|---|
 | `observation_id` | TEXT | no | PK | yes |
-| `project_id` | TEXT | no | derived from registration; composite FK `(source_registration_id, project_id)` → `payment_source_registration(source_registration_id, project_id)`; part of parent keys `UQ(observation_id, project_id)`, `UQ(observation_id, payment_config_version_id)`, `UQ(observation_id, config_binding_state)`, `UQ(observation_id, data_classification)` | yes |
-| `source_registration_id` | TEXT | no | FK → `payment_source_registration` | yes |
-| `delivery_reference` | TEXT | no | provider delivery/observation identifier; `CK(delivery_reference <> '')` | yes |
+| `project_id` | TEXT | no | derived from registration; part of the observation's parent keys | yes |
+| `source_registration_id` | TEXT | no | composite FK `(source_registration_id, provider_account_id, project_id)` → registration | yes |
+| `provider_account_id` | TEXT | no | part of the same composite key; proven equal to the registration's binding | yes |
+| `delivery_reference` | TEXT | no | `CK(delivery_reference <> '')` | yes |
 | `provider_transaction_reference` | TEXT | yes | provider funds reference when the delivery carries one | yes |
 | `amount_text` | TEXT | no | verbatim; `CK(amount_text <> '')` | yes |
 | `amount_normalized` | TEXT | no | canonical form (§10.3) | yes |
 | `amount_scale` | INTEGER | no | CK `0 ≤ amount_scale ≤ 6` | yes |
 | `currency` | TEXT | no | CK `currency = UPPER(currency)` and `length(currency) = 3` | yes |
-| `payment_config_version_id` | TEXT | yes | FK → `payment_configuration_version`; composite FK `(payment_config_version_id, currency)` → `payment_configuration_version(payment_config_version_id, currency)`; composite FK `(payment_config_version_id, project_id)` → `payment_configuration_version(payment_config_version_id, project_id)` | yes |
+| `payment_config_version_id` | TEXT | yes | composite FK `(payment_config_version_id, currency)` and `(payment_config_version_id, project_id)` → configuration version | yes |
 | `config_binding_state` | TEXT | no | CK ∈ {`bound`, `unbound_no_configuration`, `unbound_ambiguous`} | yes |
 | `data_classification` | TEXT | no | CK ∈ {`synthetic`, `live`} | yes |
-| `received_at` | TEXT | no | | yes |
+| `received_at` | TEXT | no | canonical timestamp; descriptive only | yes |
 
-Table constraints: `UQ(source_registration_id, delivery_reference)`, `UQ(observation_id, project_id)`, `UQ(observation_id, payment_config_version_id)`, `UQ(observation_id, config_binding_state)`, `UQ(observation_id, data_classification)`, and `CK((config_binding_state = 'bound') = (payment_config_version_id IS NOT NULL))`.
+Table constraints:
 
-The currency composite foreign key is J.13 expressed as a constraint: a bound observation cannot record a currency different from its configuration version's currency, because no such parent row exists. The project composite foreign key is I5 expressed as a constraint: an observation cannot borrow another project's configuration version.
+```sql
+UNIQUE (source_registration_id, delivery_reference)
+UNIQUE (observation_id, project_id)
+UNIQUE (observation_id, provider_account_id)
+UNIQUE (observation_id, payment_config_version_id)
+UNIQUE (observation_id, config_binding_state)
+UNIQUE (observation_id, data_classification)
+CHECK ((config_binding_state = 'bound') = (payment_config_version_id IS NOT NULL))
+```
 
-There is **no** transaction column. An observation is storable, verifiable, and auditable without any canonical transaction existing.
+The five `observation_id`-prefixed keys are not redundancy for its own sake: each is the parent key for exactly one child constraint elsewhere (`payment_transaction`, `verification_result`), so the child cannot borrow an observation's project, account, baseline, state, or classification by supplying a different value.
 
-**`verification_result`**
+The currency composite key is J.13 expressed as a constraint: a bound observation cannot record a currency its configuration version does not use, because no such parent row exists. The project composite key is I5 expressed as a constraint.
+
+There is **no** transaction column. An observation is storable, verifiable, and auditable with no canonical transaction in existence.
+
+**`verification_result`** — immutable attempt outcome
 
 | Column | Type / domain | Null | Key / constraint | Immutable |
 |---|---|---|---|---|
 | `verification_id` | TEXT | no | PK | yes |
-| `project_id` | TEXT | no | composite FK `(observation_id, project_id)` → `payment_observation(observation_id, project_id)`; part of `UQ(verification_id, project_id)` | yes |
-| `observation_id` | TEXT | no | FK → `payment_observation`; part of `UQ(verification_id, observation_id)` | yes |
-| `payment_config_version_id` | TEXT | yes | composite FK `(observation_id, payment_config_version_id)` → `payment_observation(observation_id, payment_config_version_id)`; part of `UQ(verification_id, payment_config_version_id)` | yes |
-| `config_binding_state` | TEXT | no | composite FK `(observation_id, config_binding_state)` → `payment_observation(observation_id, config_binding_state)` | yes |
+| `project_id` | TEXT | no | composite FK `(observation_id, project_id)` → observation | yes |
+| `observation_id` | TEXT | no | part of that key and of four more | yes |
+| `attempt_seq` | INTEGER | no | CK `attempt_seq >= 1`; `UQ(observation_id, attempt_seq)`; allocated inside `BEGIN IMMEDIATE` (§8.5) | yes |
+| `payment_config_version_id` | TEXT | yes | composite FK `(observation_id, payment_config_version_id)` → observation | yes |
+| `config_binding_state` | TEXT | no | composite FK `(observation_id, config_binding_state)` → observation | yes |
 | `outcome` | TEXT | no | CK ∈ {`passed`, `failed`, `rejected`}; part of `UQ(verification_id, outcome)` | yes |
 | `reason_code` | TEXT | no | `CK(reason_code <> '')`; enumerated by the verification contract, not by a database enum | yes |
-| `verifier_kind` | TEXT | no | CK ∈ {`automated`, `test_fake`} in Slice 2A; `human` is reserved and requires a later migration gated on J.10 | yes |
-| `verified_by` | TEXT | yes | FK → `people(id)`; `CK(verified_by IS NULL OR verifier_kind = 'human')` — always NULL while `human` is outside the domain | yes |
+| `verifier_kind` | TEXT | no | CK ∈ {`automated`, `test_fake`} in 2A; `human` reserved and gated on J.10 | yes |
+| `verified_by` | TEXT | yes | FK → `people(id)`; `CK(verified_by IS NULL OR verifier_kind = 'human')` | yes |
 | `verifier_reference` | TEXT | yes | identifier of the verifier configuration/version that ran | yes |
 | `verified_at_source` | TEXT | no | CK ∈ {`system_clock`, `test_clock`} | yes |
-| `data_classification` | TEXT | no | CK ∈ {`synthetic`, `live`}; part of `UQ(verification_id, data_classification)` | yes |
-| `attempted_at` | TEXT | no | part of `UQ(verification_id, attempted_at)` | yes |
+| `data_classification` | TEXT | no | composite FK `(observation_id, data_classification)` → observation | yes |
+| `attempted_at` | TEXT | no | canonical timestamp; descriptive only, never used for ordering | yes |
 
-Table constraints: `UQ(verification_id, observation_id)`, `UQ(verification_id, outcome)`, `UQ(verification_id, data_classification)`, `UQ(verification_id, payment_config_version_id)`, `UQ(verification_id, project_id)`, `UQ(verification_id, attempted_at)`, and the checks:
+Table constraints:
+
+```sql
+UNIQUE (observation_id, attempt_seq)
+UNIQUE (verification_id, project_id)
+UNIQUE (verification_id, observation_id, project_id)
+UNIQUE (verification_id, observation_id, project_id, attempt_seq)
+UNIQUE (verification_id, outcome)
+UNIQUE (verification_id, data_classification)
+UNIQUE (verification_id, payment_config_version_id)
+```
+
+and the checks:
 
 ```sql
 CHECK (outcome <> 'passed' OR config_binding_state = 'bound')
@@ -404,136 +537,211 @@ CHECK (verifier_kind <> 'automated' OR verified_at_source = 'system_clock')
 CHECK (verifier_kind <> 'human')
 ```
 
-`verification_result` has **no** `payment_transaction_id`. A verification result never claims a transaction; the acceptance record makes that claim, and only after the correlation exists.
+`verification_result` has **no** `payment_transaction_id`. The acceptance record makes that claim, and only after the correlation exists.
 
-**`payment_transaction`**
+---
+
+**`payment_transaction`** — immutable canonical accepted funds movement
 
 | Column | Type / domain | Null | Key / constraint | Immutable |
 |---|---|---|---|---|
-| `payment_transaction_id` | TEXT | no | PK; part of parent keys `UQ(payment_transaction_id, data_classification)`, `UQ(payment_transaction_id, project_id)`, `UQ(payment_transaction_id, payment_config_version_id)` | yes |
+| `payment_transaction_id` | TEXT | no | PK; part of three parent keys below | yes |
 | `identity_id` | TEXT | no | FK → `provider_transaction_identity`; **UQ** (I7) | yes |
-| `project_id` | TEXT | no | FK → `projects`; composite FK `(provider_account_id, project_id)` → `payment_provider_account(provider_account_id, project_id)` | yes |
-| `provider_account_id` | TEXT | no | FK → `payment_provider_account` | yes |
-| `source_observation_id` | TEXT | no | **UQ**; composite FK `(source_observation_id, data_classification)` → `payment_observation(observation_id, data_classification)`; composite FK `(source_observation_id, payment_config_version_id)` → `payment_observation(observation_id, payment_config_version_id)` | yes |
+| `provider_account_identity_id` | TEXT | no | FK → `provider_account_identity`; proven equal to the identity's by the key below | yes |
+| `provider_account_id` | TEXT | no | the project binding actually used | yes |
+| `project_id` | TEXT | no | FK → `projects(id)`; ownership decided at creation | yes |
+| `source_observation_id` | TEXT | no | **UQ**; the observation that established the transaction | yes |
 | `payment_config_version_id` | TEXT | no | FK → `payment_configuration_version`; the immutable baseline (I8) | yes |
 | `accepted_amount_normalized` | TEXT | no | canonical form (§10.3); `CK(accepted_amount_normalized <> '0')` | yes |
 | `accepted_amount_scale` | INTEGER | no | CK `0 ≤ accepted_amount_scale ≤ 6` | yes |
-| `accepted_currency` | TEXT | no | composite FK `(payment_config_version_id, accepted_currency)` → `payment_configuration_version(payment_config_version_id, currency)` | yes |
+| `accepted_currency` | TEXT | no | composite FK to the configuration version's currency | yes |
 | `data_classification` | TEXT | no | CK ∈ {`synthetic`, `live`} | yes |
-| `accepted_at` | TEXT | no | | yes |
+| `accepted_at` | TEXT | no | canonical timestamp; descriptive only | yes |
 
-Table constraints: `UQ(identity_id)`, `UQ(source_observation_id)`, `UQ(payment_transaction_id, data_classification)`, `UQ(payment_transaction_id, project_id)`, `UQ(payment_transaction_id, payment_config_version_id)`.
+Table constraints — this is the table Finding 5 is about, so every key is spelled out:
 
-Three inheritance rules are structural rather than trust-based: the transaction's data classification must equal its establishing observation's, its configuration version must equal that observation's captured version, and its accepted currency must be its configuration version's currency. Each is a composite foreign key to a declared parent key, so a violation cannot be inserted at all.
+```sql
+UNIQUE (identity_id)                 -- I7: one transaction per funds movement
+UNIQUE (source_observation_id)       -- one transaction per establishing observation
+UNIQUE (payment_transaction_id, project_id)
+UNIQUE (payment_transaction_id, data_classification)
+UNIQUE (payment_transaction_id, payment_config_version_id)
 
-**`payment_transaction_acceptance`**
+FOREIGN KEY (identity_id, provider_account_identity_id)
+  REFERENCES provider_transaction_identity(identity_id, provider_account_identity_id)
+FOREIGN KEY (provider_account_id, provider_account_identity_id)
+  REFERENCES payment_provider_account(provider_account_id, provider_account_identity_id)
+FOREIGN KEY (provider_account_id, project_id)
+  REFERENCES payment_provider_account(provider_account_id, project_id)
+FOREIGN KEY (source_observation_id, project_id)
+  REFERENCES payment_observation(observation_id, project_id)
+FOREIGN KEY (source_observation_id, provider_account_id)
+  REFERENCES payment_observation(observation_id, provider_account_id)
+FOREIGN KEY (source_observation_id, payment_config_version_id)
+  REFERENCES payment_observation(observation_id, payment_config_version_id)
+FOREIGN KEY (source_observation_id, data_classification)
+  REFERENCES payment_observation(observation_id, data_classification)
+FOREIGN KEY (payment_config_version_id, project_id)
+  REFERENCES payment_configuration_version(payment_config_version_id, project_id)
+FOREIGN KEY (payment_config_version_id, accepted_currency)
+  REFERENCES payment_configuration_version(payment_config_version_id, currency)
+```
+
+The first two keys are the constraints that refuse a second acceptance; the next seven are the constraints that make the row internally coherent **at insert time**, rather than coherent only once an acceptance row exists. A transaction whose project, account, observation, baseline, currency, or classification disagree with one another has no legal parent combination and cannot be written.
+
+**`payment_transaction_observation`** — correlation relation (append-only)
+
+| Column | Type / domain | Null | Key / constraint | Immutable |
+|---|---|---|---|---|
+| `observation_id` | TEXT | no | **PK** — one observation correlates to at most one transaction (I11) | yes |
+| `payment_transaction_id` | TEXT | no | FK → `payment_transaction`; indexed, not unique | yes |
+| `project_id` | TEXT | no | composite FK `(observation_id, project_id)` → observation; `(payment_transaction_id, project_id)` → transaction | yes |
+| `correlation_basis` | TEXT | no | CK ∈ {`provider_shared_reference`, `verified_mapping`} (2A ships `provider_shared_reference` only) | yes |
+| `correlated_at` | TEXT | no | canonical timestamp | yes |
+
+Table constraints: `PRIMARY KEY (observation_id)`, `UNIQUE (observation_id, payment_transaction_id)` (the parent key used by acceptance), and the two project composite keys.
+
+**`payment_transaction_acceptance`** — the decision record
 
 | Column | Type / domain | Null | Key / constraint | Immutable |
 |---|---|---|---|---|
 | `acceptance_id` | TEXT | no | PK | yes |
-| `project_id` | TEXT | no | composite FK `(payment_transaction_id, project_id)` → `payment_transaction(payment_transaction_id, project_id)`; composite FK `(verification_id, project_id)` → `verification_result(verification_id, project_id)` | yes |
-| `payment_transaction_id` | TEXT | no | FK → `payment_transaction`; **UQ** (one acceptance per transaction) | yes |
-| `verification_id` | TEXT | no | FK → `verification_result`; **UQ** (one acceptance per verification) | yes |
-| `observation_id` | TEXT | no | composite FK `(verification_id, observation_id)` → `verification_result(verification_id, observation_id)`; composite FK `(observation_id, payment_transaction_id)` → `payment_transaction_observation(observation_id, payment_transaction_id)` | yes |
-| `payment_config_version_id` | TEXT | no | composite FK `(payment_transaction_id, payment_config_version_id)` → `payment_transaction(payment_transaction_id, payment_config_version_id)`; composite FK `(verification_id, payment_config_version_id)` → `verification_result(verification_id, payment_config_version_id)` | yes |
-| `verification_outcome` | TEXT | no | CK `verification_outcome = 'passed'`; composite FK `(verification_id, verification_outcome)` → `verification_result(verification_id, outcome)` | yes |
-| `data_classification` | TEXT | no | composite FK `(verification_id, data_classification)` → `verification_result(verification_id, data_classification)`; composite FK `(payment_transaction_id, data_classification)` → `payment_transaction(payment_transaction_id, data_classification)` | yes |
-| `accepted_at` | TEXT | no | | yes |
+| `project_id` | TEXT | no | composite FK `(payment_transaction_id, project_id)` → transaction; `(verification_id, observation_id, project_id)` → verification | yes |
+| `payment_transaction_id` | TEXT | no | **UQ** (one acceptance per transaction) | yes |
+| `verification_id` | TEXT | no | **UQ** (one acceptance per verification) | yes |
+| `observation_id` | TEXT | no | composite FK `(observation_id, payment_transaction_id)` → correlation | yes |
+| `payment_config_version_id` | TEXT | no | composite FK to both parents' version keys | yes |
+| `verification_outcome` | TEXT | no | CK `verification_outcome = 'passed'` | yes |
+| `data_classification` | TEXT | no | composite FK to both parents' classification keys | yes |
+| `accepted_at` | TEXT | no | canonical timestamp | yes |
 
-Table constraints: `UQ(payment_transaction_id)`, `UQ(verification_id)`.
+Table constraints:
 
-Four invariants are enforced by this table alone:
+```sql
+UNIQUE (payment_transaction_id)
+UNIQUE (verification_id)
 
-1. **Belonging.** The `(observation_id, payment_transaction_id)` foreign key means an acceptance cannot exist unless that observation is correlated to that transaction in `payment_transaction_observation`. "This verification belongs to this transaction" is stored data proven by a key, not an application assumption.
-2. **Eligibility.** The `(verification_id, verification_outcome)` composite key with `verification_outcome = 'passed'` means a `failed` or `rejected` verification cannot be accepted even if the caller asserts otherwise.
-3. **Single acceptance.** `UQ(payment_transaction_id)` and `UQ(verification_id)` mean one accepted verification per transaction and one transaction per accepted verification. Competing acceptances fail on the unique index, not on a racy read.
-4. **Classification agreement.** The two classification composite keys force the transaction and the verification to share one classification, so a synthetic verification cannot accept a live transaction and a live verification cannot launder a synthetic one.
+FOREIGN KEY (payment_transaction_id, project_id)
+  REFERENCES payment_transaction(payment_transaction_id, project_id)
+FOREIGN KEY (verification_id, observation_id, project_id)
+  REFERENCES verification_result(verification_id, observation_id, project_id)
+FOREIGN KEY (observation_id, payment_transaction_id)
+  REFERENCES payment_transaction_observation(observation_id, payment_transaction_id)
+FOREIGN KEY (payment_transaction_id, payment_config_version_id)
+  REFERENCES payment_transaction(payment_transaction_id, payment_config_version_id)
+FOREIGN KEY (verification_id, payment_config_version_id)
+  REFERENCES verification_result(verification_id, payment_config_version_id)
+FOREIGN KEY (verification_id, verification_outcome)
+  REFERENCES verification_result(verification_id, outcome)
+FOREIGN KEY (verification_id, data_classification)
+  REFERENCES verification_result(verification_id, data_classification)
+FOREIGN KEY (payment_transaction_id, data_classification)
+  REFERENCES payment_transaction(payment_transaction_id, data_classification)
+```
 
-**`payment_transaction_observation`**
+Five invariants are enforced by this table alone:
 
-| Column | Type / domain | Null | Key / constraint | Immutable |
-|---|---|---|---|---|
-| `observation_id` | TEXT | no | PK part; FK → `payment_observation` | yes |
-| `payment_transaction_id` | TEXT | no | PK part; FK → `payment_transaction` | yes |
-| `project_id` | TEXT | no | composite FK `(observation_id, project_id)` → `payment_observation(observation_id, project_id)`; composite FK `(payment_transaction_id, project_id)` → `payment_transaction(payment_transaction_id, project_id)` | yes |
-| `correlation_basis` | TEXT | no | CK ∈ {`provider_shared_reference`, `verified_mapping`} (2A ships `provider_shared_reference` only) | yes |
-| `correlated_at` | TEXT | no | | yes |
+1. **Belonging.** The `(observation_id, payment_transaction_id)` key requires an existing correlation row for that exact pair. "This verification's observation belongs to this transaction" is stored data proven by a key.
+2. **Eligibility.** `verification_outcome = 'passed'` plus the composite key to `(verification_id, outcome)` means a `failed` or `rejected` result cannot be accepted even if a caller asserts otherwise.
+3. **Singularity.** `UQ(payment_transaction_id)` and `UQ(verification_id)` mean one accepted verification per transaction and one transaction per accepted verification. Combined with the one-observation rule (§4.6), two verification attempts for one observation cannot yield two accepted transactions: both attempts share the observation, the observation has one correlation, and the second acceptance would collide on `UQ(payment_transaction_id)`.
+4. **Classification agreement.** The two classification composite keys force transaction and verification to share one classification, so a synthetic verification cannot accept a live transaction.
+5. **Baseline agreement.** The two version composite keys force the acceptance to carry a version that both parents actually hold. Because a `NULL` version makes the composite key unmatched rather than skipped on the child side, an unbound verification cannot support an acceptance.
 
-The composite primary key rejects duplicate correlation membership; the two project composite keys reject cross-project correlation.
-
-**`reconciliation_conflict`**
+**`reconciliation_conflict`** — immutable statement that a conflict exists
 
 | Column | Type / domain | Null | Key / constraint | Immutable |
 |---|---|---|---|---|
 | `conflict_id` | TEXT | no | PK; part of parent key `UQ(conflict_id, project_id)` | yes |
-| `project_id` | TEXT | no | FK → `projects` | yes |
-| `conflict_key` | TEXT | no | deterministic digest (§8.4); `UQ(project_id, conflict_key)` | yes |
+| `project_id` | TEXT | no | FK → `projects(id)` | yes |
+| `conflict_key` | TEXT | no | deterministic digest over persisted fields only (§8.4); `UQ(project_id, conflict_key)` | yes |
 | `conflict_kind` | TEXT | no | CK ∈ {`duplicate_content_mismatch`, `cross_source_conflict`, `unresolved_correlation`, `cross_project_collision`} | yes |
-| `payment_transaction_id` | TEXT | yes | composite FK `(payment_transaction_id, project_id)` → `payment_transaction(payment_transaction_id, project_id)` | yes |
-| `trigger_observation_id` | TEXT | yes | composite FK `(trigger_observation_id, project_id)` → `payment_observation(observation_id, project_id)` | yes |
-| `detected_at` | TEXT | no | | yes |
+| `payment_transaction_id` | TEXT | yes | composite FK `(payment_transaction_id, project_id)` → transaction | yes |
+| `trigger_observation_id` | TEXT | yes | composite FK `(trigger_observation_id, project_id)` → observation | yes |
+| `detected_at` | TEXT | no | canonical timestamp | yes |
 | `detection_source` | TEXT | no | identifier of the check that raised it | yes |
 
-There is no `status` column and no `blocks_use` column. Both are derived (§6.4), because a stored status would be a mutable field in an append-only table and a stored `blocks_use` could disagree with the resolution history.
+There is no `status` column and no `blocks_use` column; both are derived (§6.4), because a stored status would be a mutable field in an append-only table.
 
-**`reconciliation_conflict_observation`**
+**`reconciliation_conflict_observation`** — membership
 
 | Column | Type / domain | Null | Key / constraint | Immutable |
 |---|---|---|---|---|
-| `conflict_id` | TEXT | no | PK part; FK → `reconciliation_conflict` | yes |
-| `observation_id` | TEXT | no | PK part; FK → `payment_observation` | yes |
-| `project_id` | TEXT | no | composite FK `(conflict_id, project_id)` → `reconciliation_conflict(conflict_id, project_id)`; composite FK `(observation_id, project_id)` → `payment_observation(observation_id, project_id)` | yes |
+| `conflict_id` | TEXT | no | PK part; composite FK `(conflict_id, project_id)` → conflict | yes |
+| `observation_id` | TEXT | no | PK part; composite FK `(observation_id, project_id)` → observation | yes |
+| `project_id` | TEXT | no | the shared scope proven by both keys | yes |
 
-The composite primary key makes duplicate membership impossible and replaces Revision 2's `observation_ids` array.
+The composite primary key makes duplicate membership impossible, and the two shared-scope keys make cross-project membership impossible. No array exists anywhere in the model.
 
 **`conflict_resolution`**
 
 | Column | Type / domain | Null | Key / constraint | Immutable |
 |---|---|---|---|---|
 | `resolution_id` | TEXT | no | PK | yes |
-| `project_id` | TEXT | no | composite FK `(conflict_id, project_id)` → `reconciliation_conflict(conflict_id, project_id)` | yes |
-| `conflict_id` | TEXT | no | FK → `reconciliation_conflict`; **UQ** (one terminal resolution per conflict) | yes |
+| `project_id` | TEXT | no | composite FK `(conflict_id, project_id)` → conflict | yes |
+| `conflict_id` | TEXT | no | **UQ** — one terminal resolution per conflict | yes |
 | `resolution_kind` | TEXT | no | CK ∈ {`duplicate_confirmed`, `distinct_confirmed`, `quarantined`} | yes |
 | `decided_by_kind` | TEXT | no | CK ∈ {`automated`, `human`}; `human` requires J.10 and is outside Slice 2A | yes |
-| `decided_by_reference` | TEXT | yes | rule or decision identifier; `CK(decided_by_kind <> 'human' OR decided_by_reference IS NOT NULL)` | yes |
-| `decided_at` | TEXT | no | | yes |
+| `decided_by_reference` | TEXT | yes | `CK(decided_by_kind <> 'human' OR decided_by_reference IS NOT NULL)` | yes |
+| `decided_at` | TEXT | no | canonical timestamp | yes |
 | `rationale_code` | TEXT | no | `CK(rationale_code <> '')` | yes |
 
-**`verification_supersession`**
+**`verification_supersession`** — observation-scoped, strictly linear
 
 | Column | Type / domain | Null | Key / constraint | Immutable |
 |---|---|---|---|---|
 | `supersession_id` | TEXT | no | PK | yes |
-| `project_id` | TEXT | no | composite FK `(superseded_verification_id, project_id)` → `verification_result(verification_id, project_id)`; composite FK `(superseding_verification_id, project_id)` → `verification_result(verification_id, project_id)` | yes |
-| `superseded_verification_id` | TEXT | no | FK → `verification_result`; **UQ** (at most one successor, no branching) | yes |
-| `superseding_verification_id` | TEXT | no | FK → `verification_result` | yes |
-| `superseded_created_at` | TEXT | no | carried; composite FK `(superseded_verification_id, superseded_created_at)` → `verification_result(verification_id, attempted_at)` | yes |
-| `superseding_created_at` | TEXT | no | carried; composite FK `(superseding_verification_id, superseding_created_at)` → `verification_result(verification_id, attempted_at)` | yes |
+| `project_id` | TEXT | no | part of both verification keys | yes |
+| `observation_id` | TEXT | no | **the shared observation** — both verifications must belong to it | yes |
+| `superseded_verification_id` | TEXT | no | **UQ** — at most one successor | yes |
+| `superseding_verification_id` | TEXT | no | **UQ** — at most one predecessor (no convergence) | yes |
+| `superseded_attempt_seq` | INTEGER | no | carried parent sequence; proven genuine by the key below | yes |
+| `superseding_attempt_seq` | INTEGER | no | carried parent sequence; proven genuine by the key below | yes |
 | `reason_code` | TEXT | no | `CK(reason_code <> '')` | yes |
 | `authority_kind` | TEXT | no | CK ∈ {`automated`} in Slice 2A; `human` requires J.3/J.10 authority | yes |
-| `decided_at` | TEXT | no | | yes |
+| `decided_at` | TEXT | no | canonical timestamp | yes |
 
-Table constraints: `UQ(superseded_verification_id)`, `CK(superseding_verification_id <> superseded_verification_id)`, `CK(superseding_created_at > superseded_created_at)`.
+Table constraints:
 
-### 5.4 Commercial baseline binding (Finding D)
+```sql
+UNIQUE (superseded_verification_id)
+UNIQUE (superseding_verification_id)
 
-The baseline question has four parts, and each is answered by a specific column plus a specific key.
+FOREIGN KEY (superseded_verification_id, observation_id, project_id, superseded_attempt_seq)
+  REFERENCES verification_result(verification_id, observation_id, project_id, attempt_seq)
+FOREIGN KEY (superseding_verification_id, observation_id, project_id, superseding_attempt_seq)
+  REFERENCES verification_result(verification_id, observation_id, project_id, attempt_seq)
+
+CHECK (superseding_verification_id <> superseded_verification_id)
+CHECK (superseding_attempt_seq > superseded_attempt_seq)
+```
+
+Because both foreign keys share the single `observation_id` and `project_id` columns, the two verifications are necessarily in the same observation and the same project — a supersession across observations is not "rejected by a rule", it has no parent row. Because `attempt_seq` is allocated per observation and strictly increases along every edge, `V1 → V2 → V3` is legal while `V1 → V2` plus `V1 → V3` collides on `UQ(superseded_verification_id)` and `V1 → V3` plus `V2 → V3` collides on `UQ(superseding_verification_id)`.
+
+A record may be a successor in one row and a predecessor in another: the two uniqueness constraints are on different columns, so `V2` can appear as `superseding_verification_id` once and as `superseded_verification_id` once. That is exactly what a chain is.
+
+---
+
+### 5.4 Commercial baseline binding (Finding D of Revision 3, retained)
+
+The baseline question has five parts, each answered by a column plus a key.
 
 **Configuration identity versus configuration version identity.** A configuration is the project's commercial instrument; a configuration version is one immutable state of it. Only versions are referenced by evidence. `payment_config_version_id` is the version identity; `version_number` is ordering metadata within a project and is never used as a foreign key.
 
-**Which version governs a transaction.** The one captured with the observation that established the transaction, at ingestion time. Ingestion resolves the project's effective version — the one referenced by the exact current accepted proposal version and exact current applicable signed-agreement version, per canonical decision §B.1 — and records it on the observation. If resolution is impossible, the observation is stored unbound (§4.4) and can never establish a transaction, because `payment_transaction` requires both `payment_config_version_id` and a `source_observation_id` whose composite key proves a non-null version.
+**Which version governs a transaction.** The one captured with the observation that established it, at ingestion. Ingestion resolves the project's effective version — the one referenced by the exact current accepted proposal version and the exact current applicable signed-agreement version, per canonical decision §B.1 — and records it on the observation. If resolution is impossible, the observation is stored unbound (§4.7) and can never establish a transaction.
 
-**Currency and other terms.** Currency is tied to the version by composite foreign key on both the observation and the transaction, so neither can be inserted with a currency its version does not use (J.13 at schema level). Amount ceilings are not evaluated in Slice 2A: there is no obligation comparison and no allocation. In Slice 2B, I1 evaluates an obligation's expected amount, and obligations are members of a configuration version, so the ceiling is always read from an immutable version rather than from current commercial terms.
+**Why the transaction stores the version as well as the observation.** Derivable is not enforced. The transaction's `payment_config_version_id` is proven equal to its establishing observation's by the composite key `(source_observation_id, payment_config_version_id)` → `payment_observation(observation_id, payment_config_version_id)`, and proven to belong to the transaction's project by `(payment_config_version_id, project_id)` → `payment_configuration_version(payment_config_version_id, project_id)`. Two keys, two different claims: *same as the evidence* and *same as the owner*. A single `NOT NULL` foreign key would prove neither.
 
-**Proposal and agreement references.** Captured on the configuration version itself (`proposal_version_id`, `agreement_version_id`) at version creation, per §B.1. Evidence does not duplicate them; it references the version, and the version's references are immutable by construction. Staleness is therefore a derived comparison — the version's referenced proposal/agreement versions against the project's current ones — never a stored flag.
+**Currency and other terms.** Currency is tied to the version by composite foreign key on the observation and on the transaction, so neither can be inserted with a currency its version does not use (J.13 at schema level). Amount ceilings are not evaluated in Slice 2A: there is no obligation comparison and no allocation. In Slice 2B, I1 evaluates an obligation's expected amount, and obligations are members of a configuration version, so the ceiling is always read from an immutable version rather than from current commercial terms.
 
-**After a configuration change.** Nothing already accepted changes. A later observation binds the then-current version; the earlier transaction keeps its own. Because the binding is a `NOT NULL` foreign key with no update path (I4, I8), "reinterpreting" a historical transaction would require a new row, which the uniqueness rule on the identity forbids for the same funds movement. This is the structural guarantee that Revision 2 lacked entirely.
+**Proposal and agreement references.** Captured on the configuration version itself (`proposal_version_id`, `agreement_version_id`) at version creation, per §B.1. Evidence does not duplicate them; it references the version, and the version's references are immutable by construction. Staleness is a derived comparison — the version's referenced proposal/agreement versions against the project's current ones — never a stored flag.
 
-**When the bound version is stale at acceptance time.** The canonical decision states that a stale configuration cannot satisfy the activation gate (§B.1) but does not say what happens to funds received against a stale baseline. Slice 2A takes the fail-safe reading and does not invent a commercial rule: verification returns `failed` with `reason_code = config_baseline_stale`, no transaction is created, and the observation remains retained evidence. Whether funds received against a superseded commercial baseline may later be accepted — and against which baseline — is a Founder decision. It is listed as an open dependency in §16.4 and is not resolved here.
+**After a configuration change.** Nothing already accepted changes. A later observation binds the then-current version; the earlier transaction keeps its own. Because the binding is a `NOT NULL` foreign key with no update path (I4, I8), "reinterpreting" a historical transaction would require a new row, which `UQ(identity_id)` forbids for the same funds movement.
+
+**When the bound version is stale at acceptance time.** The canonical decision states that a stale configuration cannot satisfy the activation gate (§B.1) but does not say what happens to funds received against a stale baseline. Slice 2A takes the fail-safe reading and does not invent a commercial rule: verification returns `failed` with `reason_code = config_baseline_stale`, no transaction is created, and the observation remains retained evidence. Whether funds received against a superseded commercial baseline may later be accepted — and against which baseline — is a Founder decision, listed in §16.4 and not resolved here.
 
 ### 5.5 The Slice 2A / 2B boundary, precisely
 
-**Slice 2A may establish:** trusted provider accounts, registrations, observations, verification results, acceptance records, canonical accepted transactions, correlation, conflicts, resolutions, supersession, and audit — a *synthetic verified-payment-transaction foundation*, subject to J.3 approval.
+**Slice 2A may establish:** trusted provider accounts (global identity plus project binding), registrations, observations, verification results, acceptance records, canonical accepted transactions, correlation, conflicts, resolutions, supersession, and audit — a *synthetic verified-payment-transaction foundation*, subject to J.3 approval.
 
 **Slice 2A must not establish or imply:**
 
@@ -545,7 +753,7 @@ The baseline question has four parts, and each is answered by a specific column 
 
 Verification in 2A compares an observation against the **configuration version it captured** and the verification contract. It does not compare against an obligation's expected amount; that comparison is a 2B allocation-time determination and requires J.14.
 
-**Checks that belong to 2A:** registration trust; delivery uniqueness; provider reference presence; global identity uniqueness; currency agreement with the bound configuration version; exact decimal validity; project consistency; correlation recording; conflict detection and membership; resolution recording; supersession recording; atomic audit.
+**Checks that belong to 2A:** registration trust; delivery uniqueness; provider reference presence; global identity uniqueness; account-binding and observation agreement; currency agreement with the bound configuration version; exact decimal validity; project consistency; correlation recording and cardinality; conflict detection and membership; resolution recording; supersession recording and linearity; atomic audit.
 
 **Checks that belong to 2B:** request idempotency; per-transaction available funds (I2); per-obligation remaining balance (I1); currency equality across transaction, obligation, and allocation; serialized write; obligation satisfaction under the selected J.14 option; compensating corrections.
 
@@ -561,43 +769,75 @@ Verification in 2A compares an observation against the **configuration version i
 
 | Outcome | Meaning | Persistence consequence |
 |---|---|---|
-| `passed` | The observation satisfied the approved verification contract and its facts were accepted as evidence. | The result is eligible for acceptance. By itself it creates no transaction and accepts no funds. |
-| `failed` | A verification attempt could not reach a conclusion for a technical or transient reason (observation arrived before its registration was active, required provider reference absent, bound baseline stale). | No acceptance. Retry permitted as a new attempt with its own record. |
-| `rejected` | The observation is definitively inadmissible: malformed amount, currency mismatch with the bound configuration version, untrusted or unknown registration, unbound baseline, or a cross-project identity collision. | No acceptance. A new *corrected* observation is a new delivery, not a retry of this one. |
+| `passed` | The observation satisfied the approved verification contract and its facts were accepted as evidence | Eligible for acceptance. By itself it creates no transaction and accepts no funds. |
+| `failed` | A verification attempt could not reach a conclusion for a technical or transient reason (registration not yet active, provider reference absent, bound baseline stale) | No acceptance. Retry permitted as a new attempt with its own `attempt_seq`. |
+| `rejected` | The observation is definitively inadmissible: malformed amount, currency mismatch with the bound version, unknown registration, unbound baseline, or a cross-project identity collision | No acceptance. A corrected observation is a new delivery, not a retry. |
 
-A conflict is **not** an outcome. It is a separate record (§6.3).
+A conflict is **not** an outcome. It is a separate record (§6.4).
 
 ### 6.2 Acceptance — the record that replaces the circular pointer
 
-Revision 2 answered "who accepted what" with two columns pointing at each other. Revision 3 stores the decision once, in `payment_transaction_acceptance`, which is written after both parents and after the correlation that proves they belong together (§5.2).
+The decision "these funds are accepted on the strength of this verification" is stored once, in `payment_transaction_acceptance`, written after both parents and after the correlation proving they belong together (§5.2). Its constraints make five claims structural: belonging, eligibility, singularity, classification agreement, and baseline agreement (§5.3).
 
-Acceptance is the only record that says "these funds are accepted on the strength of this verification". Its constraints (§5.3) make four claims structural:
+**Multiple attempts** are multiple `verification_result` rows for the same observation, each with its own `attempt_seq`. Exactly one of them (or none) can be accepted; the others remain auditable as attempts. **Failed and rejected attempts** are fully auditable precisely because they have no acceptance row: absence from `payment_transaction_acceptance` is meaningful data, not a gap.
 
-- **It belongs.** The `(observation_id, payment_transaction_id)` key requires an existing correlation row for that exact pair.
-- **It is eligible.** `verification_outcome = 'passed'` plus the composite key to `verification_result(verification_id, outcome)` means a failed or rejected result cannot be accepted.
-- **It is unique.** `UQ(payment_transaction_id)` and `UQ(verification_id)` mean exactly one accepted verification per transaction, and one acceptance per verification.
-- **It is classification-consistent.** The two classification composite keys force transaction and verification to agree.
+**No deferred constraint is used.** SQLite supports `DEFERRABLE INITIALLY DEFERRED` foreign keys, but this design does not need them: every foreign key is satisfiable at insert time in the order of §5.2. A design that *required* deferral would also depend on no reader observing the intermediate state, which is a much weaker guarantee than an immediate constraint.
 
-**Multiple attempts** are represented by multiple `verification_result` rows for the same observation — each with its own `verification_id`, `attempted_at`, and `outcome`. Exactly one of them (or none) can be accepted, and the others remain auditable as attempts. **Failed and rejected attempts** are fully auditable precisely because they have no acceptance row: their absence from `payment_transaction_acceptance` is meaningful data, not a gap.
+### 6.3 The atomic acceptance path (Finding 5B)
 
-**No deferred constraint is used.** SQLite supports `DEFERRABLE INITIALLY DEFERRED` foreign keys, but this design does not need them: every foreign key is satisfiable at insert time in the order of §5.2. Stating this matters, because a design that *required* deferral would also require the write layer to guarantee that no other reader observes the intermediate state, which is a much weaker guarantee than an immediate constraint.
+A first-time acceptance is **one** database transaction. The sequence below is the design target; dependency order in §5.2 is what makes it legal.
 
-### 6.3 Reconciliation conflicts — kinds and membership
+```
+BEGIN IMMEDIATE
+  1. re-read the observation, its registration, its account binding, and its
+     captured configuration version; verify the verification is `passed`
+  2. resolve the global identity (the global account identity is read from the
+     observation's binding, never supplied by a caller):
+       existing (provider_account_identity_id, provider_transaction_reference)
+         -> reuse it
+       absent -> INSERT provider_transaction_identity
+  3. if an accepted transaction already exists for that identity:
+       same project  -> duplicate observation path: write correlation only,
+                        no new transaction, no new acceptance
+       other project -> write `rejected` verification, conflict, and audit;
+                        roll back any identity row created in step 2
+  4. INSERT payment_transaction                  (composite keys of §5.3)
+  5. INSERT payment_transaction_observation      (establishing observation)
+  6. INSERT payment_transaction_acceptance
+  7. INSERT audit_event                          (identifier-only, §8.6)
+COMMIT
+```
+
+**No partial reservation can commit.** Steps 2–7 are one transaction. An identity row created in step 2 and not followed by a committed acceptance is rolled back with it, so a failed acceptance leaves no identity row, no transaction, and no acceptance. This is I12, and it is the answer to the question Revision 3 left open: an unaccepted transaction can exist as a *row* only if some write path commits one without acceptance, and no 2A path does. The schema cannot forbid such a row — SQLite has no assertion or "must have child" constraint — so this is recorded as an **application-level limitation** enforced by a single write path, not as a database guarantee.
+
+**Visibility.** SQLite is not claimed to provide snapshot isolation (§11.4). Another connection may observe uncommitted state only through a separate read of a database it is not writing; the design depends on atomic commit, not on isolation. The guarantee that matters is the one the database does provide: either all of steps 2–7 are durable or none are.
+
+**The five outcomes are distinct and must not be conflated:**
+
+| Situation | Durable result | Not |
+|---|---|---|
+| Verification fails | `verification_result` with `outcome = failed`; observation retained | Not a transaction, not a conflict, not a rejection of the evidence |
+| Observation unresolved (no trustworthy reference, unbound baseline) | Observation retained; `failed` or `rejected` result as applicable | Not a transaction; not a reservation of an identity |
+| Duplicate observation for an **already accepted same-project** transaction | New observation + new correlation row; no new transaction, no new acceptance, funds unchanged | Not a second acceptance; not double-counting |
+| **Cross-project collision** | `rejected` verification in the refusing project + `cross_project_collision` conflict; no transaction, no identity row committed | Not a merge, not an ownership transfer, not disclosure of the owner |
+| New observation passes and is accepted | Identity + transaction + correlation + acceptance + audit committed atomically | Not an obligation payment; not an allocation |
+
+**Why a candidate identity is never durable before acceptance.** If the design allowed step 2 to commit on its own, any project could reserve a global reference by submitting an unverifiable delivery, denying the real owner the identity indefinitely — identity squatting. Because the reservation is rolled back unless acceptance commits, the only party that can create an identity is one that also creates a valid accepted transaction for it. There is no "claim" state to abuse, and therefore no cleanup job, expiry, or arbitration rule is required.
+
+### 6.4 Conflicts and derived blocking
 
 `reconciliation_conflict` records, immutably, that a detected condition exists. Its kinds:
 
 | Kind | Raised when |
 |---|---|
-| `duplicate_content_mismatch` | A second observation resolves to an already-accepted identity but reports a different amount, currency, or classification. |
-| `cross_source_conflict` | Two correlated observations disagree on facts in a way the contract cannot adjudicate. |
-| `unresolved_correlation` | Two or more observations appear related but no trusted reference establishes it. |
-| `cross_project_collision` | An identity already owned by another project is claimed again (§4.6). |
+| `duplicate_content_mismatch` | A second observation resolves to an already-accepted identity but reports a different amount, currency, or classification |
+| `cross_source_conflict` | Two correlated observations disagree on facts the contract cannot adjudicate |
+| `unresolved_correlation` | Two or more observations appear related but no trusted reference establishes it |
+| `cross_project_collision` | An identity already owned by another project is claimed again (§4.5) |
 
-Membership is the relation `reconciliation_conflict_observation`, with composite primary key `(conflict_id, observation_id)`: every participating observation is a foreign key, duplicate membership is rejected by the key, and no array exists anywhere in the model. A conflict may additionally name a `payment_transaction_id` when a specific accepted transaction is affected, and a `trigger_observation_id` naming the delivery whose arrival raised it.
+Membership is the relation `reconciliation_conflict_observation`, primary key `(conflict_id, observation_id)`: every participant is a foreign key, duplicate membership is rejected by the key, cross-project membership is rejected by the shared project key, and no array exists anywhere in the model. A conflict may additionally name a `payment_transaction_id` when a specific accepted transaction is affected, and a `trigger_observation_id` naming the delivery whose arrival raised it. Both are single, optional columns — never collections (§8.4).
 
-### 6.4 Blocking is derived, never stored
-
-Whether a transaction or observation is blocked is a query over immutable rows:
+Whether something is blocked is a **query over immutable rows**:
 
 ```
 open_conflict          := reconciliation_conflict with no conflict_resolution row
@@ -607,7 +847,7 @@ blocked_transaction(t) := exists open conflict with t.payment_transaction_id = t
 blocked_observation(o) := exists open conflict whose membership includes o
 ```
 
-Both are views. There is no `blocks_use` column and no `status` column, because either would be a mutable field in an append-only table and could drift from the resolution history. Blocking constrains *use* (derived financial position, and the 2B allocation precondition in §12.3), never *existence*: the records remain recorded and auditable.
+Both are views. There is no `blocks_use` column and no `status` column, because either would be a mutable field in an append-only table and could drift from the resolution history. Blocking constrains *use* (derived financial position, and the 2B allocation precondition in §12.3), never *existence*.
 
 ### 6.5 Supersession — explicit precedence, never "latest wins"
 
@@ -615,14 +855,16 @@ A later verification may supersede an earlier conclusion only by writing a `veri
 
 1. **No implicit precedence.** The current position is not "the latest verification row". Selecting the latest row would let a later `failed` observation silently invalidate an earlier accepted transaction — the failure mode the canonical decision forbids (§D.6, §E.2).
 2. **A `failed` or `rejected` result never by itself revokes acceptance.** It records an attempt outcome.
-3. **Revocation requires a supersession record** naming the superseded verification, the superseding verification, a `reason_code`, and the authority that produced it. In Slice 2A only approved J.3 rules may create one; no human override exists in 2A.
-4. **Supersession is linear and terminal per record:** each verification has at most one successor (`UQ(superseded_verification_id)`), a supersession cannot be undone, and the successor may itself be superseded later.
-5. **The derived position walks the supersession chain** from the accepted verification to its head, and applies open conflicts as blocks.
+3. **Revocation requires a supersession record** naming the superseded verification, the superseding verification, the shared observation, a `reason_code`, and the authority that produced it. In Slice 2A only approved J.3 rules may create one; no human override exists in 2A.
+4. **Supersession is linear in both directions and terminal per record:** at most one successor and at most one predecessor, so a chain can neither branch nor converge; a supersession cannot be undone; the successor may itself be superseded later.
+5. **The derived position walks the chain** from the accepted verification to its head, then applies open conflicts as blocks.
 6. **A supersession never deletes or mutates** the superseded result, the transaction, or the observations.
+
+Rule 4 is the correction of Finding 3. Revision 3 declared `UQ(superseded_verification_id)` only, which forbade branching but permitted `V1 → V3` and `V2 → V3`: two predecessors converging on one successor, which is not a chain. `UQ(superseding_verification_id)` closes that, and the shared `observation_id` closes the scope question that Revision 3 left to project-level consistency.
 
 ### 6.6 Immutability of accepted funds
 
-Once a `payment_transaction` and its acceptance exist, their identity, accepted amount, accepted currency, classification, and baseline are immutable. Later information cannot rewrite them, and later information cannot create a second transaction for the same identity (I7). This is what prevents a later failed observation from silently erasing earlier accepted funds while also preventing a replay from doubling them.
+Once a `payment_transaction` and its acceptance exist, their identity, accepted amount, accepted currency, classification, and baseline are immutable. Later information cannot rewrite them, and cannot create a second transaction for the same identity (I7). This prevents a later failed observation from silently erasing earlier accepted funds while also preventing a replay from doubling them.
 
 A failed verification never pretends an accepted payment exists, and never requires one to exist: `verification_result` references only its observation, and the observation exists independently of any transaction.
 
@@ -634,23 +876,25 @@ All rules below reuse the canonical decision's existing security contract (§G.2
 
 ### 7.1 How trusted provider/account identity is established
 
-By a `payment_provider_account` row plus a `payment_source_registration` row, both created by the Founder/internal capability on the internal surface. The `provider_key`, `environment`, `account_reference`, and `source_namespace` values come from server-side configuration, never from a request body. A syntactically valid namespace supplied by an untrusted caller is **not** trusted: matching a string is not authentication. Unregistered namespaces produce `rejected` verification results and no records.
+By a `provider_account_identity` row (the real account), a `payment_provider_account` row (one project's binding of it), and a `payment_source_registration` row (one channel into that binding), all created by the Founder/internal capability on the internal surface. The `provider_key`, `provider_environment`, `provider_account_reference`, and `source_namespace` values come from server-side configuration, never from a request body. A syntactically valid namespace supplied by an untrusted caller is **not** trusted: matching a string is not authentication.
+
+The two-level split matters here for a security reason, not only a modelling one. A project may bind an account that another project also binds — that is normal for a business with two engagements on one merchant account — but *creating a binding* is an internal act that names an existing global account identity. A project cannot invent an account identity by picking an unused account reference, because the binding requires the global row to exist, and global rows are created only by the internal surface.
 
 ### 7.2 How external observations become associated with a project
 
-The observation's `project_id` is derived from `source_registration_id` and is enforced by the composite foreign key `(source_registration_id, project_id)` — a caller cannot supply a project that its registration does not belong to, because no such parent row exists. If a request carries a project reference, that reference is resolved within the caller's organization and compared against the registration's project; mismatch is rejected and recorded as `cross_project_collision`.
+The observation stores `source_registration_id`, `provider_account_id`, and `project_id`, and the composite key `(source_registration_id, provider_account_id, project_id)` requires a registration row with exactly those three values. All three are derived server-side from the resolved registration; a caller cannot supply a project that its registration does not belong to, because no such parent row exists. If a request carries a project reference, it is resolved within the caller's organization and compared against the registration's project; mismatch is rejected and recorded as `cross_project_collision`.
 
 ### 7.3 How project ownership is derived rather than trusted
 
-The existing pattern is mandatory: resolve the caller-supplied reference inside the caller's organization, then re-check authorization server-side on every read and every write. Internal payment operations require the internal capability attached to a Person and never run on a customer route with hidden controls.
+The existing pattern is mandatory: resolve the caller-supplied reference inside the caller's organization, then re-check authorization server-side on every read and every write. Internal payment operations require the internal capability attached to a Person and never run on a customer route with hidden controls. Ownership of a funds movement is a property of the accepted transaction (`payment_transaction.project_id`), fixed at creation by the write path and never updated.
 
 ### 7.4 How configuration and baseline identities are checked
 
-A transaction or allocation may reference only a configuration version belonging to the same project, enforced in 2A by the composite key `(payment_config_version_id, project_id)` and its use on both `payment_observation` and `payment_transaction`. The configuration's `proposal_version_id` and `agreement_version_id` are captured immutably at version creation; staleness is derived by comparing them with the project's current versions, and a stale version is not silently used (canonical decision §B.1). Obligations must be members of the configuration version being evaluated.
+A transaction or allocation may reference only a configuration version belonging to the same project: `(payment_config_version_id, project_id)` → `payment_configuration_version(payment_config_version_id, project_id)` is applied on the observation, the transaction, and (in 2B) the obligation. The transaction's version additionally must equal its establishing observation's captured version, by `(source_observation_id, payment_config_version_id)`. The configuration's `proposal_version_id` and `agreement_version_id` are captured immutably at version creation; staleness is derived by comparing them with the project's current versions, and a stale version is not silently used (canonical decision §B.1).
 
 ### 7.5 How cross-project collisions are rejected
 
-Canonical identity is global (§4.3). If a provider reference resolves to an existing identity whose transaction is owned by a different project, the write is refused by `UNIQUE(payment_transaction.identity_id)`, a `rejected` verification result is recorded, and a `cross_project_collision` conflict is raised in the refusing project. A second project never inherits, duplicates, or sees another project's transaction, and the owning project's records are untouched by the attempt.
+Canonical identity is global (§4.3). If a provider reference resolves to an existing identity whose transaction is owned by a different project, the write is refused by `UNIQUE(payment_transaction.identity_id)`, a `rejected` verification result is recorded, and a `cross_project_collision` conflict is raised in the refusing project. A second project never inherits, duplicates, or sees another project's transaction, and the owning project's records are untouched by the attempt. The refusing project's conflict row carries its own observations and the identity tuple only — never the owner's `project_id` or `payment_transaction_id`.
 
 ### 7.6 How customer access stays read-only
 
@@ -670,133 +914,228 @@ Automated verification is `verifier_kind = automated` with `verified_by IS NULL`
 
 ### 8.1 Scope
 
-Slice 2A is the synthetic, provider-neutral foundation: provider accounts, registrations, observations, verification results, acceptance records, canonical transactions, correlation, conflicts, resolutions, supersession, exact decimals, currency agreement, project isolation, identifier-only audit. Synthetic/test data only. It requires J.3 resolution before implementation.
+Slice 2A is the synthetic, provider-neutral foundation: global provider account identities and their project bindings, registrations, observations, verification results, acceptance records, canonical transactions, correlation, conflicts, resolutions, supersession, exact decimals, currency agreement, project isolation, identifier-only audit. Synthetic/test data only. It requires J.3 resolution before implementation.
 
 ### 8.2 Constraint inventory
 
-Each rule below is a rule this proposal *depends on*, the mechanism that enforces it, and what it prevents. A rule enforced only in application code is marked as such and justified.
+Each row is an invariant this proposal *depends on*, the mechanism that enforces it, and what it prevents. Anything enforced only in application code appears at the end of the table, labelled, and is also listed as a limitation in §16.4.
 
 | Invariant | Mechanism | Prevents |
 |---|---|---|
-| I7: one transaction per funds movement | `UQ(provider_key, provider_environment, provider_account_reference, provider_transaction_reference)` on `provider_transaction_identity`; `UQ(identity_id)` on `payment_transaction` | Double acceptance across channels, registrations, or projects |
-| Registration never defines funds identity | No `source_registration_id` column on `payment_transaction`; registration id absent from the identity key | Channel-scoped identity drift; identity changing when a registration is replaced |
-| Unresolved observations exist without a transaction | `payment_observation` has no transaction column; correlation lives in `payment_transaction_observation` | Phantom transactions invented to satisfy a mandatory FK |
-| Conflict membership is relational | PK `(conflict_id, observation_id)` on `reconciliation_conflict_observation` | ID arrays, dangling references, duplicate membership |
-| Exactly one acceptance per transaction | `UQ(payment_transaction_id)` on `payment_transaction_acceptance` | Competing or repeated acceptances |
-| Exactly one transaction per accepted verification | `UQ(verification_id)` on `payment_transaction_acceptance` | Reusing one pass to accept two funds movements |
-| Only `passed` can be accepted | `CK(verification_outcome = 'passed')` + composite FK `(verification_id, verification_outcome)` → `verification_result(verification_id, outcome)` | Accepting failed or rejected attempts |
-| Acceptance requires proven belonging | Composite FK `(observation_id, payment_transaction_id)` → `payment_transaction_observation` | Accepting a verification of an unrelated observation |
-| Acceptance cannot cross projects | `project_id` on acceptance with composite FKs to both parents' project keys | Cross-project acceptance |
-| Synthetic ≠ live | `data_classification` on observation, verification, transaction, acceptance, with composite FKs forcing agreement | Test data laundering into real evidence |
-| Unbound observation never accepted | `CK(outcome <> 'passed' OR config_binding_state = 'bound')`; transaction requires a bound source observation | Silent acceptance without a commercial baseline |
+| I7: one transaction per funds movement | `UQ(provider_account_identity_id, provider_transaction_reference)`; `UQ(payment_transaction.identity_id)` | Double acceptance across channels, registrations, or projects |
+| Account identity is global, binding is per project | `UQ(provider_key, provider_environment, provider_account_reference)` on `provider_account_identity`; `UQ(project_id, provider_account_identity_id)` on the binding | Two global identities for one real account; two bindings of one account in one project |
+| Identity, binding, observation, and project agree | Seven composite FKs on `payment_transaction`, plus two for the baseline and currency (§4.4, §5.3) | A transaction assembled from three unrelated records |
+| An observation is proven to belong to its binding | Composite FK `(source_registration_id, provider_account_id, project_id)` → registration | Observations attributed to a channel or account they did not arrive through |
+| Registration never defines funds identity | No registration column on `payment_transaction`; registration id absent from the funds key | Channel-scoped identity drift |
+| Unresolved observations exist without a transaction | No transaction column on `payment_observation`; correlation is a relation | Phantom transactions invented to satisfy a mandatory FK |
+| I11: one transaction per observation | PK `observation_id` on `payment_transaction_observation` | One delivery funding two accepted transactions |
+| Many observations per transaction | `payment_transaction_id` not unique in the correlation relation | Losing second-channel evidence for an accepted movement |
+| Conflict membership is relational | PK `(conflict_id, observation_id)`; shared project key | ID arrays, dangling references, cross-project membership |
+| Exactly one acceptance per transaction | `UQ(payment_transaction_id)` on acceptance | Competing or repeated acceptances |
+| Exactly one transaction per accepted verification | `UQ(verification_id)` on acceptance | Reusing one pass to accept two movements |
+| Only `passed` can be accepted | `CK(verification_outcome = 'passed')` + composite FK to `(verification_id, outcome)` | Accepting failed or rejected attempts |
+| Acceptance requires proven belonging | Composite FK `(observation_id, payment_transaction_id)` → correlation | Accepting a verification of an unrelated observation |
+| Acceptance cannot cross projects | Shared `project_id` in composite FKs to both parents | Cross-project acceptance |
+| Synthetic ≠ live | `data_classification` on observation, verification, transaction, acceptance with propagation keys | Test data laundering into real evidence |
+| Unbound observation never accepted | `CK(outcome <> 'passed' OR config_binding_state = 'bound')`; acceptance version keys cannot match a NULL parent value | Silent acceptance without a commercial baseline |
 | Baseline is immutable | `payment_transaction.payment_config_version_id NOT NULL` + no update path | Retroactive reinterpretation |
-| Currency matches the baseline | Composite FK `(payment_config_version_id, accepted_currency)` → `payment_configuration_version(payment_config_version_id, currency)` | Mixed-currency acceptance |
-| One current registration per scope | PK `(project_id, provider_account_id, source_kind, source_namespace)` on `payment_source_registration_current` + compare-and-swap (§8.3) | Concurrent replacement producing two currents |
-| Registration history is append-only | `payment_source_registration` has no update path; successor recorded via `supersedes_registration_id` | Lost or rewritten registration history |
-| No supersession branching or duplicate successor | `UQ(superseded_verification_id)`; `UQ(supersedes_registration_id)` | Two successors of one record |
-| No supersession cycles | Carried timestamps + composite FKs to the parents' `attempted_at`/`created_at` + `CK(superseding_created_at > superseded_created_at)` | Cyclic or self-referential chains |
-| Supersession stays in one project | `project_id` with composite FKs to both verifications' `(verification_id, project_id)` | Cross-project supersession |
-| One open conflict per detected condition | Deterministic `conflict_key` + `UQ(project_id, conflict_key)` (§8.4) | Duplicate open conflicts |
-| Conflict resolution is terminal and auditable | `UQ(conflict_id)` on `conflict_resolution` | Re-resolution rewriting history |
+| Transaction baseline equals its evidence | Composite FK `(source_observation_id, payment_config_version_id)` | Choosing a baseline independent of the observation |
+| Currency matches the baseline | Composite FK `(payment_config_version_id, accepted_currency)` | Mixed-currency acceptance |
+| One current registration per scope | PK `(project_id, provider_account_id, source_kind, source_namespace)` + compare-and-swap (§8.3) | Concurrent replacement producing two currents |
+| Projection points into its own scope | Composite five-column FK from projection to registration | A projection row pointing at another project's or channel's registration |
+| Registration history is append-only | No update path; successor recorded by `supersedes_registration_id` | Lost or rewritten registration history |
+| Registration chain stays in one scope | Self-referential six-column composite FK | Cross-project, cross-account, cross-channel, or cross-namespace supersession |
+| One successor per registration | `UQ(supersedes_registration_id)` | Two registrations claiming the same predecessor |
+| No registration cycle | Carried `supersedes_revision_seq` + `CK(revision_seq > supersedes_revision_seq)` + root rule | R→R, A→B→A, longer cycles, backdated insertion |
+| One successor per verification | `UQ(superseded_verification_id)` | Branching |
+| One predecessor per verification | `UQ(superseding_verification_id)` | Converging chains |
+| Supersession stays in one observation and project | Shared `observation_id`/`project_id` in both composite FKs | Superseding a verification that decides different evidence |
+| No verification cycle | Carried `attempt_seq` values + `CK(superseding_attempt_seq > superseded_attempt_seq)` | Two-node and longer cycles; self-supersession |
+| Conflict idempotency | Deterministic `conflict_key` over persisted fields + `UQ(project_id, conflict_key)` (§8.4) | Duplicate open conflicts for one condition |
+| Conflict resolution is terminal | `UQ(conflict_id)` on `conflict_resolution` | Re-resolution rewriting history |
 | Every row has an identity | Every table declares a primary key (§5.3) | Unaddressable records |
 | Audit is identifier-only | Allowlist at write (§8.6) + forbidden-pattern test | Amount, credential, or payload leakage |
 | Amounts are exact | Grammar and normalization (§10) | Float, lexicographic, or scale-based money errors |
 
-Two rules remain **application-level** and are labelled as limitations rather than enforcement:
+**Application-level rules, labelled as such and not counted as database enforcement:**
 
-- *Which* observation first creates an identity row, and therefore which project owns it, is decided by the accepting write path; the database enforces that only one such row can exist, not which one wins.
-- Verification *content* (that an amount is plausible for the contract) is application logic; the database enforces the structural consequences of the decision, not the decision's quality.
+1. *Which project first establishes an identity* — and therefore owns the funds movement — is decided by which acceptance write commits first. The database guarantees that only one transaction can exist per identity (`UQ(identity_id)`); it cannot choose the winner.
+2. *Verification content* — whether an amount is plausible for the contract — is application logic. The database enforces the structural consequences of the decision, not its quality.
+3. *A transaction row without an acceptance row* — the schema permits the row because SQLite has no assertion or mandatory-child constraint. No 2A write path produces one (§6.3); this is a single-write-path discipline, not a constraint.
+4. *The conflict digest itself* — SQLite has no SHA-256 function, so `conflict_key` is computed by application code. The database enforces its uniqueness and immutability, and a recomputation test proves the algorithm (§8.4).
 
-### 8.3 Source registration lifecycle
+---
 
-**History versus current.** `payment_source_registration` is the authoritative, append-only history. `payment_source_registration_current` is a **projection**: one row per scope, pointing at the registration that is currently in force. It is explicitly mutable, explicitly non-authoritative, and fully rebuildable by walking `supersedes_registration_id` chains from the earliest registration in each scope.
+### 8.3 Source registration lifecycle (Finding 4)
 
-**The "at most one current" rule.** It is the projection's primary key:
+**History versus current.** `payment_source_registration` is the authoritative, append-only history. `payment_source_registration_current` is a **projection**: one row per scope, pointing at the registration currently in force. It is explicitly mutable, explicitly non-authoritative, and fully rebuildable.
+
+**The "at most one current" rule** is the projection's primary key:
 
 ```sql
 PRIMARY KEY (project_id, provider_account_id, source_kind, source_namespace)
 ```
 
-No partial index over a derived status is used, and no `is_active` flag is trusted. A stale `is_active` flag can disagree with reality and cannot be constrained; a primary key cannot.
+No partial index over a derived status is used, and no `is_active` flag is trusted: a stale flag can disagree with reality and cannot be constrained, whereas a primary key cannot.
 
-**Replacement procedure**, inside one `BEGIN IMMEDIATE` transaction (the repository's existing write pattern, §3.1):
+**The scope is proven, not implied.** The projection's `source_registration_id` is not a single-column pointer. The foreign key repeats all five scope columns:
 
-1. Insert the new registration with `supersedes_registration_id` = the current registration's id and `supersedes_created_at` = that registration's `created_at`. `UQ(supersedes_registration_id)` means a registration can have at most one successor, and the ordering check means the successor must be newer.
-2. Compare-and-swap the projection:
-
-   ```sql
-   UPDATE payment_source_registration_current
-      SET source_registration_id = :new, replaced_at = :now
-    WHERE project_id = :project AND provider_account_id = :account
-      AND source_kind = :kind AND source_namespace = :namespace
-      AND source_registration_id = :expected_current;
-   ```
-
-3. Require exactly one row changed. Zero rows means another writer already replaced it, or the caller's expectation was stale: roll back the whole transaction, including the new registration insert, and report a distinct `registration_superseded_concurrently` failure rather than retrying silently.
-4. Insert the identifier-only audit row and commit.
-
-**Why concurrency is safe.** `BEGIN IMMEDIATE` takes the write lock before the first read, so two replacements cannot interleave their read-compare-write sequences: the second sees the first's committed pointer, its `WHERE` no longer matches `:expected_current`, and it aborts. This is a compare-and-swap on a single row, not a read-then-write with a window between them. It is the same discipline §12.3 applies to allocation, and it depends on the same repository-level guarantee rather than on new machinery.
-
-**Relationship to identity.** A registration change never changes any existing transaction, because no transaction references a registration (§4.3). An observation ingested under a registration that is later replaced keeps its own `source_registration_id` forever; that is historical provenance, not identity.
-
-### 8.4 Conflict lifecycle
-
-**Deterministic conflict key.** A conflict is identified by a digest over exactly the facts that define the condition:
-
-```
-conflict_key = SHA-256(
-    "conflict/v1"  || 0x1F ||
-    project_id     || 0x1F ||
-    conflict_kind  || 0x1F ||
-    sorted(participating observation ids, ascending, 0x1E-separated) || 0x1F ||
-    sorted(participating transaction ids, ascending, 0x1E-separated) || 0x1F ||
-    trigger_record_id
-)
+```sql
+FOREIGN KEY (source_registration_id, project_id, provider_account_id,
+             source_kind, source_namespace)
+  REFERENCES payment_source_registration
+             (source_registration_id, project_id, provider_account_id,
+              source_kind, source_namespace)
 ```
 
-Properties this gives:
+so a projection row can only point at a registration that has exactly those five values. Revision 3's single-column key allowed a projection row for project A / account B / channel C to point at a registration belonging to project D.
 
-- **Re-detection converges.** The same condition observed again with the same participants and the same trigger produces a byte-identical key. `UQ(project_id, conflict_key)` rejects the second insert, and the write path reads the existing row and returns it as the conflict id. Convergence is a constraint outcome, not a de-duplication heuristic.
-- **A genuinely new episode is representable.** A new delivery that raises the same *kind* of disagreement is a different trigger over a different participant set, so its key differs and a new conflict row is legal. This is what makes "a distinct conflict episode can be represented" true rather than aspirational.
-- **The key is reproducible.** It contains no timestamps, no random salt, no ordering ambiguity, and no mutable state, so an auditor can recompute it from the stored rows.
+**Ordering within a scope: `revision_seq`.** Integers, not timestamps (Finding 7). Allocation happens inside `BEGIN IMMEDIATE`:
 
-**Resolution.** `conflict_resolution` is append-only with `UQ(conflict_id)`: exactly one terminal resolution may exist per conflict. A conflict is never edited to look resolved, and a resolution is never deleted. "Open" is derived (§6.4), so the history of a resolved conflict — the conflict row, its membership, its resolution — remains complete and readable.
+```sql
+-- inside the write transaction
+SELECT COALESCE(MAX(revision_seq), 0) + 1
+  FROM payment_source_registration
+ WHERE project_id = :project AND provider_account_id = :account
+   AND source_kind = :kind AND source_namespace = :namespace;
+```
 
-**Duplicate resolution attempts** are rejected by `UQ(conflict_id)`. A later disagreement, even about the same records, is a new conflict with a new key, which is why the terminal rule does not become a dead end.
+`UQ(project_id, provider_account_id, source_kind, source_namespace, revision_seq)` is the backstop: if two writers ever allocated the same value, the second insert fails rather than creating two registrations at one sequence position. The first registration in a scope has `revision_seq = 1`, `supersedes_registration_id = NULL`, and `supersedes_revision_seq = NULL`; a CHECK forbids a root with a predecessor and forbids a non-root without one.
 
-### 8.5 Supersession lifecycle
+**First registration — insertion**
 
-The same shape is used for verifications (§5.3) and for registrations (§8.3):
+```sql
+INSERT INTO payment_source_registration VALUES (... revision_seq = 1, NULL, NULL ...);
+INSERT INTO payment_source_registration_current
+     (project_id, provider_account_id, source_kind, source_namespace,
+      source_registration_id, current_since)
+VALUES (:project, :account, :kind, :namespace, :new, :now);
+```
 
-| Property | Mechanism | What it prevents |
+A second insert for the same scope fails on the projection primary key — which is the intended outcome, not an error to swallow.
+
+**Replacement — compare-and-swap with an explicit expected value**
+
+```sql
+-- 1. append the successor (its own revision_seq, its predecessor's id and seq)
+INSERT INTO payment_source_registration VALUES (... :new, :seq, :expected_current, :expected_seq ...);
+
+-- 2. move the projection, but only from the value the caller observed
+UPDATE payment_source_registration_current
+   SET source_registration_id = :new,
+       current_since          = :now
+ WHERE project_id = :project AND provider_account_id = :account
+   AND source_kind = :kind   AND source_namespace = :namespace
+   AND source_registration_id = :expected_current;
+
+-- 3. require changes() = 1
+```
+
+Step 3 is not optional. Zero changed rows means the caller's expectation was stale: the whole transaction — including the successor inserted in step 1 — is rolled back and the operation reports `registration_superseded_concurrently`. It is never silently retried, because retrying would replace a registration the caller never observed.
+
+**Why the compare-and-swap is safe.** `BEGIN IMMEDIATE` acquires the write lock before the first read, so two replacements cannot interleave a read-compare-write sequence: the second sees the first's committed pointer, its `WHERE` no longer matches `:expected_current`, and `changes()` is zero. The row identity in the `WHERE` clause is the full primary key, so the update can affect at most one row; the affected-row requirement converts "at most one" into "exactly the one I expected". The concurrency assumption is therefore *writers are serialized by SQLite's write lock* — the same assumption §12.3 relies on — and no reader-level isolation is assumed (§11.4).
+
+**`current_since` semantics.** It is the time at which the pointed-to registration became current at this scope. It is set when the row is inserted and reset on every successful compare-and-swap. It is descriptive; ordering is `revision_seq`. A projection rebuild therefore reproduces `source_registration_id` exactly and `current_since` approximately (the rebuild cannot know historical wall-clock times better than the audit trail does), which is why the projection is labelled non-authoritative.
+
+**Rebuild.** For each scope, the current registration is the chain head: the registration whose `revision_seq` is maximal for that scope, equivalently the one that no other registration names as `supersedes_registration_id`. A rebuild is:
+
+```sql
+INSERT INTO payment_source_registration_current (...)
+SELECT r.project_id, r.provider_account_id, r.source_kind, r.source_namespace,
+       r.source_registration_id, r.created_at
+  FROM payment_source_registration r
+ WHERE NOT EXISTS (SELECT 1 FROM payment_source_registration s
+                    WHERE s.supersedes_registration_id = r.source_registration_id);
+```
+
+**Relationship to identity.** A registration change never changes any existing transaction, because no transaction references a registration (§4.2). An observation ingested under a registration that is later replaced keeps its own `source_registration_id` forever; that is historical provenance, not identity.
+
+### 8.4 Conflict lifecycle and the deterministic key (Finding 6)
+
+Revision 3 hashed a `trigger_record_id` that no column defined and a sorted collection of participating transaction ids that no relation stored, so the key could not be reconstructed from the database. Revision 4 restricts the digest to fields that are actually persisted, and states exactly how each participant is recovered.
+
+**Digest inputs, and where each comes from**
+
+| Position | Field | Source |
 |---|---|---|
-| Chains permitted | A superseding record may itself be superseded later; `superseded_verification_id` is unique only among *superseded* rows | A record being wrongly treated as terminal after one link |
-| Terminality | Once a row appears as `superseded_verification_id`, it can never point to a successor again; the chain head is the unique record with no supersession row naming it | Re-animation of a closed conclusion |
-| Duplicate successor | `UQ(superseded_verification_id)` | Two records both claiming to supersede the same one |
-| Branching | Same constraint: a branch *is* a second successor, so it is the same violation | Two divergent "current" positions |
-| Cycles | `superseded_created_at` and `superseding_created_at` are carried and proven genuine by composite foreign keys to `verification_result(verification_id, attempted_at)`; `CK(superseding_created_at > superseded_created_at)` | A→B→A, or any cycle: strict increase along every edge makes a return to an earlier record impossible |
-| Self-supersession | `CK(superseding_verification_id <> superseded_verification_id)` | A one-row cycle |
-| Scope consistency | `project_id` with composite foreign keys to both verifications' `(verification_id, project_id)` | Superseding across projects |
-| Concurrent attempts | `UQ(superseded_verification_id)` plus the serialized write transaction | Two racing supersessions both committing |
+| 0 | Domain separator `conflict/v1` | Constant literal |
+| 1 | `project_id` | `reconciliation_conflict.project_id` |
+| 2 | `conflict_kind` | `reconciliation_conflict.conflict_kind` |
+| 3 | `trigger_observation_id`, or the absent marker | `reconciliation_conflict.trigger_observation_id` |
+| 4 | `payment_transaction_id`, or the absent marker | `reconciliation_conflict.payment_transaction_id` |
+| 5 | Participant count, decimal | `COUNT(*)` over the membership rows |
+| 6… | Sorted participant observation ids | `reconciliation_conflict_observation.observation_id` |
 
-The cycle rule deserves a note on why the check constraint is legitimate rather than a "database can't do it" hand-wave. SQLite evaluates `CHECK` on one row and cannot join, so ordering is enforced by making the compared values *part of the row* and proving they are genuine with foreign keys: `superseded_created_at` must equal the parent's `attempted_at` (composite FK), `superseding_created_at` likewise, and then the check compares two local columns. Because every edge strictly increases `attempted_at`, a cycle would require a strictly increasing sequence returning to its start — impossible. The constraint is local; the guarantee is global.
+There is no third collection. A conflict names **at most one** transaction, in a persisted column; if a future conflict kind genuinely needs several, it requires a `reconciliation_conflict_transaction` relation and a `conflict/v2` domain separator, which is out of scope for 2A and is not implied by this design.
+
+**Byte-level canonicalization**
+
+```
+field(x)   := decimal_ascii(len(utf8(x))) || ':' || utf8(x)
+absent     := field("absent")                    -- six-byte token, not an empty string
+material   := field("conflict/v1")
+           || field(project_id) || field(conflict_kind)
+           || field(trigger_observation_id or absent)
+           || field(payment_transaction_id or absent)
+           || field(decimal(count))
+           || concat(field(observation_id) for each id in ascending byte order)
+conflict_key := lowercase_hex(SHA-256(material))
+```
+
+Properties that make this reconstructable and unambiguous:
+
+1. **Every field is length-prefixed**, so a value containing `:`, `0x1F`, a comma, or a quote cannot shift a boundary. There is no delimiter scheme to escape, and no ambiguity to argue about.
+2. **Encoding is UTF-8**, and the only characters in ids are the ones the system generates, but the prefix makes that irrelevant to correctness.
+3. **Sorting is by raw UTF-8 byte order ascending**, which is SQLite's `BINARY` collation for `TEXT` and matches a byte-wise application sort. Two writers computing the same set therefore produce the same order without sharing a locale.
+4. **Absence is a distinct token**, not an empty string, so "no trigger" and "trigger with an empty id" cannot collide (the latter is impossible anyway, but the encoding does not depend on that).
+5. **No timestamps, no random salt, no mutable state.** Recomputing the digest months later from the stored rows yields the same bytes.
+
+**Convergence and new episodes.** Re-detecting the same condition with the same participants and the same trigger yields a byte-identical key; `UQ(project_id, conflict_key)` rejects the second insert and the write path returns the existing conflict id. A genuinely new episode differs in its trigger or its membership, therefore in its key, and inserts cleanly — the terminal-resolution rule does not become a dead end.
+
+**Resolution.** `conflict_resolution` is append-only with `UQ(conflict_id)`: exactly one terminal resolution per conflict. A conflict is never edited to look resolved, and a resolution is never deleted. "Open" is derived (§6.4), so a resolved conflict's full history stays readable.
+
+### 8.5 Supersession lifecycle and ordering contracts (Findings 3 and 7)
+
+**The ordering contract.** Ordering is an integer sequence scoped to the parent, allocated inside the serialized write transaction, and carried into the child row where a composite key proves it genuine (I10).
+
+| Lifecycle | Sequence | Scope | Allocation | Carried into the child by |
+|---|---|---|---|---|
+| Verification attempts | `attempt_seq` | One observation | `COALESCE(MAX(attempt_seq),0)+1` for that observation inside `BEGIN IMMEDIATE` | Composite FK `(verification_id, observation_id, project_id, attempt_seq)` |
+| Registration revisions | `revision_seq` | One `(project, account, kind, namespace)` scope | Same pattern, per scope | Self-referential six-column composite FK |
+
+**Why text timestamps are not used.** SQLite compares `TEXT` lexicographically. Two ISO-8601 strings compare chronologically only if they share a fixed width, a fixed fractional precision, a fixed suffix, and a single offset. `2026-11-04T12:00:00Z`, `2026-11-04T13:00:00+01:00`, and `2026-11-04T12:00:00.000Z` are the same instant in three representations that sort three different ways, and `2026-11-04T12:00:00.9Z` sorts before `2026-11-04T12:00:00.10Z` while being later. Revision 3's `CK(superseding_created_at > superseded_created_at)` therefore proved only *string* order. Clock values are also not monotonic and not unique, so no amount of format discipline would make them a correctness basis.
+
+**What is enforced instead.** The strict-increase check compares two integer columns that are *in the same row* and whose values are proven to be the parents' actual sequences by composite foreign keys. Since `attempt_seq` increases strictly along every edge within one observation, and both ends of an edge must belong to the same observation (§5.3), a cycle would require a strictly increasing sequence to return to its starting value. Self-supersession is additionally rejected by `CK(superseding_verification_id <> superseded_verification_id)`.
+
+**Linearity.** `UQ(superseded_verification_id)` permits at most one successor; `UQ(superseding_verification_id)` permits at most one predecessor. Together they forbid branching (`V1→V2`, `V1→V3`) and convergence (`V1→V3`, `V2→V3`) while permitting `V1→V2→V3`, because the two constraints are on different columns and a middle node appears once in each.
+
+**Concurrent supersession attempts.** Two racing attempts to supersede the same verification both insert rows naming it as `superseded_verification_id`; the second fails the unique constraint. Nothing is decided by a racy read, and the write transaction is serialized in any case (`BEGIN IMMEDIATE`).
+
+**Descriptive timestamps.** `attempted_at`, `created_at`, `received_at`, `accepted_at`, `detected_at`, `decided_at`, `current_since`, and `first_registered_at` are canonical UTC text with fixed width, constrained by shape:
+
+```sql
+CHECK (attempted_at LIKE '____-__-__T__:__:__.___Z' AND length(attempted_at) = 24)
+```
+
+This enforces the fixed-width UTC-with-milliseconds shape, which is what makes the columns *displayable and comparable as text among themselves*. It does **not** validate calendar ranges (month 13 passes the shape check) and it does not establish precedence anywhere. Both limitations are stated rather than papered over; ordering never depends on these columns.
+
+**A later `failed` attempt does not revoke acceptance.** Only a supersession row changes derived precedence, and only an approved J.3 rule may write one in Slice 2A.
 
 ### 8.6 Audit allowlist
 
-Permitted `audit_event.metadata` keys: `observation_id`, `verification_id`, `acceptance_id`, `payment_transaction_id`, `identity_id`, `conflict_id`, `resolution_id`, `supersession_id`, `source_registration_id`, `provider_account_id`, `paymentConfigVersionId`, `proposalVersionId`, `agreementVersionId`, `obligation_id`, `allocation_id`, `allocation_request_id`, `versionNumber`.
+Permitted `audit_event.metadata` keys: `observation_id`, `verification_id`, `acceptance_id`, `payment_transaction_id`, `identity_id`, `conflict_id`, `resolution_id`, `supersession_id`, `source_registration_id`, `provider_account_id`, `provider_account_identity_id`, `paymentConfigVersionId`, `proposalVersionId`, `agreementVersionId`, `obligation_id`, `allocation_id`, `allocation_request_id`, `versionNumber`.
 
 Rejected patterns at write time: any key matching `/amount|currency|due|scope|credential|secret|payload|token|reference|signature|email|name/i`.
 
-Revision 2's `evidence_id` is removed: no such column, table, or identifier exists in Revision 3, and an allowlist entry for a non-existent field is exactly the kind of drift this pass is meant to eliminate. `provider_transaction_reference` is deliberately **not** on the allowlist — it is an external identifier, and internal tracing is satisfied by `payment_transaction_id`.
+`provider_account_identity_id` is added in Revision 4 because the two-level account model produces it and operators need to correlate a collision report with a real account without exposing the reference itself. Revision 2's `evidence_id` remains removed: no such column, table, or identifier exists, and an allowlist entry for a non-existent field is exactly the drift this document is meant to eliminate. `provider_transaction_reference` is deliberately **not** on the allowlist — it is an external identifier, and internal tracing is satisfied by `payment_transaction_id`.
 
-This allowlist check is the primary control. A substring search for a literal sample amount is retained only as a regression assertion, never as the proof of privacy.
+This allowlist is the primary control. A substring search for a literal sample amount is retained only as a regression assertion, never as the proof of privacy.
 
 ### 8.7 What Slice 2A explicitly does not contain
 
-No `allocation`; no `allocation_request`; no obligation linkage on evidence or transactions; no obligation state beyond `proposed`; no payment-attempt, retry, dunning, or notification subsystem; no manual determination; no customer upload; no activation predicate or event; no provider integration; no refund, reversal, or chargeback handling; no production data.
+No `allocation`; no `allocation_request`; no obligation linkage on evidence or transactions; no obligation state beyond `proposed`; no payment-attempt, retry, dunning, or notification subsystem; no manual determination; no customer upload; no activation predicate or event; no provider integration; no refund, reversal, or chargeback handling; no production data; no conflict-transaction membership relation (a conflict names at most one transaction, §8.4).
 
 ---
-
 ## 9. Synthetic Fixtures, Test Verification, and Field Semantics
 
 Four different things must never be confused. Revision 1 blurred them by having `fake_verifier(event)` return `"passed"` with `verified_by = founder_person_id`, which fabricated Founder approval.
@@ -839,7 +1178,6 @@ It may not create a `payment_transaction` or an acceptance. Those are written by
 Manual determination stays governed by J.10 and is out of scope. No production payment processing, provider selection, provider integration, or credentials are authorized by this proposal.
 
 ---
-
 ## 10. Decimal, Currency, and Exact Arithmetic Contract
 
 I3 governs. Revision 1 preserved decimal *strings* but never specified what "exact" required.
@@ -907,7 +1245,6 @@ Therefore `1500`, `1500.00`, and `1500.000` all normalize to `1500` with scale 0
 No financial amount is ever parsed into a JavaScript floating-point number, at any layer, including tests.
 
 ---
-
 ## 11. SQLite Transactionality, Concurrency, and Failure Reporting
 
 ### 11.1 Failure classes are distinct
@@ -939,7 +1276,6 @@ Proposed: retry the entire transaction up to 5 attempts with exponential backoff
 SQLite is not claimed to provide snapshot isolation. The guarantees relied on are: uniqueness constraints enforced by the database, `BEGIN IMMEDIATE` serialization of writers (§8.3, §12.3), and atomic commit. Readers may observe pre-commit state; nothing here depends on repeatable reads.
 
 ---
-
 ## 12. Slice 2B Allocation Model, Idempotency, and Concurrency
 
 Slice 2B requires J.14 resolution before design approval and implementation authorization.
@@ -1007,7 +1343,6 @@ Because I1 and I2 are absolute, an accepted transaction may exceed what its obli
 - **Conditions for creation:** an internal, authorized correction of an allocation entry error. That is all this proposal defines. Reversal of *received funds* (chargeback, refund, dispute) belongs to J.5 and J.6 and is **not** invented here; no reversal, refund, or chargeback behavior is specified.
 
 ---
-
 ## 13. Proposed Founder Decision J.14 and J.10 Separation
 
 ### 13.1 Status
@@ -1088,7 +1423,6 @@ All four options apply I1–I8, D4, D5, D8, D10, and D11 identically. They diffe
 For every option: the satisfaction rule cannot be implemented, the obligation-state computation beyond `proposed` cannot be implemented, and the derived financial position cannot claim satisfaction. Option C additionally requires the single-obligation constraint. Option D additionally requires an internal directive mechanism and its authorization model. All options remain blocked on J.3 (evidence authority) and on separate Founder authorization.
 
 ---
-
 ## 14. Founder Decision Register
 
 The canonical register contains J.1–J.13. This table reproduces its status accurately and adds the proposed J.14, which is not canonical.
@@ -1116,123 +1450,164 @@ The canonical register contains J.1–J.13. This table reproduces its status acc
 
 ## 15. Acceptance Tests, Threat Analysis, and Evidence-Quality Claims
 
-No tests were executed during this documentation revision. Everything in §15 is a **proposed acceptance criterion**, not a reported result. Each criterion names the constraint, relation, or mechanism it exercises, so that a later implementation cannot pass it by application-level mimicry.
+**No test was executed during this documentation revision.** Everything in §15 is a **proposed acceptance criterion** — a design specification of behaviour a later implementation must exhibit — not a reported result. Each criterion names the constraint, relation, or mechanism it exercises, so that an implementation cannot satisfy it by application-level mimicry of the outcome.
 
-### 15.1 Transaction identity and correlation (2A)
+Each criterion below is written so that it has a **negative** counterpart wherever the design claims a refusal. A test that only demonstrates the happy path does not demonstrate a constraint.
 
-| # | Test | Expected |
-|---|---|---|
-| 1 | Trusted registration accepted | Observation from a registered namespace verifies; `passed`. |
-| 2 | Unregistered namespace | `rejected`; no observation accepted as evidence. |
-| 3 | Delivery identity | Same `(source_registration_id, delivery_reference)` twice → one observation; second returns the original. |
-| 4 | Same transaction via webhook **and** reconciliation import | One `provider_transaction_identity` row, one transaction, two observations, both correlated `provider_shared_reference`, funds counted once. |
-| 5 | Same transaction via **two different registrations** (same account) | One identity, one transaction; both observations correlated; `UNIQUE(identity_id)` is what rejects the second transaction. |
-| 6 | Cross-project identity collision | Second project's acceptance refused by `UNIQUE(identity_id)`; `rejected` verification; `cross_project_collision` conflict in the refusing project; owning project untouched; no counterparty identifier disclosed. |
-| 7 | Different accounts, same provider reference | Two identities, two transactions — permitted where the tuple distinguishes them; asserted explicitly so the behaviour is not mistaken for a bug. |
-| 8 | Unresolved observation exists without a transaction | Observation row present with no `payment_transaction_id` anywhere and no transaction row; query for accepted funds returns nothing. |
-| 9 | Later correlation recorded without overwriting evidence | New `payment_transaction_observation` row; original observation columns unchanged; a contradicting correlation produces a conflict, not an update. |
-| 10 | Conflict membership is relational | `reconciliation_conflict_observation` rows carry every participant; inserting the same `(conflict_id, observation_id)` twice fails on the primary key; no array column exists. |
-| 11 | Observation cannot borrow a project | Insert with a `project_id` differing from its registration's fails on the composite foreign key. |
-
-### 15.2 Verification and acceptance (2A)
+### 15.1 A. Global account and transaction identity
 
 | # | Test | Expected |
 |---|---|---|
-| 1 | Documented insertion order succeeds | Observation → verification → identity → transaction → correlation → acceptance commits without any deferred constraint. |
-| 2 | Out-of-order insertion fails immediately | Acceptance before correlation is rejected by `(observation_id, payment_transaction_id)`; transaction before identity is rejected by its FK. |
-| 3 | Verification of another transaction cannot be accepted | Acceptance whose `observation_id` is not correlated to that `payment_transaction_id` fails the composite FK to `payment_transaction_observation`. |
-| 4 | Failed verification cannot be accepted | Insert with `verification_outcome = 'failed'` fails the check; attempting to assert `'passed'` while the parent row is `failed` fails the composite FK to `verification_result(verification_id, outcome)`. |
-| 5 | Repeated attempts remain auditable | Three attempts for one observation produce three `verification_result` rows; failed ones keep their rows and gain no acceptance. |
-| 6 | Only one accepted verification | A second acceptance for the same transaction, or for the same verification, fails `UQ(payment_transaction_id)` / `UQ(verification_id)`. |
-| 7 | Concurrent acceptance attempts | Two racing acceptances: exactly one commits; the other fails on the unique index, not on a racy read. |
-| 8 | Synthetic verification cannot be accepted as live | Acceptance whose verification is `synthetic` and whose transaction is `live` fails the classification composite FK; flipping one field is not sufficient because four tables must agree. |
-| 9 | Unbound observation cannot pass | Verification of an observation with `config_binding_state <> 'bound'` cannot reach `passed` (check constraint). |
+| 1 | Same real account registered by two projects | One `provider_account_identity`; two `payment_provider_account` rows referencing it; both bindings insert successfully |
+| 2 | Same account key inserted twice | Second insert fails `UQ(provider_key, provider_environment, provider_account_reference)` |
+| 3 | Same reference via webhook and via reconciliation import | One identity, one transaction, two observations, both correlated; funds counted once |
+| 4 | Same reference via two registrations of one account | One identity, one transaction; both observations correlated; the registration id appears nowhere on the transaction |
+| 5 | Correct identity-to-account binding | Transaction insert succeeds when all scope columns agree |
+| 6 | Identity paired with a binding from **another** global account | Insert fails FK `(provider_account_id, provider_account_identity_id)` |
+| 7 | Identity paired with an observation from **another account** | Insert fails FK `(source_observation_id, provider_account_id)` |
+| 8 | Transaction whose observation belongs to **another project** | Insert fails FK `(source_observation_id, project_id)` |
+| 9 | Transaction whose binding belongs to **another project** | Insert fails FK `(provider_account_id, project_id)` |
+| 10 | Different accounts sharing a provider reference | Two identities, two transactions — asserted explicitly so the behaviour is not mistaken for a bug |
+| 11 | Test and live environments with the same reference | Two account identities, two transaction identities, two transactions |
+| 12 | Cross-project collision | Refused by `UQ(payment_transaction.identity_id)`; `rejected` verification in the refusing project; conflict raised there; owner's rows untouched; **no owner identifier disclosed** |
+| 13 | Rolled-back acceptance | After a failure injected at any step of §6.3, no identity row, no transaction, no acceptance, no correlation persists (I12) |
+| 14 | Identity cannot be squatted by an unverifiable delivery | Repeated failing deliveries create no identity row; the real owner's later acceptance succeeds |
 
-### 15.3 Configuration baseline (2A)
-
-| # | Test | Expected |
-|---|---|---|
-| 1 | Transaction bound to its own version | `payment_transaction.payment_config_version_id` equals the establishing observation's captured version, enforced by composite FK; no code path can supply a different one. |
-| 2 | Later version does not reinterpret history | Accepting under version *n+1* leaves the existing transaction's version, amount, and currency byte-identical; a second transaction for the same identity is refused. |
-| 3 | Currency mismatch rejected | Observation or transaction with a currency different from its bound version's cannot be inserted (composite FK to `payment_configuration_version(payment_config_version_id, currency)`). |
-| 4 | Missing baseline never silently accepted | Observation with `unbound_no_configuration` retains evidence, produces no transaction, and yields no accepted funds. |
-| 5 | Ambiguous baseline never silently resolved | `unbound_ambiguous` behaves as (4); no "pick the latest version" fallback exists. |
-| 6 | Stale baseline fails closed | Bound version whose proposal/agreement references are no longer current yields `failed` / `config_baseline_stale`; evidence retained; no acceptance. |
-| 7 | Cross-project version rejected | Observation referencing another project's configuration version fails the composite project key. |
-
-### 15.4 Registration lifecycle (2A)
+### 15.2 B. Observation correlation
 
 | # | Test | Expected |
 |---|---|---|
-| 1 | One current registration per scope | Second current row for the same `(project_id, provider_account_id, source_kind, source_namespace)` fails the projection primary key. |
-| 2 | Concurrent replacement | Two simultaneous replacements: exactly one compare-and-swap matches; the loser rolls back and reports `registration_superseded_concurrently`; the projection never holds two currents. |
-| 3 | Valid successive chain | R1 → R2 → R3 permitted; history intact; projection points at R3. |
-| 4 | Duplicate successor rejected | Two registrations both naming R1 as `supersedes_registration_id` fail `UQ(supersedes_registration_id)`. |
-| 5 | Cycle and backdating rejected | A successor whose `created_at` is not strictly greater than its parent's fails the check constraint; a self-supersession fails the self-reference check. |
-| 6 | Registration never defines funds identity | Replacing the registration does not change any existing transaction's identity or ownership; no transaction references a registration. |
+| 1 | One observation → one transaction | Correlation row inserted; readable |
+| 2 | A second observation from another channel → same transaction | Second correlation row permitted; `payment_transaction_id` is not unique |
+| 3 | Duplicate correlation pair | Second insert fails PK/`UQ(observation_id)` |
+| 4 | One observation → two different transactions | Second correlation fails PK `observation_id` |
+| 5 | Two verification attempts for one observation, both accepted | First acceptance commits; second fails `UQ(payment_transaction_id)`; a second transaction for that observation is impossible |
+| 6 | One verification accepted twice | Second acceptance fails `UQ(verification_id)` |
+| 7 | Acceptance naming an observation correlated to a **different** transaction | Fails FK `(observation_id, payment_transaction_id)` → correlation |
+| 8 | Cross-project correlation | Fails shared-project composite keys |
+| 9 | Acceptance supported by an unbound verification | Fails the version composite key (NULL parent value cannot match) |
 
-### 15.5 Conflict lifecycle (2A)
-
-| # | Test | Expected |
-|---|---|---|
-| 1 | Duplicate open conflict converges | The same condition detected twice with the same participants and trigger produces the same `conflict_key`; the second insert fails `UQ(project_id, conflict_key)` and the write path returns the existing conflict id. |
-| 2 | New episode representable | A new triggering delivery over a different participant set produces a different key and a new conflict row, legally, while the earlier conflict stays resolved. |
-| 3 | Resolution is auditable | `conflict_resolution` row carries kind, deciding actor, timestamp, and rationale code; the conflict row is untouched. |
-| 4 | Resolved conflict retains history | After resolution, the conflict, its membership, and its resolution all remain queryable; "open" is false only because a resolution row exists. |
-| 5 | Double resolution rejected | A second resolution for the same conflict fails `UQ(conflict_id)`. |
-| 6 | Conflict membership cannot cross projects | A membership row pairing a conflict and an observation from different projects fails the composite project keys. |
-
-### 15.6 Supersession lifecycle (2A)
+### 15.3 C. Verification supersession
 
 | # | Test | Expected |
 |---|---|---|
-| 1 | Valid successive supersession | V1 superseded by V2, V2 by V3: chain resolves to V3; each row immutable. |
-| 2 | Branching rejected | V1 superseded by V2 and by V3 fails `UQ(superseded_verification_id)`. |
-| 3 | Duplicate successor rejected | Two rows naming the same successor for the same predecessor fail the same constraint. |
-| 4 | Cycle rejected | V2→V1 after V1→V2 fails the strict-ordering check; a self-supersession fails the self-reference check. |
-| 5 | Cross-project supersession rejected | Superseding a verification owned by another project fails the composite project key. |
-| 6 | Automated revocation only | Slice 2A refuses `authority_kind = 'human'`; revocation requires an approved J.3 rule, and a later `failed` attempt alone changes nothing. |
+| 1 | `V1 → V2` | Accepted; chain head is V2 |
+| 2 | `V1 → V2 → V3` | Accepted; head is V3; each row immutable |
+| 3 | Supersession across two observations in one project | Insert fails both verification composite keys (they share one `observation_id`) |
+| 4 | Supersession across projects | Insert fails the same keys |
+| 5 | `V1 → V2` then `V1 → V3` | Second fails `UQ(superseded_verification_id)` |
+| 6 | `V1 → V3` then `V2 → V3` | Second fails `UQ(superseding_verification_id)` |
+| 7 | Self-supersession | Fails `CK(superseding_verification_id <> superseded_verification_id)` and the sequence check |
+| 8 | Two-node cycle `V1 → V2` then `V2 → V1` | Fails `CK(superseding_attempt_seq > superseded_attempt_seq)` |
+| 9 | Longer cycle `V1→V2→V3` then `V3→V1` | Fails the same check (strict increase cannot return to V1's sequence) |
+| 10 | Carried sequence that does not match its parent | Fails the four-column composite FK |
+| 11 | Valid chain remains append-only | No update/delete path; supersession rows accumulate |
+| 12 | Later `failed` verification for the same observation | Recorded as a new attempt; earlier acceptance unchanged; no derived precedence change |
+| 13 | Attempt to change precedence other than through `verification_supersession` | No such path exists; a `failed` row alone is not precedence |
+| 14 | Concurrent supersessions of one verification | Exactly one commits; the other fails the unique constraint |
 
-### 15.7 Schema and integrity (2A)
-
-| # | Test | Expected |
-|---|---|---|
-| 1 | Every foreign key has a legal insertion sequence | A generated schema-path test inserts one row per table in the §5.2 order and commits; no deferred constraint is needed. |
-| 2 | No undefined column or constraint | Schema introspection confirms every column named in §5.3 exists, and every check references only columns of its own table. |
-| 3 | No uniqueness rule depends on a derived state | Every unique constraint is either a natural key or a primary key; no `is_active`/`status` column is referenced by any index. |
-| 4 | Every table has a primary key | Introspection: zero tables without one. |
-| 5 | Append-only enforced | No update/delete path for observations, verifications, transactions, acceptances, correlations, conflicts, memberships, resolutions, or supersessions; the single mutable projection is the registration pointer. |
-| 6 | Audit uses only current identifiers | Writing `evidence_id` is rejected; every accepted key appears in §8.6; forbidden patterns (`amount`, `currency`, `reference`, `signature`, `secret`, `token`, `payload`) are rejected. |
-
-### 15.8 Decimal, currency, and classification (2A)
+### 15.4 D. Registration lifecycle
 
 | # | Test | Expected |
 |---|---|---|
-| 1 | Grammar | `1500`, `1500.00`, `1500.000` normalize identically; `+1500`, `-1500`, `1e3`, `1,500`, ` 1500` rejected; 19 integer digits and scale 7 rejected. |
-| 2 | Zero rejected | `0` and `0.00` rejected for observations and allocations. |
-| 3 | Exact comparison | `1500` = `1500.00`; `1500` ≠ `1500.01`; `"900"` not ranked above `"1500"`; no float parsing at any layer. |
-| 4 | Currency normalization | Case-insensitive normalization only; matching is exact against the bound version; no conversion, no exchange rate. |
-| 5 | Classification propagation | Transaction classification must equal its establishing observation's; acceptance must equal both parents'; a mismatch fails a composite foreign key. |
-| 6 | Verifier field combinations | `test_fake` + `verified_by` set rejected; `test_fake` + `system_clock` rejected; `test_fake` + `live` rejected; `automated` + `verified_by` set rejected; `automated` without `verifier_reference` rejected. |
+| 1 | First registration in a scope | Inserts with `revision_seq = 1`, no predecessor |
+| 2 | First projection row | Inserts for that scope; `current_since` set |
+| 3 | Second projection row for the same scope | Fails the projection primary key |
+| 4 | Valid same-scope replacement | Successor `revision_seq = 2`; CAS updates one row; `changes() = 1` |
+| 5 | Two successive replacements | `R1 → R2 → R3`; projection points at R3 |
+| 6 | Two concurrent replacement attempts | Exactly one CAS matches; the loser rolls back its successor row and reports `registration_superseded_concurrently` |
+| 7 | Stale compare-and-swap | Zero rows changed → whole transaction rolled back, including the inserted successor |
+| 8 | Cross-project predecessor | Fails the self-referential composite FK |
+| 9 | Cross-account predecessor | Fails the same key |
+| 10 | Cross-channel (`source_kind`) predecessor | Fails the same key |
+| 11 | Cross-namespace predecessor | Fails the same key |
+| 12 | Duplicate successor | Two registrations naming the same predecessor fail `UQ(supersedes_registration_id)` |
+| 13 | Registration cycle / backdating | `CK(revision_seq > supersedes_revision_seq)` rejects it; root/non-root checks reject a self-referential root |
+| 14 | Projection pointing at a registration outside its scope | Fails the five-column composite FK |
+| 15 | Projection rebuild | Chain-head query reproduces the projection's `source_registration_id` for every scope |
+| 16 | Root representation | A registration with a predecessor but `supersedes_revision_seq IS NULL` (or the reverse) fails the equivalence check |
+
+### 15.5 E. Transaction and baseline integrity
+
+| # | Test | Expected |
+|---|---|---|
+| 1 | Transaction project ≠ source observation project | Insert fails |
+| 2 | Transaction configuration version ≠ observation's version | Insert fails `(source_observation_id, payment_config_version_id)` |
+| 3 | Transaction configuration version from another project | Insert fails `(payment_config_version_id, project_id)` |
+| 4 | Transaction account ≠ observation account | Insert fails |
+| 5 | Accepted currency ≠ configuration version currency | Insert fails |
+| 6 | Transaction classification ≠ observation classification | Insert fails |
+| 7 | Failed verification | No accepted transaction is created |
+| 8 | Unresolved observation | No transaction; no identity; evidence retained |
+| 9 | Successful acceptance | Identity, transaction, correlation, acceptance, and audit commit together |
+| 10 | Failure injected at each step of §6.3 | No partially committed identity, transaction, or acceptance |
+| 11 | Duplicate same-project observation after acceptance | Correlation added; no second transaction; no second acceptance; funds unchanged |
+| 12 | Cross-project collision | No second accepted transaction; no identity row committed by the refusing project |
+| 13 | Later configuration version | Existing transaction's version, amount, and currency unchanged byte-for-byte |
+| 14 | Second transaction for the same observation | Fails `UQ(source_observation_id)` |
+
+### 15.6 F. Conflict key and membership
+
+| # | Test | Expected |
+|---|---|---|
+| 1 | Same participants and trigger detected twice | Byte-identical `conflict_key`; second insert fails `UQ(project_id, conflict_key)`; write path returns the existing id |
+| 2 | Key recomputed from persisted rows alone | Recompute from `reconciliation_conflict` plus membership rows reproduces the stored key exactly |
+| 3 | Participant order varied before insertion | Membership is a set; the digest sorts by byte order, so the same participants yield the same key regardless of insertion order |
+| 4 | Genuinely new episode | Different trigger or membership → different key → new conflict row, legally |
+| 5 | Cross-project membership | Fails the shared-project composite keys |
+| 6 | Duplicate membership | Fails PK `(conflict_id, observation_id)` |
+| 7 | Digest input that is not a persisted field | Not constructible: the algorithm's inputs are exactly the columns and membership rows listed in §8.4 |
+| 8 | Absent trigger vs absent transaction | Encoded as the distinct `absent` token; the two conflicts do not collide |
+| 9 | Double resolution | Fails `UQ(conflict_id)` |
+
+### 15.7 G. Global schema integrity
+
+| # | Test | Expected |
+|---|---|---|
+| 1 | No undefined column | Schema introspection: every column named in §5.3 exists; every check references only columns of its own table |
+| 2 | No dangling foreign key | Every FK parent table and column exists |
+| 3 | No missing parent unique key | Every composite FK's parent columns are covered by a declared `UNIQUE` constraint, in the same order |
+| 4 | No invalid composite foreign key | `PRAGMA foreign_key_check` is empty after a full fixture load |
+| 5 | No inconsistent project relationship | Every project-bearing row equals its parent's project (composite keys) |
+| 6 | No inconsistent provider-account relationship | Every transaction's binding and observation belong to the transaction's global account |
+| 7 | No inconsistent configuration-version relationship | Version belongs to the same project and to the observation |
+| 8 | No invalid lifecycle insertion order | One row per table inserted in the §5.2 order commits without any deferred constraint |
+| 9 | No unexplained mutable row | Only `payment_source_registration_current` is mutable; nothing else has an update/delete path |
+| 10 | No permanent identity reservation from a rolled-back operation | Covered by 15.1 #13–#14 |
+| 11 | No one-observation/multiple-transaction path | Primary key on `payment_transaction_observation.observation_id`; attempted second transaction fails |
+| 12 | Every invariant has a positive and a negative test | This matrix; each refusal cites the specific constraint |
+| 13 | No uniqueness rule depends on derived state | No index references a `status` or `is_active` column |
+| 14 | Every table has a primary key | Introspection: zero tables without one |
+
+### 15.8 Decimal, currency, and classification (retained from Revision 3)
+
+| # | Test | Expected |
+|---|---|---|
+| 1 | Grammar | `1500`, `1500.00`, `1500.000` normalize identically; `+1500`, `-1500`, `1e3`, `1,500`, ` 1500` rejected; 19 integer digits and scale 7 rejected |
+| 2 | Zero rejected | `0` and `0.00` rejected for observations and transactions |
+| 3 | Exact comparison | `1500` = `1500.00`; `1500` ≠ `1500.01`; `"900"` not ranked above `"1500"`; no float parsing at any layer |
+| 4 | Currency normalization | Case normalization only; matching is exact against the bound version; no conversion, no exchange rate |
+| 5 | Classification propagation | Transaction equals its observation; acceptance equals both parents; a mismatch fails a composite key |
+| 6 | Verifier field combinations | `test_fake` + `verified_by` set rejected; `test_fake` + `system_clock` rejected; `test_fake` + `live` rejected; `automated` + `verified_by` set rejected; `automated` without `verifier_reference` rejected |
 
 ### 15.9 Slice 2B acceptance criteria
 
 | # | Test | Expected |
 |---|---|---|
-| 1 | Mandatory request idempotency | Allocation without an idempotency key is refused by schema. |
-| 2 | Same request replay | Returns the recorded outcome; no second allocation. |
-| 3 | Same key, different payload | Idempotency conflict; nothing written. |
-| 4 | Two legitimate identical-value requests | Different keys → two allocations permitted, subject to I1/I2. |
-| 5 | Transaction ceiling (I2) | Allocation exceeding accepted amount refused; nothing written. |
-| 6 | Obligation ceiling (I1) | Allocation exceeding expected amount refused; nothing written. |
-| 7 | Concurrent allocation requests | Two racing requests cannot both pass; serialized write + inside-transaction recheck admits exactly one. |
-| 8 | Atomic allocation + audit | Both or neither. |
-| 9 | Correction without mutation | Compensating record appended; original intact; balance recomputed; double compensation refused. |
-| 10 | Cross-project allocation | Transaction, obligation, and allocation project mismatch refused. |
-| 11 | Currency mismatch | Transaction/obligation/allocation currency disagreement refused. |
-| 12 | Overpayment and unapplied funds | Per selected option: excess remains unapplied and is never auto-allocated or auto-refunded. |
-| 13 | Blocked transaction cannot fund | A transaction with an open conflict cannot be allocated from (§6.4), even if it has accepted funds. |
-| 14 | Baseline is inherited, not chosen | Allocation writes no configuration version of its own; it reads the transaction's and obligation's immutable versions. |
+| 1 | Mandatory request idempotency | Allocation without an idempotency key is refused by schema |
+| 2 | Same request replay | Returns the recorded outcome; no second allocation |
+| 3 | Same key, different payload | Idempotency conflict; nothing written |
+| 4 | Two legitimate identical-value requests | Different keys → two allocations permitted, subject to I1/I2 |
+| 5 | Transaction ceiling (I2) | Allocation exceeding accepted amount refused; nothing written |
+| 6 | Obligation ceiling (I1) | Allocation exceeding expected amount refused; nothing written |
+| 7 | Concurrent allocation requests | Serialized write plus inside-transaction recheck admits exactly one |
+| 8 | Atomic allocation + audit | Both or neither |
+| 9 | Correction without mutation | Compensating record appended; original intact; double compensation refused |
+| 10 | Cross-project allocation | Transaction, obligation, and allocation project mismatch refused |
+| 11 | Currency mismatch | Transaction/obligation/allocation currency disagreement refused |
+| 12 | Overpayment and unapplied funds | Excess remains unapplied; never auto-allocated or auto-refunded |
+| 13 | Blocked transaction cannot fund | A transaction with an open conflict (§6.4) cannot be allocated from |
+| 14 | Baseline is inherited, not chosen | Allocation writes no configuration version of its own |
 
 Slice 2B tests are not Slice 2A acceptance criteria.
 
@@ -1240,24 +1615,29 @@ Slice 2B tests are not Slice 2A acceptance criteria.
 
 | Threat | Defense |
 |---|---|
-| Double-counting across channels, registrations, or projects | Global identity registry + `UNIQUE(identity_id)` (I7, §4.3); correlation recorded (§4.5); unresolved conflicts block use (§6.4). |
-| Duplicate delivery | Delivery uniqueness; replay returns the original record. |
-| Forged or untrusted namespace | Registration-based trust; matching a string is not authentication (§7.1). |
-| Cross-project access or collision | Server-side project resolution; project composite keys; collision refusal (§7.5). |
-| Phantom payment invented to satisfy a foreign key | Observation has no transaction column; acceptance requires a correlation row (§5.2). |
-| Evidence fabricated as live payment | Four-table classification with propagation keys; verifier field checks (§9.2). |
-| Silent revocation of accepted funds | Supersession requires an explicit record with unique successors and acyclic ordering (§8.5). |
-| Retroactive re-pricing of historical funds | Immutable `NOT NULL` baseline binding (I8, §5.4). |
-| Audit leakage | Identifier allowlist enforced at write (§8.6). |
-| Funding double-count via allocation | Out of 2A; prevented in 2B by I1/I2 inside a serialized transaction (§12.3). |
-| Float or lexicographic money errors | Exact decimal contract (§10). |
+| Double-counting across channels, registrations, or projects | Global account identity + global transaction identity + `UNIQUE(identity_id)` (§4.3, §4.4) |
+| A transaction assembled from unrelated records | Four composite scope keys on `payment_transaction` (§4.4) |
+| One delivery funding two transactions | PK `observation_id` on correlation (§4.6) |
+| Identity squatting / denial of service | Identity created only inside the atomic acceptance transaction (§6.3) |
+| Duplicate delivery | Delivery uniqueness; replay returns the original record |
+| Forged or untrusted namespace | Registration-based trust; matching a string is not authentication (§7.1) |
+| Cross-project access or collision | Server-side project resolution; project composite keys; collision refusal without disclosure (§7.5) |
+| Phantom payment invented to satisfy a foreign key | Observation has no transaction column; acceptance requires a correlation row (§5.2) |
+| Evidence fabricated as live payment | Four-table classification with propagation keys; verifier checks (§9.2) |
+| Silent revocation of accepted funds | Supersession requires an explicit record, one successor, one predecessor, same observation (§8.5) |
+| Superseding unrelated evidence | Shared `observation_id` in both verification composite keys |
+| Retroactive re-pricing of historical funds | Immutable `NOT NULL` baseline binding tied to the evidence (I8, §5.4) |
+| Audit leakage | Identifier allowlist enforced at write (§8.6) |
+| Funding double-count via allocation | Out of 2A; prevented in 2B by I1/I2 inside a serialized transaction (§12.3) |
+| Float or lexicographic money errors | Exact decimal contract (§10) |
+| Clock skew or format drift changing precedence | Ordering by scoped integer sequences, never by clock text (§8.5) |
 
 ### 15.11 Test-count and evidence-quality accuracy
 
 - Revision 1 claimed "328 tests pass" and reused that number as evidence for unchanged behavior. **No fresh evidence supports 328.**
 - The recorded result for PR #54 at head `51a796a` is: **321 passed** (implementation-agent-reported), plus typecheck and build passing, plus fresh GitHub checks (Website CI, Dependency Review, CodeQL, Snyk) reported as successful on that head.
 - Those are **historical, agent-reported** results for a rolled-back slice. They are not current, not independently reproduced here, and not evidence about code that is not in `main`.
-- No test was executed during Revision 3. Reported results, independently verified results, and proposed acceptance criteria are labelled separately and never merged.
+- No test was executed during Revision 4. Reported results, independently verified results, and proposed acceptance criteria are labelled separately and never merged. The matrix above is a specification: it states what a future implementation must demonstrate, and nothing in this document claims any of it has been demonstrated.
 
 ---
 
@@ -1265,7 +1645,7 @@ Slice 2B tests are not Slice 2A acceptance criteria.
 
 ### 16.1 Explicit exclusions
 
-Excluded from Slice 2A: allocations; allocation requests; obligation linkage on evidence; obligation states beyond `proposed`; payment attempts, retries, dunning, notifications; manual determination; customer upload or any customer write; activation predicate or event; provider integration, webhook receiver, credentials; production or live customer data; mutable `status` columns; mutable `blocks_use` columns; ID arrays in any record; caller-controlled trust; snapshot-isolation claims; audit events for failed writes; fabricated test-pass claims.
+Excluded from Slice 2A: allocations; allocation requests; obligation linkage on evidence; obligation states beyond `proposed`; payment attempts, retries, dunning, notifications; manual determination; customer upload or any customer write; activation predicate or event; provider integration, webhook receiver, credentials; production or live customer data; mutable `status` columns; mutable `blocks_use` columns; ID arrays in any record; conflict-to-transaction membership relations; caller-controlled trust; snapshot-isolation claims; audit events for failed writes; fabricated test-pass claims.
 
 Excluded from Slice 2B as of this revision: any satisfaction rule before J.14; refund, reversal, chargeback behavior (J.5/J.6); activation integration (J.9); provider integration (J.8).
 
@@ -1288,7 +1668,7 @@ Neither slice is authorized. No provider is selected. No payment was processed. 
 |---|---|
 | A — Append-only contradiction | Mutable evidence status removed; verification results are separate append-only records. |
 | B — Out-of-scope source kinds | `customer_upload` and `manual_determination` excluded from Slice 2A. |
-| C — Source identity | Delivery-scoped identity introduced (superseded twice: by Revision 2 §4, then by Revision 3 §4.3). |
+| C — Source identity | Delivery-scoped identity introduced (superseded twice: by Revision 2 §4, then by Revision 3 §4.3, then by Revision 4 §4.2). |
 | D — J.14 rewrite | Rewritten as options (superseded by Revision 2 §13, which made the options independent). |
 | E — Allocation model | Normalized allocation records; no arrays of allocation IDs. |
 | F — Attempts, states, SQLite | Attempts excluded; no `failed` obligation state; snapshot isolation not claimed. |
@@ -1300,7 +1680,7 @@ Neither slice is authorized. No provider is selected. No payment was processed. 
 | **A** | One provider transaction could be accepted twice through different channels. | Three identities — delivery, canonical transaction, allocation — with uniqueness, correlation basis, and blocking of unresolved correlations. | §4 |
 | **B** | No defined evidence → transaction → configuration → obligation relationship. | Full record model with identities, FKs, ownership, baseline, immutability, idempotency, authority. | §5 |
 | **C** | `reconciliation_conflict` used as an outcome while absent from the enum. | Outcome enum fixed; conflicts became a separate record; supersession made explicit. | §6 |
-| **D** | `fake_verifier` returned passed with a Founder identity. | Test-only verifier, fail-closed production path, `verified_by = NULL`, explicit `verified_by` semantics. | §9 |
+| **D** | `fake_verifier` returned passed with a Founder identity. | Test-only verifier, fail-closed production path, `verified_by = NULL`. | §9 |
 | **E** | J.14 non-canonical status unclear; options not independent; J.10 tied to Option D. | J.14 labelled proposed; eleven dimensions; four options; comparison matrix; J.10 separated. | §13 |
 | **F** | Allocation relied on a check-then-write precheck. | Serialized write, inside-transaction rechecks, atomic writes, defined busy/rollback/replay behavior. | §12 |
 | **Finding 9** | Strings preserved but arithmetic undefined. | Grammar, precision limits, normalization, exact comparison and arithmetic, overflow, no floats. | §10 |
@@ -1311,36 +1691,57 @@ Neither slice is authorized. No provider is selected. No payment was processed. 
 | **Finding 14** | Schema/test mismatch; unsupported count claim. | Test matrix rebuilt; count claim corrected. | §15 |
 | **Finding 15** | Misnumbered sections, duplicated content. | Numbering normalized; duplicate removed; 16 sections. | Whole document |
 
-**Revision 3 corrections:**
+**Revision 3 corrections (retained):**
 
 | Finding | Original problem | Correction | Mechanism | Section |
 |---|---|---|---|---|
-| **A** | Canonical key `(source_registration_id, provider_transaction_reference)` was channel- and project-scoped, so the same funds movement could be accepted twice across registrations or projects. | Identity moved into a global `provider_transaction_identity` registry keyed on provider account reference, environment, provider key, and provider transaction reference; the transaction references it once; the registration id was removed from the key and from the transaction row. | `UNIQUE(provider_key, provider_environment, provider_account_reference, provider_transaction_reference)`; `UNIQUE(payment_transaction.identity_id)` | §4.2–§4.6, §5.3 |
-| **B** | Unresolved observations were said to exist without a transaction while the schema required one; conflicts used an `observation_ids` array; `correlation_basis = 'unresolved'` needed a transaction in order to say there was none. | Observation has no transaction column at all; correlation is a relation; unresolved is the absence of a correlation row plus an open conflict; conflict membership is a relation. | Absence of FK; PK `(observation_id, payment_transaction_id)`; PK `(conflict_id, observation_id)` | §4.4, §4.5, §6.3, §5.3 |
-| **C** | `verification_result.payment_transaction_id` ↔ `payment_transaction.accepted_verification_id` formed a circular FK dependency under immediate enforcement, and no insertion order existed. | Verification references only its observation. A new `payment_transaction_acceptance` record references transaction, verification, that verification's observation, and the correlation row proving belonging. Insertion order is linear; no deferred constraint. | `UQ(payment_transaction_id)`, `UQ(verification_id)`, composite FK `(observation_id, payment_transaction_id)` → correlation, composite FK `(verification_id, verification_outcome)` → `(verification_id, outcome)` with `CK(verification_outcome = 'passed')` | §5.2, §6.2, §5.3 |
-| **D** | The transaction's baseline was "none" in the record model while other sections assumed a configuration version; no rule governed a later configuration change. | Observation captures the configuration version in force at ingestion or is stored explicitly unbound; transaction copies it and is `NOT NULL`; currency is tied to the version; later versions never reinterpret earlier transactions; stale baseline fails closed. | `NOT NULL` FK; composite FK `(payment_config_version_id, currency)`; `CK((config_binding_state = 'bound') = (payment_config_version_id IS NOT NULL))`; composite FK from transaction to its source observation's version | §5.4, §4.4, §15.3 |
-| **E** | `verifier_kind`, `verified_by`, `verifier_reference`, `verified_at_source`, `data_classification` were referenced by constraints but defined in no table. | Complete column catalogue for every 2A table; verifier fields defined once with owner, domain, nullability, default, key role, checks, immutability, and lifetime; classification placed on four tables with propagation keys. | Nine check constraints on `verification_result`; classification composite FKs across observation, verification, transaction, acceptance | §5.3, §9.2 |
-| **F** | "One active registration", "one open conflict", and "terminal supersession" were asserted with no stored state, key, or concurrency rule; a partial unique index over a derived status cannot be enforced. | Current-registration projection with a primary key plus compare-and-swap inside `BEGIN IMMEDIATE`; deterministic conflict key with a unique constraint; unique successor plus carried-timestamp ordering for acyclic, terminal, non-branching supersession. | PK `(project_id, provider_account_id, source_kind, source_namespace)`; `UQ(project_id, conflict_key)`; `UQ(superseded_verification_id)` + `CK(superseding_created_at > superseded_created_at)` | §8.3, §8.4, §8.5 |
-| **Decimal grammar** | The grammar permitted an undefined `signed` production while the policy rejected negative amounts. | `signed` deleted; grammar defined over unsigned integers and fractions only; direction expressed by `effect_sign`, never by a negative amount. | Grammar in §10.1; zero rejected; sign characters rejected | §10.1, §10.3, §10.5, §10.7 |
-| **Audit allowlist** | The allowlist named `evidence_id`, which exists in no table, and omitted identifiers the corrected model actually produces. | Allowlist aligned with the final model: `evidence_id` removed; `acceptance_id`, `identity_id`, `resolution_id`, `supersession_id`, `provider_account_id` added; forbidden patterns widened. | Allowlist rejection at write plus a forbidden-pattern test | §8.6, §15.7 |
+| **A** | Canonical key `(source_registration_id, provider_transaction_reference)` was channel- and project-scoped. | Identity moved into a global `provider_transaction_identity` registry; registration id removed from key and row. | `UNIQUE(provider_key, provider_environment, provider_account_reference, provider_transaction_reference)`; `UNIQUE(payment_transaction.identity_id)` | §4, §5.3 |
+| **B** | Unresolved observations required a transaction; conflicts used an `observation_ids` array; `correlation_basis = 'unresolved'` needed a transaction to say there was none. | Observation has no transaction column; correlation is a relation; membership is a relation. | Absence of FK; PK `(observation_id, payment_transaction_id)`; PK `(conflict_id, observation_id)` | §4.7, §6.4, §5.3 |
+| **C** | `verification_result.payment_transaction_id` ↔ `payment_transaction.accepted_verification_id` formed a cycle under immediate enforcement. | Separate acceptance record; verification references only its observation. | `UQ(payment_transaction_id)`, `UQ(verification_id)`, composite FK to correlation | §5.2, §6.2, §5.3 |
+| **D** | The transaction's baseline was "none" in the record model while other sections assumed a version. | Observation captures the version or is explicitly unbound; transaction copies it `NOT NULL`; currency tied to it. | Composite FKs to observation and configuration version; `CK` on binding state | §5.4, §4.7 |
+| **E** | Verifier and classification fields were referenced by constraints but defined in no table. | Complete column catalogue; fields defined once with owner, domain, nullability, checks, lifetime; classification on four tables. | Nine checks on `verification_result`; classification propagation keys | §5.3, §9.2 |
+| **F** | "One active registration", "one open conflict", "terminal supersession" were asserted, not enforced. | Projection with a primary key + CAS; deterministic conflict key; unique successor + carried ordering. | PK on scope; `UQ(project_id, conflict_key)`; `UQ(superseded_verification_id)` + ordering check | §8.3–§8.5 |
+| **Decimal grammar** | Grammar permitted an undefined `signed` production. | `signed` deleted; direction via `effect_sign`. | Grammar in §10.1 | §10 |
+| **Audit allowlist** | Allowlist named `evidence_id`, which exists nowhere. | Allowlist aligned with the model; `evidence_id` removed. | Allowlist rejection at write | §8.6 |
+
+**Revision 4 corrections (new in this revision):**
+
+| Finding | Original problem | Correction | Mechanism | Section |
+|---|---|---|---|---|
+| **1** | The global transaction identity was not tied to a trusted provider account or to the observation that established it; a transaction could cite an identity, a binding, and an observation describing three different things. | Account identity split into a global `provider_account_identity` (unique on provider, environment, account reference) and a project-scoped `payment_provider_account` binding referring to it; the transaction stores `provider_account_identity_id` and proves identity, binding, observation, project, baseline, and classification agreement with composite keys. | `UQ(provider_key, provider_environment, provider_account_reference)`; `UQ(provider_account_identity_id, provider_transaction_reference)`; composite FKs binding identity, binding, observation, project, baseline, and classification on the transaction; one on the observation | §4.2–§4.5, §5.3 |
+| **2** | One observation could correlate to several canonical transactions, so one delivery could underlie two accepted funds movements. | Correlation's primary key is `observation_id`; many observations per transaction remain permitted; acceptance inherits the rule through `(observation_id, payment_transaction_id)` → correlation plus `UQ(payment_transaction_id)`. | PK `observation_id`; `UQ(observation_id, payment_transaction_id)` as the acceptance parent | §4.6, §5.3, §15.2 |
+| **3** | Verification supersession was project-scoped, not observation-scoped, and one successor could converge from two predecessors. | The relation carries `observation_id`; both verifications are proven to belong to it and to the project by four-column composite keys; uniqueness is declared on **both** ends. | Composite FK to `(verification_id, observation_id, project_id, attempt_seq)`; `UQ(superseded_verification_id)`; `UQ(superseding_verification_id)` | §5.3, §6.5, §8.5 |
+| **4** | The registration projection and its predecessor link did not prove scope, and `replaced_at` contradicted the row's meaning. | Projection's `source_registration_id` uses a five-column composite key into its own scope; the predecessor uses a six-column self-referential key; `replaced_at` replaced by `current_since` with a stated update rule; insertion, CAS, zero-row rollback, and rebuild are all specified. | Composite FKs; PK on scope; `changes() = 1` requirement inside `BEGIN IMMEDIATE`; `revision_seq` ordering | §5.3, §8.3, §15.4 |
+| **5** | The transaction's project, account, observation, and baseline were not proven to be the same, and an unaccepted transaction could reserve a global identity. | Nine composite keys make the transaction internally coherent at insert; acceptance is one atomic write transaction; identity rows are created only inside it and roll back on any failure. | Composite FKs; single `BEGIN IMMEDIATE` spanning identity → transaction → correlation → acceptance → audit | §4.4, §5.3, §6.3 |
+| **6** | The conflict digest hashed `trigger_record_id` and a collection of transaction ids that no relation stored. | Digest restricted to persisted, reconstructable inputs: project, kind, one optional trigger observation, one optional transaction, and sorted membership rows; length-prefixed encoding removes delimiter ambiguity. | `UQ(project_id, conflict_key)`; recomputation algorithm in §8.4 | §8.4, §15.6 |
+| **7** | Ordering was enforced by comparing ISO-8601 text, which SQLite compares lexicographically. | Ordering moved to integer sequences scoped to the parent and allocated inside `BEGIN IMMEDIATE`, carried into the child and proven by composite keys; timestamps demoted to descriptive text with a shape check only. | `attempt_seq`; `revision_seq`; strict-increase checks on integer columns | §8.5, §8.3, §15.3 |
 
 ### 16.4 Open dependencies this revision does not resolve
 
-Technical dependencies (all documented, none hidden):
+**Technical questions, documented rather than decided:**
 
 1. **Acceptance of funds received against a stale commercial baseline.** Slice 2A fails closed (`config_baseline_stale`) because the canonical decision governs the activation gate, not retrospective evidence handling. Whether such funds may later be accepted, and against which baseline, is undecided (§5.4).
-2. **Cross-version allocation.** Whether funds bound to one configuration version may fund an obligation issued under another is left to J.14 as selected; the technical model requires currency identity only (§12.1).
+2. **Cross-version allocation.** Whether funds bound to one configuration version may fund an obligation issued under another is left to J.14; the technical model requires currency identity only (§12.1).
 3. **Configured naming of the C-slice columns.** `payment_configuration_version(project_id, currency, proposal_version_id, agreement_version_id)` is stated against a table that is not in `main`; the names must be confirmed against the restored schema at implementation (§3.3).
-4. **Ownership arbitration for a contested identity.** The database guarantees that only one transaction can exist per identity; which project wins is decided by which write commits first. Any rule beyond first-writer-wins — for example a Founder-directed assignment — does not exist and is not assumed (§8.2).
+4. **Ownership arbitration for a contested identity.** The database guarantees that only one transaction can exist per identity; which project wins is decided by which acceptance write commits first. Any rule beyond first-writer-wins — for example a Founder-directed assignment — does not exist and is not assumed (§8.2).
+5. **Conflict kinds needing several transactions.** The current digest names at most one transaction, matching the persisted column. A future kind that must name two would require a `reconciliation_conflict_transaction` relation and a digest version bump; no such relation is designed here (§8.4).
 
-Founder decisions (unchanged and unresolved):
+**Application-level limitations, stated so they are not mistaken for constraints:**
+
+1. *First-writer ownership* of a contested identity (§8.2).
+2. *Verification content* — plausibility of an amount — is application logic (§8.2).
+3. *A transaction row without an acceptance row* is permitted by the schema; no 2A write path creates one (§6.3).
+4. *The conflict digest* is computed in application code because SQLite has no SHA-256; the database enforces uniqueness and immutability, and a recomputation test is specified (§8.4).
+5. *Timestamp calendar validity* — the shape check enforces width and UTC suffix, not month/day ranges (§8.5).
+
+**Founder decisions (unchanged and unresolved):**
 
 - J.3 (authoritative evidence and verification) blocks Slice 2A entirely; it also governs `verified_mapping` correlation, supersession authority, and the resolution rules that may close conflicts.
 - J.10 governs any manual determination; `verifier_kind = 'human'` and human-authored resolutions are outside Slice 2A by construction.
-- J.4, J.5, J.6, J.7, J.8, J.9, J.11, J.12 remain unresolved and are not decided here.
+- J.4, J.5, J.6, J.7, J.8, J.9, J.11, J.12 remain unresolved and are not decided here. J.8 in particular means no provider is selected by this design — `provider_key` is an opaque string and `'fake_provider'` is the only value Slice 2A produces.
 - J.14 remains proposed and non-canonical; Slice 2B is blocked on it.
 
-Governance dependencies (unchanged):
+**Governance dependencies (unchanged):**
 
 - The canonical-decision/Project-Map approval contradiction (§3.3) remains open and requires a separate Founder-authorized correction.
 - Restoration of the rolled-back initial slice remains a separate act requiring separate authorization; nothing here implies it.
@@ -1355,4 +1756,4 @@ It does not modify application code, tests, schemas, migrations, dependencies, w
 
 No Founder decision is resolved by this document. J.14 remains proposed and non-canonical. The canonical-decision/Project-Map approval contradiction remains open and requires separate Founder-authorized correction. Slice 2A and Slice 2B remain unauthorized for implementation.
 
-Revision 3 is offered for independent architectural review of the corrected model, and for nothing further.
+A stronger relational model is not implementation authorization. Revision 4 is offered for independent architectural review of the corrected model, and for nothing further.
