@@ -1,8 +1,8 @@
-# Payment Slice 2 — Revised Proposal, Revision 5 (Documentation-Only)
+# Payment Slice 2 — Revised Proposal, Revision 6 (Documentation-Only)
 
 ## Revision Scope and Authority Statement
 
-This document is the fifth corrective revision of the Payment Slice 2 proposal. Its **content** is documentation only: it modifies no application source, no tests, no migrations or schemas, no dependencies, no workflows, and no governance documents (`docs/decisions/2026-10-12-payments-project-activation.md`, `docs/project-map.md`, `CONSTITUTION.md`).
+This document is the sixth corrective revision of the Payment Slice 2 proposal. Its **content** is documentation only: it modifies no application source, no tests, no migrations or schemas, no dependencies, no workflows, and no governance documents (`docs/decisions/2026-10-12-payments-project-activation.md`, `docs/project-map.md`, `CONSTITUTION.md`).
 
 Its **publication** is a separate fact that must be stated rather than elided: this revision is published by committing this one Markdown file to branch `review/payment-slice-2-proposal-clean` and updating the existing Draft pull request #68. That publication created a commit and updated a pull request. It created no implementation, no schema, no provider integration, and no deployment. Publishing documentation is not implementation authorization.
 
@@ -17,6 +17,13 @@ Revision 5 addresses four findings from independent review of Revision 4, plus o
 - **5 (limitation)** — a `provider_transaction_identity` row can exist without a `payment_transaction`, because SQLite cannot enforce a mandatory child. Revision 4 named the converse; the orphan-identity direction was unnamed, and an unnamed orphan is one an untrusted claimant could attempt to absorb.
 
 Revision 5 closes the first four with a composite key, an immutable seal, or a trigger, and the fifth with an explicitly fail-closed handling rule that is labelled as an application-level guarantee. Where a guarantee cannot be expressed as a SQLite constraint, the document says so at the point of the claim and never relabels the claim as enforced.
+
+Revision 6 corrects two **state-machine** defects that independent review found in Revision 5. Neither is a missing constraint; both are errors in the sequence of decisions the write path takes, which is why they survived three revisions devoted to strengthening keys.
+
+- **1 (critical) — first-time acceptance was unreachable.** Revision 5 inserted a new `provider_transaction_identity` and then classified it by asking whether it had a transaction. A row inserted moments earlier cannot have one, so the path classified its own new identity as a pre-existing orphan and rolled the whole operation back. Every legitimate first payment would have been refused as an integrity anomaly, so the normal path existed only on paper.
+- **2 (high) — a duplicate observation bypassed conflict handling.** Revision 5 sent every repeat observation down a correlation-only path. Correlation's composite keys prove the account and the provider reference; they do not compare amount, scale, currency, or classification. A second delivery could therefore contradict the accepted transaction, be correlated anyway, and never produce the `duplicate_content_mismatch` conflict that §4.5, §6.4, §10.4, and §15.11 all require.
+
+Revision 6 decides the identity's state *before* inserting it, from a probe taken inside the same write transaction, and keeps four mutually exclusive states: absent (create it and continue), present with a same-project transaction (duplicate path), present with another project's transaction (collision path), and present with no transaction (pre-existing orphan, refused). A newly created identity is a first-time acceptance candidate; an identity that predates the operation and has no transaction is an anomaly. The two are never collapsed. Duplicate observations are then compared on the four content fields: agreement correlates and accepts nothing, disagreement preserves both records, creates and seals the conflict, and blocks the transaction while the conflict is open.
 
 ### Universal invariants
 
@@ -39,6 +46,8 @@ These hold everywhere in this document. Later sections reference them by number 
 | **I13** | The provider transaction reference a transaction records is equal to the reference held by its global identity and to the reference carried by its establishing observation; every observation correlated to that transaction carries the same global account identity and the same non-empty reference. |
 | **I14** | A transaction's accepted amount and scale are exactly those of the establishing observation, with no fee, deduction, refund, reversal, or conversion applied in Slice 2A. |
 | **I15** | A conflict becomes authoritative only when its participant set is sealed; membership is immutable from that point, and a later disagreement is a new conflict, never an addition to a sealed one. |
+| **I16** | A provider transaction identity is created only by the operation that also accepts its transaction, and only when a probe taken after the write lock was acquired found no identity for the observation's own tuple. An identity that existed before the operation and has no transaction is a pre-existing orphan: refused, never adopted, never duplicated, never assigned. |
+| **I17** | A second observation of an already accepted funds movement is compared with the accepted transaction on canonical amount, scale, currency, and classification. Agreement correlates it and accepts nothing; any disagreement preserves both records, creates a sealed `duplicate_content_mismatch` conflict naming the affected transaction, and changes no accepted amount, currency, classification, or baseline. |
 
 ---
 
@@ -60,7 +69,12 @@ The substantive corrections in Revision 5:
 5. **Timestamp validation checks digits, not only separators (§8.5).** `GLOB '[0-9]…'` replaces the `LIKE` pattern; field ranges that are decidable as fixed-width text are checked, and month-length and leap-year validity are stated as application-validated rather than implied.
 6. **An orphan identity fails closed (§6.3, §8.2).** An identity with no transaction is an integrity anomaly, not a free slot: never auto-assigned, never duplicated, never used to disclose an owner, and never cleared without an authorized internal recovery procedure.
 
-Revision 4's seven corrections, and Revisions 1–3 before them, are retained in full; §16.3 records all five revisions. Sections 14–16 consolidate the decision register, the acceptance matrix rebuilt around the corrected schema, and the cumulative correction record.
+Revision 6 adds the two corrections that the Revision 5 state machine could not reach:
+
+7. **A newly created identity is not an orphan (§6.3, §6.3.1).** The path now probes the identity after taking the write lock, records in control flow whether it created that identity, and classifies four mutually exclusive states. A legitimately new identity proceeds to transaction, correlation, acceptance, and audit; only an identity that predates the operation and has no transaction is refused as an anomaly (I16).
+8. **A duplicate observation is compared, not merely correlated (§6.3.2, §6.4.1).** Amount, scale, currency, and classification are compared against the accepted transaction. Agreement correlates and returns the existing outcome; disagreement creates a sealed `duplicate_content_mismatch` conflict naming the transaction, blocks it while open, and leaves accepted funds untouched (I17).
+
+Revision 4's seven corrections, and Revisions 1–5 before them, are retained in full; §16.3 records all six revisions. Sections 14–16 consolidate the decision register, the acceptance matrix rebuilt around the corrected schema, and the cumulative correction record.
 
 ---
 ## 2. Canonical Decision and Authority Boundaries
@@ -249,9 +263,11 @@ Each referenced parent key is declared in §5.3 as a `UNIQUE` constraint on exac
 | 12 | Same reference under **two different provider accounts** | Two identities, two transactions — permitted | `provider_account_identity_id` is part of the funds key |
 | 13 | Same reference in **test and live** environments | Two account identities, two transactions — permitted | `provider_environment` is part of the account key and inherited, never duplicated |
 | 14 | **Cross-project identity collision** (both projects bound to the same global account) | Second acceptance refused; `rejected` verification; `cross_project_collision` conflict in the refusing project; owner untouched and not identified | `UQ(payment_transaction.identity_id)` |
-| 15 | Duplicate observations for one identity with **inconsistent amount or currency** | Second observation correlated and recorded, contributes no funds; `duplicate_content_mismatch` conflict; accepted amount unchanged | One transaction per identity; conflict membership relation (§6.4) |
+| 15 | Duplicate observation for one identity with an **inconsistent amount, scale, currency, or classification** | Second observation retained and correlated; no second transaction and no second acceptance; `duplicate_content_mismatch` conflict naming the transaction and sealed with both observations as members; accepted amount, currency, and baseline unchanged | One transaction per identity; comparison contract and conflict group (§6.4.1) |
 | 16 | Observation with **no trustworthy provider reference** | Evidence retained; correlation impossible, therefore no transaction; `rejected` (2A) with `reason_code = provider_reference_absent` | Correlation's reference column is `NOT NULL` and non-empty by check (§4.6, §4.7) |
 | 17 | Same funds movement observed twice, **second delivery arriving after acceptance** | New observation + new correlation row; no second transaction, no second acceptance, no amount change | `UQ(identity_id)` on transaction; `UQ(payment_transaction_id)` on acceptance |
+| 18 | **First delivery** for a reference that no identity has | Identity created inside the acceptance transaction, then transaction, correlation, acceptance, audit; the new identity is never classified as an orphan | Probe before insert, state recorded in control flow (§6.3) |
+| 19 | **Two concurrent first-time attempts** for the same reference | Exactly one identity and one transaction commit; the second writer re-reads the committed state after taking the lock and takes the same-project duplicate path | `BEGIN IMMEDIATE` with the probe inside the transaction, plus `UQ(identity_id)` (§6.3.2) |
 
 For case (14), the refusing project's conflict row carries only the identity's opaque tuple and its own observations. It does **not** carry the owning project's identifier — exposing it would disclose cross-project information to a party with no access to it. The collision is additionally reported on the internal operational channel (identifier-only, §11.3) so that the contested identity is visible to the Founder/ops without widening either project's read scope.
 
@@ -380,7 +396,8 @@ The order below is legal under immediate foreign-key enforcement, which is what 
 3. payment_source_registration          (+ payment_source_registration_current insert/CAS)
 4. payment_observation                  (carries its global account identity and reference)
 5. verification_result                  (attempt_seq = MAX+1 for that observation, inside BEGIN IMMEDIATE)
-6. provider_transaction_identity        (first acceptance only)
+6. provider_transaction_identity        (first acceptance only: inserted when the probe
+                                         found none — §6.3)
 7. payment_transaction                  (reference + accepted amount proven against the observation)
 8. payment_transaction_observation      (the establishing observation, plus any earlier ones)
 9. payment_transaction_acceptance
@@ -388,6 +405,8 @@ The order below is legal under immediate foreign-key enforcement, which is what 
 ```
 
 Steps 6–10 for a first acceptance are **one database transaction** (§6.3). Steps 1–5 are prerequisites that may already exist, and steps 1–4 may legitimately exist with no transaction at all.
+
+A duplicate observation for an already accepted transaction writes step 8 — and, when its content disagrees, the step 11 conflict group — and never steps 6, 7, or 9 (§6.3.2, §6.4.1). The identity probe that precedes step 6 is a read, so it changes nothing about this order.
 
 Conflicts follow the same shape: header, membership, seal, audit in one transaction (step 11 below).
 
@@ -403,6 +422,7 @@ Consequences worth stating explicitly:
 - A transaction row is not "accepted funds" until its acceptance row exists; the derived position reads acceptance, not existence.
 - A correlation row can only be written after its transaction, so the "this observation belongs to this transaction" proof is stored data rather than an application assumption.
 - An identity row exists only because some acceptance committed with it (§6.3); there is no path that creates one "in advance".
+- Step 6 runs only in the branch where the probe at the start of the same transaction found no identity for the observation's own tuple, and the branch that creates it also commits its transaction (§6.3). A pre-existing identity is never re-created and never adopted.
 
 ---
 
@@ -515,6 +535,8 @@ FOREIGN KEY (source_registration_id, project_id, provider_account_id,
 Table constraints: `UQ(provider_account_identity_id, provider_transaction_reference)` — the global canonical uniqueness rule of I7 — and two parent keys, `UQ(identity_id, provider_account_identity_id)` for the older two-column reference and `UQ(identity_id, provider_account_identity_id, provider_transaction_reference)` for the Revision 5 reference-equality key.
 
 There is deliberately **no** `project_id` column: project ownership is a property of the accepted transaction, not of the funds movement's identity.
+
+There is deliberately **no provenance column** either. The table records what a funds movement is, not which operation created it. Whether an identity existed before a given acceptance is decided by a probe taken inside the write transaction (§6.3, §6.3.2), never by a stored marker: a marker would be a mutable claim about the past, could be written by any writer, and could disagree with the transaction rows it is supposed to describe. The identity is created only by the branch that also creates its transaction, so a row with no transaction can only come from outside that path — which is exactly the orphan case (§6.3.1).
 
 **`payment_observation`** — immutable record of one delivery
 
@@ -774,6 +796,8 @@ FOREIGN KEY (payment_transaction_id, data_classification)
   REFERENCES payment_transaction(payment_transaction_id, data_classification)
 ```
 
+The acceptance record has **no** "first", "duplicate", or "replaces" column, and Revision 6 does not add one. A duplicate observation is never an acceptance: the path that handles it writes a correlation and, on a content disagreement, a sealed conflict (§6.4.1). Whether a transaction was established by a first-time acceptance or is being observed again is therefore derived from the rows — one transaction, one acceptance, any number of correlations — rather than stored as a label that could drift.
+
 Five invariants are enforced by this table alone:
 
 1. **Belonging.** The `(observation_id, payment_transaction_id)` key requires an existing correlation row for that exact pair. "This verification's observation belongs to this transaction" is stored data proven by a key.
@@ -1001,7 +1025,7 @@ Verification in 2A compares an observation against the **configuration version i
 |---|---|---|
 | `passed` | The observation satisfied the approved verification contract and its facts were accepted as evidence | Eligible for acceptance. By itself it creates no transaction and accepts no funds. |
 | `failed` | A verification attempt could not reach a conclusion for a technical or transient reason (registration not yet active, provider reference absent, bound baseline stale) | No acceptance. Retry permitted as a new attempt with its own `attempt_seq`. |
-| `rejected` | The observation is definitively inadmissible: malformed amount, currency mismatch with the bound version, unknown registration, unbound baseline, or a cross-project identity collision | No acceptance. A corrected observation is a new delivery, not a retry. |
+| `rejected` | The observation is definitively inadmissible: malformed amount, currency mismatch with the bound version, unknown registration, unbound baseline, no provider reference, a cross-project identity collision, or an orphan identity anomaly | No acceptance. A corrected observation is a new delivery, not a retry. |
 
 A conflict is **not** an outcome. It is a separate record (§6.4).
 
@@ -1014,86 +1038,140 @@ Two further claims are now enforced one table earlier, on the transaction, and t
 - **Funds-movement agreement.** The transaction's reference equals its identity's reference and its establishing observation's reference (§4.4). An acceptance cannot cite a transaction whose evidence and identity disagree, because such a transaction cannot exist.
 - **Amount agreement.** The transaction's accepted amount and scale equal its establishing observation's (§5.3). An acceptance therefore cannot launder a different amount, and a verifier cannot change the amount by passing one — the acceptance record has no amount column at all.
 
+**The identity's state is decided before anything is written.** A first-time acceptance does not discover the state of the identity it has just created; it probes for the identity first, under the write lock, and records the answer in control flow (§6.3). A repeat observation of an accepted movement is not silently correlated either: it is compared on canonical amount, scale, currency, and classification, and a disagreement creates the `duplicate_content_mismatch` conflict instead of an acceptance (§6.4.1).
+
 **Multiple attempts** are multiple `verification_result` rows for the same observation, each with its own `attempt_seq`. Exactly one of them (or none) can be accepted; the others remain auditable as attempts. **Failed and rejected attempts** are fully auditable precisely because they have no acceptance row: absence from `payment_transaction_acceptance` is meaningful data, not a gap.
 
 **No deferred constraint is used.** SQLite supports `DEFERRABLE INITIALLY DEFERRED` foreign keys, but this design does not need them: every foreign key is satisfiable at insert time in the order of §5.2. A design that *required* deferral would also depend on no reader observing the intermediate state, which is a much weaker guarantee than an immediate constraint.
 
-### 6.3 The atomic acceptance path (Findings 5 and 5B)
+### 6.3 The atomic acceptance path (Findings 5 and 5B; Finding 1 of Revision 6)
 
 A first-time acceptance is **one** database transaction. The sequence below is the design target; dependency order in §5.2 is what makes it legal.
 
-```
+**The identity's state is decided before anything is inserted.** Revision 5 inserted the identity and only then asked whether it had a transaction. A row created moments earlier never has one, so the path classified its own new identity as a pre-existing orphan and rolled back: first-time acceptance was unreachable, while the orphan rule looked satisfied. The state must be read *before* the insert, inside the same write transaction:
+
+```text
 BEGIN IMMEDIATE
   1. re-read the observation, its registration, its account binding, and its
-     captured configuration version; verify the verification is `passed`
+     captured configuration version; require the verification is `passed`
   2. require observation.provider_transaction_reference IS NOT NULL
-     AND <> ''; otherwise reject with `provider_reference_absent` and
-     create no identity at all
-  3. resolve the global identity from the observation's own tuple
-     (provider_account_identity_id, provider_transaction_reference):
-       absent      -> INSERT provider_transaction_identity
-       present     -> reuse it  (never re-derive it from caller input)
-  4. classify the existing state of that identity (§6.3.1):
-       no accepted transaction        -> integrity anomaly: reject, alert,
-                                         roll back any identity created in 3
-       accepted, same project         -> duplicate observation path:
-                                         write correlation only, no new
-                                         transaction, no new acceptance
-       accepted, other project        -> collision path: `rejected`
-                                         verification, conflict, alert,
-                                         roll back any identity created in 3
-  5. INSERT payment_transaction        (reference and accepted amount copied
-                                        from the establishing observation)
-  6. INSERT payment_transaction_observation   (establishing observation)
-  7. INSERT payment_transaction_acceptance
-  8. INSERT audit_event                (identifier-only, §8.6)
-COMMIT
+     AND <> ''; otherwise reject with `provider_reference_absent`,
+     create no identity, and commit no transaction
+  3. probe provider_transaction_identity by the observation's own tuple
+     (provider_account_identity_id, provider_transaction_reference),
+     taken from the observation and never from caller input:
+       absent                                 -> NEW
+       present, no transaction                -> PRE_EXISTING_ORPHAN
+       present, transaction in this project   -> SAME_PROJECT
+       present, transaction in another project-> OTHER_PROJECT
+  4. dispatch on that state (§6.3.1, §6.3.2). The four branches are mutually
+     exclusive and exhaustive; exactly one is taken.
+  5. COMMIT, or roll the whole transaction back
 ```
 
-Step 2 is the behavioural consequence of Finding 1's NULL analysis. Revision 4 left "no reference" to the verifier's discretion; Revision 5 makes it a precondition of the write path *and* an impossibility at the schema level (§4.6): correlation cannot exist without a reference, and acceptance cannot exist without a correlation.
+**Why the probe is the whole distinction.** `BEGIN IMMEDIATE` acquires the write lock before the first read, so no other writer can insert an identity between the probe and the insert that follows it: what the probe reports is still true when the insert runs. The converse matters equally. The orphan test is `state = PRE_EXISTING_ORPHAN`, and that state can only be reached by a row the probe **found**. An identity created by this operation cannot appear in its own probe, so the orphan branch cannot capture it. The distinction is temporal — before this operation versus during it — and it is never collapsed into the single question "has a transaction?".
 
-**No partial reservation can commit.** Steps 3–8 are one transaction. An identity row created in step 3 and not followed by a committed acceptance is rolled back with it, so a failed acceptance leaves no identity row, no transaction, and no acceptance. This is I12. The schema cannot forbid a transaction row without an acceptance (SQLite has no assertion or "must have child" constraint), so that remains an **application-level limitation** enforced by a single write path, and §6.3.1 states the converse limitation explicitly.
+**Branch NEW — no identity existed before this operation.** This is the only branch that creates an identity, and it is ordinary first-time acceptance:
 
-**Visibility.** SQLite is not claimed to provide snapshot isolation (§11.4). Another connection may observe uncommitted state only through a separate read of a database it is not writing; the design depends on atomic commit, not on isolation. The guarantee that matters is the one the database does provide: either all of steps 3–8 are durable or none are.
+```text
+  a. INSERT provider_transaction_identity
+     (identity_id, provider_account_identity_id, the observation's reference,
+      first_observed_at)
+  b. record in control flow: identity_origin = created_by_this_operation,
+     identity_id = <the row just inserted>
+  c. INSERT payment_transaction    (identity, reference, accepted amount and
+                                    scale copied from the observation, currency,
+                                    classification, project, and the
+                                    observation's captured configuration version)
+  d. INSERT payment_transaction_observation   (the establishing observation)
+  e. INSERT payment_transaction_acceptance
+  f. INSERT audit_event            (identifier-only, §8.6)
+```
 
-**The seven outcomes are distinct and must not be conflated:**
+Step (b) is the correction. The identity is marked *created here* before any code asks what state it is in, and no classification step runs against it: a newly inserted identity is a first-time acceptance candidate by construction, not an orphan. Nothing is persisted to record that fact. `provider_transaction_identity` has no `created_here` column and gains none: a stored provenance flag would be a writable claim about the past, could be set by any writer, and could disagree with the rows it describes. The control-flow marker cannot, because it is derived from a probe taken under the write lock (§8.2 item 9).
+
+**Branch SAME_PROJECT — the identity exists and its transaction belongs to this project.** No identity is inserted (`UQ(provider_account_identity_id, provider_transaction_reference)` would refuse it), no second transaction or acceptance is created (`UQ(identity_id)`, `UQ(source_observation_id)`, `UQ(payment_transaction_id)`), and the accepted transaction's amount, currency, classification, project, and baseline stay exactly as they were. The only open question is whether this observation agrees with that transaction, which §6.4.1 answers:
+
+- **agreement** → insert the correlation row if it does not already exist, then commit. Repeated processing of the same delivery returns the existing correlation and writes nothing new.
+- **disagreement** → insert the correlation, the conflict header, its membership, its seal, and its audit row in this same transaction (§6.4.1). The transaction keeps its accepted amount; the conflict records that the provider said two different things, and the derived blocking predicate (§6.4) blocks its use while the conflict is open.
+
+**Branch OTHER_PROJECT — the identity exists with another project's transaction.** No identity is inserted (there is nothing to insert), no transaction and no acceptance, and deliberately **no correlation**: the correlation's `(payment_transaction_id, project_id)` parent key requires the refusing project's own `project_id`, so a cross-project correlation has no parent row and cannot exist. The branch writes a `rejected` verification result with `reason_code = cross_project_collision` and its identifier-only audit row, raises the `cross_project_collision` conflict inside the refusing project, and names no owner identifier, account reference, or provider key (§7.5).
+
+**Branch PRE_EXISTING_ORPHAN — the identity existed before this operation and has no transaction.** No identity is inserted, no transaction, no correlation, no acceptance; the identity is not assigned to the requesting project and is not deleted or repaired. The branch writes a `rejected` verification result with `reason_code = identity_integrity_anomaly` and its identifier-only audit row, and raises an out-of-band alert carrying the identity tuple digest (§11.3). No conflict is raised, because there is no owner and no participant set to name. §6.3.1 states the full rule.
+
+**No partial reservation can commit.** Each branch commits or rolls back as a unit. An identity row created by branch NEW and not followed by a committed acceptance is rolled back with it, so a failed acceptance leaves no identity row, no transaction, no correlation, and no acceptance. This is I12, and it is what makes the probe trustworthy on a later attempt: a crashed or refused operation leaves the reference absent rather than half-claimed. The schema cannot forbid a transaction row without an acceptance (SQLite has no assertion or "must have child" constraint), so that remains an **application-level limitation** enforced by a single write path, and §6.3.1 states the converse limitation explicitly.
+
+**Visibility.** SQLite is not claimed to provide snapshot isolation (§11.4). Another connection may observe uncommitted state only through a separate read of a database it is not writing; the design depends on atomic commit, not on isolation. The guarantee that matters is the one the database does provide: either every row a branch writes is durable or none is.
+
+**The eight outcomes are distinct and must not be conflated:**
 
 | Situation | Durable result | Not |
 |---|---|---|
 | Verification fails | `verification_result` with `outcome = failed`; observation retained | Not a transaction, not a conflict, not a rejection of the evidence |
 | Observation unbound (no configuration version) | Observation retained; `failed` result; no transaction | Not a reservation of an identity |
 | Observation has no provider reference | Observation retained; `rejected` with `provider_reference_absent`; no identity, no correlation | Not an identity reservation, not an orphan, not a conflict |
-| Duplicate observation for an **already accepted same-project** transaction | New observation + new correlation row; no new transaction, no new acceptance, funds unchanged | Not a second acceptance; not double-counting |
+| Duplicate observation, **content agrees** with the accepted transaction | New observation + new correlation row; no new transaction, no new acceptance, funds unchanged; a repeat of the same delivery returns the existing correlation | Not a second acceptance; not double-counting |
+| Duplicate observation, **content disagrees** | Observation retained and correlated; sealed `duplicate_content_mismatch` conflict naming the transaction, with both observations as members; accepted amount, currency, classification, and baseline unchanged; transaction blocked while the conflict is open (§6.4.1) | Not a second transaction, not an amount change, not a silent correlation |
 | **Cross-project collision** | `rejected` verification in the refusing project + `cross_project_collision` conflict; no transaction, no identity row committed | Not a merge, not an ownership transfer, not disclosure of the owner |
 | **Orphan identity anomaly** (§6.3.1) | `rejected` verification with `identity_integrity_anomaly`; identifier-only operational alert; no transaction, no identity committed | Not an ownership claim, not a silent assignment, not a duplicate identity |
-| New observation passes and is accepted | Identity + transaction + correlation + acceptance + audit committed atomically | Not an obligation payment; not an allocation |
+| New observation passes and is accepted, **no identity existed before the operation** | Identity created by this operation + transaction + correlation + acceptance + audit committed atomically; the new identity is never classified as an orphan | Not an ownership claim over someone else's identity; not an obligation payment; not an allocation |
 
-**Why a candidate identity is never durable before acceptance.** If the design allowed step 3 to commit on its own, any project could reserve a global reference by submitting an unverifiable delivery, denying the real owner the identity indefinitely — identity squatting. Because the reservation is rolled back unless acceptance commits, the only party that can create an identity is one that also creates a valid accepted transaction for it. There is no "claim" state to abuse, and therefore no cleanup job, expiry, or arbitration rule is required.
+**Why a candidate identity is never durable before acceptance.** If the design allowed the identity insert (branch `NEW`, step a) to commit on its own, any project could reserve a global reference by submitting an unverifiable delivery, denying the real owner the identity indefinitely — identity squatting. Because the reservation is rolled back unless acceptance commits, the only party that can create an identity is one that also creates a valid accepted transaction for it. There is no "claim" state to abuse, and therefore no cleanup job, expiry, or arbitration rule is required.
 
-#### 6.3.1 Orphan provider transaction identities (Finding 5 of Revision 5)
+#### 6.3.1 Orphan provider transaction identities (Finding 5 of Revision 5; Finding 1 of Revision 6)
 
 SQLite cannot require every parent to have a child. Just as the schema therefore permits a transaction row with no acceptance, it permits a `provider_transaction_identity` row with no `payment_transaction`. Revision 4 named the first asymmetry and not the second, and an unnamed limitation is one a later reader will treat as impossible — which is precisely how an orphan becomes an ownership claim.
 
+What Revision 5 got wrong was the *order* of the test, not the rule. It created an identity and then asked whether it had a transaction, so the answer was always "no": the rule refused the very acceptance that had just created the row. The rule is unchanged in substance; it is now applied only to an identity the operation **found**, never to one it created (§6.3).
+
 Five situations must be distinguished, because they look alike in a row listing and are not alike at all:
 
-| # | Situation | What is true | What the design does |
+| # | Situation | The probe saw | What the design does |
 |---|---|---|---|
-| 1 | Identity and transaction inserted in one successful acceptance | The identity is owned by the transaction's project; both rows committed together | Normal path. No anomaly. |
-| 2 | Identity inserted, transaction rolled back | Nothing durable exists: the identity row is gone with the rollback | No orphan can be produced by the 2A write path (I12) |
-| 3 | Pre-existing orphan found during integrity review | An identity row exists with no transaction; its provenance is unknown | **Integrity anomaly.** No automatic use, no automatic cleanup (§6.3.1 rules) |
-| 4 | Same-project legitimate retry against an already accepted transaction | The identity is owned by that project's accepted transaction | Duplicate-observation path, not an anomaly: correlation only, no new transaction |
-| 5 | Cross-project attempt against an identity that already has an accepted transaction | The identity is owned elsewhere | Collision path: refusal, conflict, no disclosure (§7.5) — handled separately from case 3 |
+| 1 | First-time acceptance: the identity did not exist before this operation | absent → state `NEW` | **Normal path.** Identity created by this operation, then transaction, correlation, acceptance, and audit committed together. Not an anomaly, and never evaluated against the orphan rule. |
+| 2 | Identity inserted, operation fails, rollback | absent (the insert was inside a rolled-back transaction) | Nothing durable exists: the identity row is gone with the rollback. No orphan can be produced by the 2A write path (I12). |
+| 3 | Pre-existing orphan | a row with no transaction | **Integrity anomaly.** Refused with `identity_integrity_anomaly`; no assignment, no duplicate, no cleanup (the rules below). |
+| 4 | Same-project retry against an accepted transaction | a row whose transaction belongs to this project | Not an anomaly. Duplicate path: content comparison, then correlation only or a sealed conflict (§6.4.1). |
+| 5 | Cross-project attempt against an accepted transaction | a row whose transaction belongs to another project | Collision path: refusal, conflict, no disclosure (§7.5) — handled separately from case 3. |
+
+Case 1 and case 3 are the pair that Revision 5 conflated, and the distinction is temporal rather than structural: an identity created *during* this operation is a first-time acceptance candidate, and an identity that predates the operation with no transaction is an anomaly. Both have "no transaction" when the row is read in isolation; only one of them had "no transaction" when the decision was taken.
 
 **Fail-closed handling for a pre-existing orphan** (case 3). The rules are deliberately narrow, and none of them invents a policy:
 
 1. **Anomaly, not ownership.** An orphan identity is an integrity anomaly. Its existence proves that some write path outside the 2A acceptance path created it; it does not prove that the requesting project owns the funds movement, and it does not prove that nobody does.
-2. **No automatic assignment.** The acceptance path refuses with `identity_integrity_anomaly` and creates no transaction. It never assigns the identity to the requesting project, and it never treats "no transaction yet" as "unclaimed".
+2. **No automatic assignment.** For an identity the probe found with no transaction, the acceptance path refuses with `identity_integrity_anomaly` and creates no transaction. It never assigns the identity to the requesting project, and it never treats "no transaction yet" as "unclaimed". The rule is evaluated only in that state: an identity this operation created is state `NEW`, is never classified, and therefore cannot be refused by this rule (§6.3, I16).
 3. **No disclosure.** The refusal names no owner because there is none to name, and the operational alert carries identifiers only — `identity_id` and a digest of the identity tuple (§11.3) — never the account reference, the provider key, another project's identifier, or any amount. §8.6's allowlist already forbids the reference.
-4. **No duplicate identity.** A second identity with the same natural key cannot be created: `UQ(provider_account_identity_id, provider_transaction_reference)` refuses it. "Resolve the anomaly by making my own identity" is not available.
+4. **No duplicate identity.** A second identity with the same natural key cannot be created: `UQ(provider_account_identity_id, provider_transaction_reference)` refuses it. "Resolve the anomaly by making my own identity" is not available, and a uniqueness violation is never read as permission to adopt the existing row (§6.3.2).
 5. **No silent adoption and no silent deletion.** Clearing, reassigning, expiring, or quarantining an orphan requires the authorized internal integrity-recovery procedure, which is a Founder/ops act under the existing internal capability (§7.3). This proposal defines the procedure's *preconditions*, not its policy: it must be performed by the internal capability, recorded in the audit trail, and decided with knowledge of which write path created the orphan.
 6. **Existing boundaries preserved.** Recovery is not a Founder decision that this document makes, and it authorizes no restoration, no provider activation, and no payment processing. Whether an orphan may ever be associated with a project — and on what evidence — is listed in §16.4 as unresolved.
 
-Why refuse rather than adopt is the safer reading: an orphan is indistinguishable, from the database alone, between "a crash left this behind" and "an attacker created it to be adopted later". The first is a rare operational incident that an authorized human can resolve; the second is silent theft of a funds movement's identity if the path auto-assigns. Refusing costs a delayed acceptance; adopting costs correctness.
+Why refuse rather than adopt is the safer reading: an orphan is indistinguishable, from the database alone, between "a crash left this behind" and "an attacker created it to be adopted later". The first is a rare operational incident that an authorized human can resolve; the second is silent theft of a funds movement's identity if the path auto-assigns. Refusing costs a delayed acceptance; adopting costs correctness. Refusing a *new* identity, however, costs the entire normal path — which is why case 1 is not an orphan and is never put to this test.
+
+#### 6.3.2 Concurrency, rollback, and replay
+
+**Writers serialize, so the probe cannot go stale.** `BEGIN IMMEDIATE` takes the write lock before the first read, which is exactly what the repository's `transaction()` helper does. The probe in step 3 and the insert in branch NEW are therefore separated by no other writer's commit: a second process attempting the same reference blocks at `BEGIN IMMEDIATE` until the first commits or rolls back, and its own probe then sees the durable result. The classification is a statement about committed state read under the lock, not a cached guess.
+
+**Two concurrent first-time attempts produce one canonical transaction.**
+
+| Attempt | What its probe sees | Durable result |
+|---|---|---|
+| First to acquire the lock | absent → `NEW` | Identity + transaction + correlation + acceptance + audit, committed together |
+| Second, blocked until the first commits | present, transaction in this project → `SAME_PROJECT` | No second identity and no second transaction: correlation only when the content agrees, a sealed conflict when it does not (§6.4.1) |
+| Second, arriving after the first rolled back | absent → `NEW` | Its own acceptance commits normally; the failed attempt reserved nothing |
+| Second, identity owned by another project | present, other project → `OTHER_PROJECT` | Refused: `rejected` verification plus collision conflict; no correlation, no disclosure |
+| Any attempt that finds an orphan | present, no transaction → `PRE_EXISTING_ORPHAN` | Refused: `rejected` verification; no adoption, no duplicate |
+
+Only one row can describe a given attempt, because the state is read once, under the lock, before any write.
+
+This introduces no new arbitration rule. First-writer ownership (§8.2 item 1) is unchanged: the project whose acceptance commits first creates the identity and the transaction, and the database guarantees only that one such transaction exists — it does not choose a winner.
+
+**A uniqueness violation is not permission to adopt.** The serialized path makes a duplicate identity insert unreachable, so a `SQLITE_CONSTRAINT_UNIQUE` on `provider_transaction_identity` can only mean the probe and the insert are no longer inside one write transaction — a defect in the write path, not a hint about ownership. If it occurs, the whole transaction is rolled back and the operation restarts from step 1 in a new transaction (§11.2 bounds the retries). The restart re-classifies from scratch and may legitimately reach `SAME_PROJECT`, `OTHER_PROJECT`, or `PRE_EXISTING_ORPHAN`; it can never reach `NEW` for the same tuple, and an orphan found by the restart is refused exactly as it would have been on the first pass. The violation is never treated as evidence that an existing identity is adoptable, and the identity row is never reused across the restart.
+
+**A failed first attempt reserves nothing.** Branch NEW is one transaction (I12). If step (c), (d), (e), or (f) fails, the identity created in (a) is rolled back with it, so the reference is still absent for the next attempt and a later legitimate acceptance takes branch NEW normally. This is what removes the need for any cleanup job, expiry, lease, or arbitration rule: there is no reservation state to expire.
+
+**Replay is idempotent in every branch.** One delivery cannot be ingested twice (`UQ(source_registration_id, delivery_reference)`); a replay of it is answered from the stored observation. Repeated processing of an observation that is already correlated (branch `SAME_PROJECT`, agreement) returns the existing correlation and writes no second row, because the correlation's primary key is the observation. Repeated detection of the same mismatch returns the existing conflict and its seal, because the digest is identical and `UQ(project_id, conflict_key)` refuses a second header. No branch writes a second identity, transaction, or acceptance on a replay.
+
+**No branch mutates accepted funds.** `payment_transaction` has no update path, and its amount, currency, classification, project, and baseline are proven against its establishing observation by key. A duplicate observation — even a contradictory one — cannot reach them; the conflict is the record of the disagreement (§6.4.1, I17).
 
 ### 6.4 Conflicts, sealing, and derived blocking
 
@@ -1101,7 +1179,7 @@ Why refuse rather than adopt is the safer reading: an orphan is indistinguishabl
 
 | Kind | Raised when |
 |---|---|
-| `duplicate_content_mismatch` | A second observation resolves to an already-accepted identity but reports a different amount, currency, or classification |
+| `duplicate_content_mismatch` | A second observation resolves to an already-accepted identity but its canonical amount, scale, currency, or classification differs from the accepted transaction's (§6.4.1) |
 | `cross_source_conflict` | Two correlated observations disagree on facts the contract cannot adjudicate |
 | `unresolved_correlation` | Two or more observations appear related but no trusted reference establishes it |
 | `cross_project_collision` | An identity already owned by another project is claimed again (§4.5) |
@@ -1142,6 +1220,69 @@ An unsealed header blocks nothing and resolves nothing; it is an integrity anoma
 **Concurrent creation converges, it does not duplicate.** Two writers computing the same digest for the same condition produce the same `(project_id, conflict_key)`; the second insert fails `UQ(project_id, conflict_key)` and the write path returns the existing conflict — including its seal, so the caller learns the participant set is already fixed. Two writers with genuinely different sets produce different keys and two episodes, each internally sealed.
 
 Both blocking predicates are **views over immutable rows**. There is no `blocks_use` column and no `status` column, because either would be a mutable field in an append-only table and could drift from the resolution history. Blocking constrains *use* (derived financial position, and the 2B allocation precondition in §12.3), never *existence*.
+
+#### 6.4.1 Duplicate observations: the comparison contract (Finding 2 of Revision 6)
+
+Revision 5 said that an observation for an already accepted same-project transaction "follows a correlation-only path". Correlation's composite keys prove the account and the provider reference; they compare nothing else. A second delivery reporting a different amount for the same funds movement would therefore be correlated and recorded while §6.4, §4.5 case 15, §10.4, and §15.11 all promised a `duplicate_content_mismatch`. The conflict was specified everywhere except in the path that had to create it. Revision 6 makes the comparison explicit and mandatory, before the correlation is written.
+
+**The comparison tuple** — four fields, compared against the accepted transaction, using the canonical stored forms:
+
+| Field | Observation column | Transaction column | Disagreement means |
+|---|---|---|---|
+| Amount | `amount_normalized` | `accepted_amount_normalized` | The provider reported a different value for one funds movement |
+| Scale | `amount_scale` | `accepted_amount_scale` | Because both stored forms are canonical (§10.3), a different scale is a different value, not a different spelling |
+| Currency | `currency` | `accepted_currency` | The deliveries disagree about the currency, or the later one was ingested under a configuration version with a different currency (J.13) |
+| Classification | `data_classification` | `data_classification` | Synthetic and live evidence would be describing one funds movement |
+
+The comparison uses `amount_normalized` and `amount_scale`, never `amount_text`. Two spellings of one value (`1500.00` and `1500`) cannot produce a false conflict, because the observation stores only the canonical form and the transaction's form is proven equal to the establishing observation's by key (§10.3, §10.4).
+
+Three things are deliberately **not** in the tuple, each excluded for a different reason:
+
+- **The provider account identity and the provider transaction reference.** Already structural: the identity was resolved from the observation's own tuple, and the correlation's two three-column keys require both rows to carry it (§4.4, §4.6). Re-checking them in application code would weaken rather than strengthen the guarantee, because an application check can be skipped.
+- **`delivery_reference`, `received_at`, `source_registration_id`.** They identify the *delivery*, not the funds. Two legitimate deliveries of one funds movement necessarily differ in them, so treating a difference as a disagreement would make every second channel a conflict.
+- **The observation's captured configuration version.** Handled under baseline handling below.
+
+**Outcome A — the content agrees.** The identity, the reference, the project, the canonical amount, the scale, the currency, and the classification all match. Then:
+
+1. If no correlation row exists for this observation, insert it. If one exists for this same transaction, this is a replay: return the existing result and write nothing, because the correlation's primary key is the observation.
+2. If a correlation row exists for a **different** transaction, fail closed and report an integrity anomaly. The primary key says this observation can belong to only one transaction, so a conflicting row means the write path or the data is already broken; no second correlation, no conflict, and no acceptance is written.
+3. Create no transaction, no acceptance, and no audit row beyond the correlation's own.
+4. Change nothing about the accepted transaction — not its amount, currency, classification, project, or baseline.
+
+**Outcome B — the content disagrees.** If any of the four fields differs, then in this order and in this one transaction:
+
+1. Do not alter the accepted transaction. It has no update path, and its amount is proven against its establishing observation by key.
+2. Do not create a second transaction or a second acceptance (`UQ(identity_id)`, `UQ(source_observation_id)`, `UQ(payment_transaction_id)`).
+3. Preserve the new observation as immutable evidence. It is already written and is never deleted, edited, or hidden.
+4. Insert the correlation to the accepted transaction, if the same-project, same-account, and same-reference constraints are satisfied. The correlation states that both deliveries claim the *same funds movement*; it does not state that their payloads agree. The three-column keys are satisfied because the identity was resolved from this observation's own account identity and reference and the project is the branch condition; a correlation that nevertheless fails a key is an integrity anomaly, not a retry.
+5. Create a `duplicate_content_mismatch` conflict in this project. The header carries `payment_transaction_id` = the accepted transaction — proven to belong to this project by the existing composite key `(payment_transaction_id, project_id)` — and `trigger_observation_id` = the new observation. Its `conflict_key` is the §8.4 digest over this project, this kind, the trigger, the transaction, the participant count, and the sorted participant ids.
+6. Insert membership for **both** observations: the transaction's `source_observation_id` (the establishing evidence) and the mismatching one.
+7. Insert the seal in the same transaction, after the membership it counts (§5.3, §8.4).
+8. Insert the identifier-only audit row in the same transaction (I6).
+9. Commit all of it together.
+10. The derived blocking predicate then blocks the transaction while the conflict is open, because the conflict names `t.payment_transaction_id` directly (§6.4). Nothing is stored to record the block, and the block ends only when a `conflict_resolution` row exists.
+
+Any failure before commit rolls back the whole group — correlation, header, membership, seal, and audit — leaving the accepted transaction exactly as it was, with no partial conflict and no audit row claiming one (I6).
+
+No alternative conflict model is introduced: the header, the membership relation, the seal, the length-prefixed digest, and the derived blocking predicate are the Revision 5 objects, used unchanged. There is no mutable status field and no unsealed path.
+
+**Conflict idempotency and repeated mismatches.**
+
+- Reprocessing the exact same mismatching observation creates no duplicate correlation (primary key) and no duplicate membership (composite primary key), and returns the existing conflict and seal: the digest is identical, `UQ(project_id, conflict_key)` refuses the header, and the write path resolves that violation to the stored episode.
+- Re-detection of the same conflict with the same trigger and the same participant set therefore returns the existing conflict and seal rather than a second one.
+- A genuinely new mismatching observation produces a different `trigger_observation_id`, therefore a different digest, therefore a new conflict episode with its own sealed participant set. Its membership is the establishing observation plus the new one; the earlier episode's set is not extended.
+- No sealed membership may be extended or changed: a post-seal insert is rejected by the insert trigger, and update or delete by theirs (§5.3, §8.4).
+- An unresolved earlier conflict continues to block the transaction even if a later observation matches. Blocking is derived from the presence of a sealed, unresolved conflict naming the transaction, not from the latest observation, so a subsequent agreement resolves nothing and unblocks nothing. Resolving a conflict is a `conflict_resolution` row (§6.4), which this path never writes.
+
+**Baseline handling.** The configuration version is outside the comparison tuple, and the exclusion is stated rather than assumed:
+
+- The accepted transaction keeps the baseline captured by its establishing observation; the duplicate keeps its own captured version. Neither is rewritten: `payment_transaction.payment_config_version_id` is `NOT NULL` with no update path (I8), so rebinding the transaction to a later observation's version is not representable.
+- A version difference is not a disagreement about what the provider reported. It records that the system resolved a different effective configuration at the later ingestion, which is a property of the internal baseline, not of the funds movement; only the four content fields are claims about the payload.
+- The comparison still catches the commercially meaningful case: a later configuration version with a different currency produces a currency disagreement through the currency field, because each observation's currency is tied to its own bound version by the J.13 composite key (§5.3, §10.6).
+- A duplicate observation therefore authorizes nothing new: no acceptance, no amount change, no baseline change, no allocation. Whether funds observed under one version may be applied to an obligation issued under another remains J.14's question (§12.1, §16.4); whether a stale baseline may support acceptance at all remains J.3's (§5.4).
+
+**What is database-enforced here.** The correlation's scope and reference keys, the one-observation-per-transaction rule, the one-transaction-per-identity rule, the conflict's project scope, the seal's count and immutability, and the derived blocking predicate are enforced by the schema and the triggers. The *comparison itself* — reading four fields and deciding whether they agree — is application logic: no SQLite constraint can compare a new row against an existing one and conditionally create a different row. It is recorded as an application-level limitation (§8.2 item 10, §16.4), and it is why the conflict, once created, must be structurally complete: the database cannot force the comparison to happen, but it can make what the comparison produces impossible to fake or amend.
+
 ### 6.5 Supersession — explicit precedence, never "latest wins"
 
 A later verification may supersede an earlier conclusion only by writing a `verification_supersession` record. Rules:
@@ -1192,6 +1333,8 @@ Canonical identity is global (§4.3). If a provider reference resolves to an exi
 **An orphan identity is not a weaker form of collision.** A collision has a known owner and is refused without naming it; an orphan has no owner record at all and is refused without inventing one (§6.3.1). The two refusals differ in reason code (`cross_project_collision` versus `identity_integrity_anomaly`), in what is written (a conflict versus only a rejected verification), and in who may resolve them (nobody in 2A versus an authorized internal recovery). Treating "no transaction found" as "claimable" would convert the second into an ownership-acquisition path, so the acceptance path never does it: the absence of a transaction is evidence of a broken write path, not evidence of vacancy.
 
 The refusing project sees its own verification result and, when a conflict applies, its own conflict row. Neither carries the owning project's identifier, the account reference, or the provider key; the internal operational channel carries `identity_id` and an identity-tuple digest, which is enough for an operator to find the row and not enough to widen a project's read scope or to reconstruct a provider reference from an audit trail.
+
+**A same-project duplicate is neither a collision nor an orphan.** The probe of §6.3 separates the three cases: a repeat delivery against a transaction this project already owns is compared and then either correlated or conflicted (§6.4.1); a transaction owned by another project is a collision and is refused without disclosure; an identity with no transaction is an orphan and is refused without adoption. Collapsing any two of them either discloses an owner, adopts an orphan, or silently absorbs contradictory evidence.
 
 ### 7.6 How customer access stays read-only
 
@@ -1252,6 +1395,10 @@ Each row is an invariant this proposal *depends on*, the mechanism that enforces
 | Supersession stays in one observation and project | Shared `observation_id`/`project_id` in both composite FKs | Superseding a verification that decides different evidence |
 | No verification cycle | Carried `attempt_seq` values + `CK(superseding_attempt_seq > superseded_attempt_seq)` | Two-node and longer cycles; self-supersession |
 | A correlated observation carries the transaction's account and reference | Two three-column FKs on `payment_transaction_observation`; `NOT NULL` columns and `CK(<> '')` | A `provider_shared_reference` correlation that shares neither the account nor the reference |
+| A first-time acceptance is not an orphan | Probe taken after the write lock and before any insert; state recorded in control flow (§6.3) | A newly created identity being classified as pre-existing and refused |
+| A duplicate observation is compared before it is correlated | Canonical amount, scale, currency, and classification compared against the accepted transaction (§6.4.1) | Contradictory evidence being correlated without the conflict §6.4 requires |
+| A mismatching duplicate blocks its transaction | Sealed `duplicate_content_mismatch` conflict naming `payment_transaction_id`; derived `blocked_transaction` predicate (§6.4, §6.4.1) | A contradictory second delivery being silently absorbed while the transaction stays usable |
+| A matching duplicate accepts nothing | `UQ(payment_transaction_id)`, `UQ(identity_id)`, replay resolved on the correlation's primary key (§6.3.2) | A repeat delivery doubling accepted funds |
 | No correlation without a reference | `provider_transaction_reference NOT NULL` on the correlation; nullable on the observation, and NULL never matches a `NOT NULL` child | A reference-less delivery entering the acceptance chain through a NULL key |
 | A conflict's participant set is fixed when it becomes authoritative | `reconciliation_conflict_seal` + count trigger + post-seal insert trigger (§5.3, §8.4) | Membership growing after the digest was computed |
 | Sealed membership cannot be edited or removed | `BEFORE UPDATE`/`BEFORE DELETE` triggers that `RAISE(ABORT)` | Rewriting a participant set by mutation instead of by a new episode |
@@ -1273,6 +1420,8 @@ Each row is an invariant this proposal *depends on*, the mechanism that enforces
 6. *The conflict digest itself* — SQLite has no SHA-256 function, so `conflict_key` is computed by application code. The database enforces its uniqueness, its immutability, and the seal's equality with the header; a recomputation test proves the algorithm (§8.4).
 7. *Timestamp calendar validity* — the checks constrain digit positions and field ranges, not month lengths or leap years (§8.5). Ordering never depends on timestamps, so this gap cannot affect precedence.
 8. *Parsing the provider's original amount text* — the canonicality checks constrain the stored normalized form; they cannot prove that normalization parsed the source text correctly (§10.3, §10.7).
+9. *The state of an identity at the start of the operation* — whether it existed before the transaction — is decided by the probe and a control-flow marker, not by a stored column. The database enforces uniqueness and serializes writers; it cannot record provenance (§6.3, §6.3.2).
+10. *Comparing a duplicate observation's content with the accepted transaction* is application logic. The database enforces that the conflict and its seal are consistent and that no second transaction or acceptance can exist; it cannot compare two payloads for agreement (§6.4.1).
 
 ---
 
@@ -1404,6 +1553,8 @@ Properties that make this reconstructable and unambiguous:
 
 **Convergence and new episodes.** Re-detecting the same condition with the same participants and the same trigger yields a byte-identical key; `UQ(project_id, conflict_key)` rejects the second insert, the write path returns the existing conflict id and its seal, and no second membership set is created. A genuinely new episode differs in its trigger or its membership, therefore in its key, and inserts cleanly — the terminal-resolution rule does not become a dead end, and a resolved conflict does not have to be reopened to represent new evidence.
 
+**Duplicate-content conflicts use the same structure.** For a `duplicate_content_mismatch` raised by the duplicate path (§6.4.1), `trigger_observation_id` is the mismatching delivery and the participant set is the establishing observation plus that delivery; the affected transaction is named in `payment_transaction_id`, so the derived predicate blocks it while the conflict is open. Re-detection converges on `UQ(project_id, conflict_key)`, and a third distinct delivery produces a third episode rather than extending an existing sealed set. Nothing in the digest or the seal is specific to a kind.
+
 **Resolution.** `conflict_resolution` is append-only with `UQ(conflict_id)`: exactly one terminal resolution per conflict. A conflict is never edited to look resolved, and a resolution is never deleted. "Open" is derived (§6.4) — sealed and unresolved — so a resolved conflict's full history stays readable, and its sealed participant set stays fixed.
 
 **Sealing the participant set.** The set is fixed by the following mechanisms acting together; none of them alone would be enough:
@@ -1456,7 +1607,6 @@ The `GLOB` pattern is anchored and has no wildcard, so it fixes every position *
 
 **Why the shape still matters at all.** A column that is only ever displayed is still an interface: an operator comparing two rows, a future export, or a scheduled job that parses the field. A constraint that rejects `12:00:00.9Z` and `12:00:00+01:00` keeps that interface single-shaped, which is a narrowly stated benefit and not a claim of temporal correctness.
 
-**A later `failed` attempt does not revoke acceptance.** Only a supersession row changes derived precedence, and only an approved J.3 rule may write one in Slice 2A.
 **A later `failed` attempt does not revoke acceptance.** Only a supersession row changes derived precedence, and only an approved J.3 rule may write one in Slice 2A.
 
 ### 8.6 Audit allowlist
@@ -1558,6 +1708,7 @@ Therefore `1500`, `1500.00`, and `1500.000` all normalize to `1500` with scale 0
 - Compare **values**, never text. Lexicographic comparison is forbidden: it would rank `"900"` above `"1500"`.
 - Compare `(integer_digits, fraction_digits)` after normalization, or compare integer-scaled representations at a common scale.
 - Equality of `1500` and `1500.00` is **true**; equality of `1500` and `1500.01` is false.
+- The duplicate-observation comparison of §6.4.1 uses these canonical values only, so two spellings of one amount cannot be mistaken for a disagreement while a different scale — and therefore a different value — cannot be mistaken for the same one.
 
 ### 10.5 Exact addition and subtraction
 
@@ -1599,7 +1750,8 @@ Revision 1 claimed that after three failed lock retries a `payment_evidence.writ
 
 | Class | Detection | Handling |
 |---|---|---|
-| **Uniqueness conflict** | `SQLITE_CONSTRAINT_UNIQUE` / primary-key violation | Not an error. Resolve to the replay path: read the existing row, compare normalized content, return the original outcome (§4.3, §5.2, §12.2). |
+| **Uniqueness conflict** | `SQLITE_CONSTRAINT_UNIQUE` / primary-key violation | Not an error. Resolve to the replay path: read the existing row, compare normalized content, return the original outcome (§4.3, §5.2, §12.2). The identity insert is the one exception and has its own class below. |
+| **Identity state changed under the transaction** | Unique violation on the `provider_transaction_identity` insert | Not adoption and not a replay. Abort the whole transaction and reclassify from step 1 in a new transaction (§6.3.2). A restart can never reach the `NEW` state for that tuple, and an orphan it finds is still refused. |
 | **`SQLITE_BUSY`** | Contention; database reachable | Bounded retry of the whole transaction (see 11.2). |
 | **`SQLITE_LOCKED`** | Lock held, typically shared-cache or schema lock | Same bounded retry, distinct metric; not treated as busy. |
 | **Stale compare-and-swap** | Projection `UPDATE` affected zero rows (§8.3) | Roll back; report `registration_superseded_concurrently`; do not silently retry. |
@@ -1820,6 +1972,8 @@ Each criterion below is written so that it has a **negative** counterpart wherev
 | 12 | Cross-project collision | Refused by `UQ(payment_transaction.identity_id)`; `rejected` verification in the refusing project; conflict raised there; owner's rows untouched; **no owner identifier disclosed** |
 | 13 | Rolled-back acceptance | After a failure injected at any step of §6.3, no identity row, no transaction, no acceptance, no correlation persists (I12) |
 | 14 | Identity cannot be squatted by an unverifiable delivery | Repeated failing deliveries create no identity row; the real owner's later acceptance succeeds |
+| 15 | First delivery for a reference that no identity has | Branch `NEW`: the identity is created by this operation and committed with its transaction; it is never treated as an orphan |
+| 16 | Two concurrent first-time attempts for one reference | One identity and one transaction; the loser blocks on the write lock, re-reads the committed state, and follows the duplicate path |
 
 ### 15.2 B. Observation correlation
 
@@ -1834,6 +1988,8 @@ Each criterion below is written so that it has a **negative** counterpart wherev
 | 7 | Acceptance naming an observation correlated to a **different** transaction | Fails FK `(observation_id, payment_transaction_id)` → correlation |
 | 8 | Cross-project correlation | Fails shared-project composite keys |
 | 9 | Acceptance supported by an unbound verification | Fails the version composite key (NULL parent value cannot match) |
+| 10 | Duplicate observation already correlated to the same transaction | Replay: the existing correlation is returned; no second row, no second transaction |
+| 11 | Observation correlated to one transaction, correlation attempted to another | Fails closed on PK `observation_id`; reported as an integrity anomaly, not retried and not converted into a conflict |
 
 ### 15.3 C. Verification supersession
 
@@ -1893,6 +2049,8 @@ Each criterion below is written so that it has a **negative** counterpart wherev
 | 12 | Cross-project collision | No second accepted transaction; no identity row committed by the refusing project |
 | 13 | Later configuration version | Existing transaction's version, amount, and currency unchanged byte-for-byte |
 | 14 | Second transaction for the same observation | Fails `UQ(source_observation_id)` |
+| 15 | Duplicate observation, content agreeing | Accepted transaction's amount, currency, classification, and baseline unchanged byte-for-byte |
+| 16 | Duplicate observation, content disagreeing | Same immutability, plus a sealed conflict that blocks the transaction while it is open |
 
 ### 15.6 F. Conflict key and membership
 
@@ -1981,6 +2139,8 @@ Slice 2B tests are not Slice 2A acceptance criteria.
 | 12 | Same identity attempted through two project bindings | First commits; second fails `UQ(payment_transaction.identity_id)` and produces the collision outcome (§4.5 case 14) |
 | 13 | Transaction whose reference matches the identity but no observation | Impossible: `source_observation_id` is `NOT NULL` and its three-column key has no parent |
 | 14 | `verified_mapping` correlation attempted in 2A | Fails `CK(correlation_basis = 'provider_shared_reference')` — the value is outside the domain, not merely discouraged |
+| 15 | Duplicate observation whose account and reference match but whose amount differs | Correlated; `duplicate_content_mismatch` raised; no second transaction and no amount change |
+| 16 | Second delivery after a first acceptance for the same reference | No second identity is inserted; the identity is found by the probe and the duplicate path runs |
 
 ### 15.11 I. Amount integrity (Revision 5, Finding 2)
 
@@ -1997,6 +2157,8 @@ Slice 2B tests are not Slice 2A acceptance criteria.
 | 9 | Later observation rewriting history | No `UPDATE` exists on `payment_transaction`; a new row would fail `UQ(identity_id)` |
 | 10 | Fee, deduction, or conversion asserted between evidence and acceptance | Not representable: the key requires equality, and no transformation mechanism exists in 2A |
 | 11 | Non-canonical stored form (`1500.00`, scale 2) | Rejected by the trailing-zero and scale/fraction checks, so the equality key cannot be satisfied by two spellings of one value |
+| 12 | Same canonical amount, different `amount_text` spelling | No conflict: the duplicate comparison of §6.4.1 uses `amount_normalized` and `amount_scale`, never the source text |
+| 13 | Different scale | A mismatch, because canonicality admits exactly one stored form per value; no two canonical forms share a value across scales |
 
 ### 15.12 J. Conflict sealing (Revision 5, Finding 3)
 
@@ -2018,6 +2180,9 @@ Slice 2B tests are not Slice 2A acceptance criteria.
 | 14 | Audit on rollback | No audit row claims a conflict that did not commit; the failure is reported out of band (§11.3) |
 | 15 | Seal naming a different digest than its header | Fails the `(conflict_id, project_id, conflict_key)` parent key |
 | 16 | Second seal for one conflict | Fails `UQ(conflict_id)` on the seal |
+| 17 | `duplicate_content_mismatch` created by the duplicate path | Sealed in the same transaction; membership is the establishing observation plus the mismatching one; the affected transaction is named |
+| 18 | Re-detection with the same trigger and the same members | Same digest → `UQ(project_id, conflict_key)` → the existing conflict and seal are returned; no second header and no membership growth |
+| 19 | A new mismatching observation for the same transaction | A new episode with its own digest and seal; the earlier sealed set is not extended |
 
 ### 15.13 K. Timestamp validation (Revision 5, Finding 4)
 
@@ -2050,11 +2215,53 @@ Slice 2B tests are not Slice 2A acceptance criteria.
 | 6 | Orphan present, application treats "no transaction" as free | Not possible through the documented path; the classification step refuses before any insert |
 | 7 | Attempt to create a second identity with the orphan's natural key | Fails `UQ(provider_account_identity_id, provider_transaction_reference)` |
 | 8 | Orphan encountered by a different project | Same refusal; no owner identifier, account reference, or provider key disclosed |
-| 9 | Same-project duplicate observation for an already accepted identity | Duplicate-observation path: correlation only; not classified as an orphan |
+| 9 | Same-project duplicate observation for an already accepted identity | Duplicate-observation path: content comparison, then correlation or a sealed conflict; not classified as an orphan |
 | 10 | Cross-project attempt against an identity with an accepted transaction | Collision path, not orphan path: `cross_project_collision`, conflict, no disclosure |
 | 11 | Orphan cleared without authorization | No 2A code path deletes an identity row; recovery is an internal capability act (§6.3.1) |
+| 12 | Identity created by the current operation | Not an orphan: the orphan rules are never evaluated against it (Finding 1 of Revision 6) |
+| 13 | Simulated race: absent at the probe, present at insert | The unique violation aborts the transaction and the operation reclassifies; the restart never reaches `NEW` and never adopts an orphan |
 
-### 15.15 Threat analysis (Slice 2A)
+### 15.15 M. First-time acceptance state machine (Revision 6, Finding 1)
+
+| # | Test | Expected |
+|---|---|---|
+| 1 | No identity exists; the delivery passes verification | First-time acceptance succeeds: identity, transaction, correlation, acceptance, and audit committed together (branch `NEW`) |
+| 2 | The newly inserted identity's classification | No orphan classification runs: the state was `NEW` before the insert, and no `rejected`/`identity_integrity_anomaly` row is written |
+| 3 | Failure injected after identity insertion, before transaction insertion | Rollback: no identity row, no transaction, no correlation, no acceptance (I12) |
+| 4 | Failure injected after transaction insertion, before correlation | The same: every record is rolled back, including the identity |
+| 5 | Failure injected after correlation, before acceptance | The same |
+| 6 | Failure injected after acceptance, before audit | The same: the acceptance and every earlier row roll back, and no audit row claims a committed acceptance |
+| 7 | Successful operation | Identity, transaction, correlation, acceptance, and audit are all visible after commit, exactly one row in each |
+| 8 | Pre-existing orphan encountered by an acceptance attempt | `rejected` verification with `identity_integrity_anomaly`; no transaction, no correlation, no acceptance |
+| 9 | Pre-existing orphan, and the requesting project asserts ownership | No assignment; the refusal is identical for every caller and the orphan row is unchanged |
+| 10 | Pre-existing orphan, attempt to resolve it by inserting a new identity | Fails `UQ(provider_account_identity_id, provider_transaction_reference)`; the orphan is neither duplicated nor deleted |
+| 11 | Same-project retry against an accepted identity | Branch `SAME_PROJECT`: content comparison, not the orphan path; no second identity, transaction, or acceptance |
+| 12 | Cross-project retry against an accepted identity | Branch `OTHER_PROJECT`: `rejected` verification plus `cross_project_collision` conflict; no correlation and no owner disclosure |
+| 13 | Two concurrent first-time attempts for one reference | Writers serialize; exactly one identity and one transaction commit; the second takes `SAME_PROJECT` and writes at most a correlation |
+| 14 | A failed first attempt followed by a valid one | The failure reserved nothing; the later attempt sees `NEW` and commits normally |
+
+### 15.16 N. Duplicate-content comparison (Revision 6, Finding 2)
+
+| # | Test | Expected |
+|---|---|---|
+| 1 | Same project, identity, reference, amount, scale, currency, and classification | Correlation only; no second transaction, no acceptance, no conflict |
+| 2 | Different `amount_text`, same canonical amount and scale (`1500.00` and `1500`) | No conflict: the comparison uses the canonical pair, never the source text |
+| 3 | Different canonical amount | `duplicate_content_mismatch`; sealed; accepted amount unchanged |
+| 4 | Different scale | A mismatch, and therefore a different value: canonical forms admit one representation per value (§10.3) |
+| 5 | Different currency | `duplicate_content_mismatch` |
+| 6 | Different classification | `duplicate_content_mismatch` |
+| 7 | Any mismatch | Accepted transaction's amount, currency, classification, project, and baseline unchanged; no update path exists |
+| 8 | Any mismatch | Conflict membership contains exactly two observations: the establishing one and the mismatching one |
+| 9 | Any mismatch | The conflict names the affected transaction in `payment_transaction_id` and is sealed in the same transaction |
+| 10 | Open mismatch conflict | `blocked_transaction` is true for the affected transaction; a 2B allocation would be refused (§12.3 step 3) |
+| 11 | Exact repeated processing of the same mismatch | Idempotent: same digest, existing conflict and seal returned; no duplicate correlation or membership |
+| 12 | A new mismatching observation | New episode: different trigger → different digest → new conflict with its own seal; the earlier sealed set is unchanged |
+| 13 | A matching duplicate while an earlier mismatch conflict is open | Resolves and removes nothing; the transaction stays blocked until a `conflict_resolution` exists |
+| 14 | Cross-project identity collision | Never creates a correlation and never a `duplicate_content_mismatch`: it is `cross_project_collision`, without disclosure |
+| 15 | Correlation already attached to another transaction | Fails closed as an integrity anomaly; the primary key on `observation_id` prevents a second row |
+| 16 | Repeated acceptance | `UQ(payment_transaction_id)` and `UQ(identity_id)` mean no path produces a second transaction or acceptance |
+
+### 15.17 Threat analysis (Slice 2A)
 
 | Threat | Defense |
 |---|---|
@@ -2080,13 +2287,16 @@ Slice 2B tests are not Slice 2A acceptance criteria.
 | Funding double-count via allocation | Out of 2A; prevented in 2B by I1/I2 inside a serialized transaction (§12.3) |
 | Float or lexicographic money errors | Exact decimal contract (§10) |
 | Clock skew or format drift changing precedence | Ordering by scoped integer sequences, never by clock text (§8.5) |
+| A first-time acceptance refused as its own orphan | Probe before the insert; the state is decided in control flow (§6.3) |
+| Contradictory duplicate evidence correlated without a conflict | Comparison tuple plus a sealed `duplicate_content_mismatch` (§6.4.1) |
+| A duplicate conflict silently losing its block because a later delivery agrees | Blocking is derived from sealed, unresolved conflicts, never from the latest observation (§6.4.1) |
 
-### 15.16 Test-count and evidence-quality accuracy
+### 15.18 Test-count and evidence-quality accuracy
 
 - Revision 1 claimed "328 tests pass" and reused that number as evidence for unchanged behavior. **No fresh evidence supports 328.**
 - The recorded result for PR #54 at head `51a796a` is: **321 passed** (implementation-agent-reported), plus typecheck and build passing, plus fresh GitHub checks (Website CI, Dependency Review, CodeQL, Snyk) reported as successful on that head.
 - Those are **historical, agent-reported** results for a rolled-back slice. They are not current, not independently reproduced here, and not evidence about code that is not in `main`.
-- No test was executed during Revision 5. Reported results, independently verified results, and proposed acceptance criteria are labelled separately and never merged. The matrix above is a specification: it states what a future implementation must demonstrate, and nothing in this document claims any of it has been demonstrated.
+- No test was executed during Revision 6. Reported results, independently verified results, and proposed acceptance criteria are labelled separately and never merged. The matrix above is a specification: it states what a future implementation must demonstrate, and nothing in this document claims any of it has been demonstrated.
 
 ---
 
@@ -2094,7 +2304,7 @@ Slice 2B tests are not Slice 2A acceptance criteria.
 
 ### 16.1 Explicit exclusions
 
-Excluded from Slice 2A: allocations; allocation requests; obligation linkage on evidence; obligation states beyond `proposed`; payment attempts, retries, dunning, notifications; manual determination; customer upload or any customer write; activation predicate or event; provider integration, webhook receiver, credentials; production or live customer data; mutable `status` columns; mutable `blocks_use` columns; ID arrays in any record; conflict-to-transaction membership relations; caller-controlled trust; snapshot-isolation claims; audit events for failed writes; fabricated test-pass claims; **amount transformations of any kind** (fees, deductions, settlement adjustments, refunds, reversals, currency conversion); **`verified_mapping` correlation**; **orphan-identity reassignment, expiry, or cleanup** (§6.3.1 leaves that to an authorized internal procedure).
+Excluded from Slice 2A: allocations; allocation requests; obligation linkage on evidence; obligation states beyond `proposed`; payment attempts, retries, dunning, notifications; manual determination; customer upload or any customer write; activation predicate or event; provider integration, webhook receiver, credentials; production or live customer data; mutable `status` columns; mutable `blocks_use` columns; ID arrays in any record; conflict-to-transaction membership relations; caller-controlled trust; snapshot-isolation claims; audit events for failed writes; fabricated test-pass claims; **amount transformations of any kind** (fees, deductions, settlement adjustments, refunds, reversals, currency conversion); **`verified_mapping` correlation**; **orphan-identity reassignment, expiry, or cleanup** (§6.3.1 leaves that to an authorized internal procedure); **acceptance by a duplicate observation** (a repeat delivery never creates or alters accepted funds, §6.4.1); **re-binding an accepted transaction to a later observation's configuration version** (§6.4.1).
 
 Excluded from Slice 2B as of this revision: any satisfaction rule before J.14; refund, reversal, chargeback behavior (J.5/J.6); activation integration (J.9); provider integration (J.8).
 
@@ -2165,7 +2375,7 @@ Neither slice is authorized. No provider is selected. No payment was processed. 
 | **6** | The conflict digest hashed `trigger_record_id` and a collection of transaction ids that no relation stored. | Digest restricted to persisted, reconstructable inputs: project, kind, one optional trigger observation, one optional transaction, and sorted membership rows; length-prefixed encoding removes delimiter ambiguity. | `UQ(project_id, conflict_key)`; recomputation algorithm in §8.4 | §8.4, §15.6 |
 | **7** | Ordering was enforced by comparing ISO-8601 text, which SQLite compares lexicographically. | Ordering moved to integer sequences scoped to the parent and allocated inside `BEGIN IMMEDIATE`, carried into the child and proven by composite keys; timestamps demoted to descriptive text with a shape check only. | `attempt_seq`; `revision_seq`; strict-increase checks on integer columns | §8.5, §8.3, §15.3 |
 
-**Revision 5 corrections (new in this revision):**
+**Revision 5 corrections (retained):**
 
 | Finding | Original problem | Correction | Mechanism | Section |
 |---|---|---|---|---|
@@ -2174,6 +2384,13 @@ Neither slice is authorized. No provider is selected. No payment was processed. 
 | **3** | The conflict digest hashed a participant set that could still grow, so the stored key could stop matching the rows it was computed from. | Membership is sealed when the conflict becomes authoritative; the seal carries the count and the digest, and triggers reject post-seal insertion or mutation. | `reconciliation_conflict_seal` + count trigger + post-seal insert trigger + update/delete triggers; derived `sealed(c)` predicate | §5.3, §6.4, §8.4 |
 | **4** | The timestamp check used `LIKE '____-…'`, where `_` matches any character, so it validated separators and width but not digits. | `GLOB` with `[0-9]` classes fixes every position; fixed-width field ranges are checked; month-length and leap-year validity are stated as application-validated. | `GLOB '[0-9]…'` shape check + `substr` range checks | §8.5 |
 | **5 (limitation)** | A `provider_transaction_identity` row can exist without a transaction, and the asymmetry was undocumented — the shape an untrusted claimant could exploit. | Orphan identities are classified as integrity anomalies and refused: no assignment, no duplicate, no disclosure, no cleanup outside an authorized internal procedure. | Fail-closed classification step in the atomic path; application-level limitation recorded | §6.3.1, §7.5, §8.2 |
+
+**Revision 6 corrections (new in this revision):**
+
+| Finding | Original problem | Correction | Mechanism | Section |
+|---|---|---|---|---|
+| **1 (critical)** | The acceptance path inserted a new `provider_transaction_identity` and then classified it by asking whether it had a transaction. A row created moments earlier never has one, so every first-time acceptance classified its own new identity as a pre-existing orphan and rolled back: the normal path was unreachable, while the orphan rule appeared to be enforced. | The identity's state is probed **before** any insert, inside the same write transaction, and recorded in control flow. Four mutually exclusive branches replace the single post-insert test: `NEW` (create the identity and continue to transaction, correlation, acceptance, audit), `SAME_PROJECT` (duplicate path), `OTHER_PROJECT` (collision), `PRE_EXISTING_ORPHAN` (refuse). A newly created identity is never classified; an identity that predates the operation with no transaction is still refused fail-closed. | In-transaction probe on the observation's own tuple, `BEGIN IMMEDIATE` serialization, control-flow marker instead of a stored provenance column, whole-transaction rollback on failure, and re-classification (never adoption) on a uniqueness violation | §6.3, §6.3.1, §6.3.2, §11.1, §15.15 |
+| **2 (high)** | A repeat observation for an already accepted same-project transaction was sent down a correlation-only path. Correlation's keys prove the account and the provider reference but compare neither amount, scale, currency, nor classification, so contradictory evidence could be correlated without the `duplicate_content_mismatch` conflict that §4.5, §6.4, §10.4, and §15.11 all require. | A deterministic comparison contract: the four content fields are compared against the accepted transaction using canonical values. Agreement correlates and accepts nothing; disagreement preserves both records, correlates the delivery as the same claimed funds movement, creates a `duplicate_content_mismatch` conflict naming the transaction, seals membership over both observations, audits atomically, and blocks the transaction while the conflict is open. Repeated mismatches converge; new ones are new episodes; the baseline is never rebound. | Comparison tuple in application logic over canonical stored forms; existing conflict header, membership, seal, digest, and derived blocking predicate; `UQ(project_id, conflict_key)` for idempotency | §6.4.1, §6.4, §8.2, §8.4, §15.16 |
 
 ### 16.4 Open dependencies this revision does not resolve
 
@@ -2187,6 +2404,7 @@ Neither slice is authorized. No provider is selected. No payment was processed. 
 6. **Association of an orphan identity.** If an identity row exists with no transaction, nothing in this design may attach it to a project. Whether such a row may ever be associated, on what evidence, and by whom is a Founder/ops decision requiring an authorized integrity-recovery procedure; §6.3.1 defines the preconditions and refuses to invent the policy.
 7. **A conflict that genuinely gains a participant.** Sealing means a later participant is a new episode, not an addition. Whether a conflict kind should instead support an append-only membership log with a per-revision digest is open; it would require a `conflict/v2` domain separator and is not implied by this design (§8.4).
 8. **The amount boundary beyond 2A.** Slice 2A accepts exactly what it observed. How a fee, settlement difference, or refund is represented — and against which accepted amount — is J.5/J.6 territory and is not designed here (§10.4).
+9. **The consequence of a duplicate-content conflict beyond blocking.** This design blocks use of the affected transaction while the conflict is open and changes no accepted record. Whether such a conflict may later revoke, keep, or re-price the accepted funds is a J.3 determination and is not designed here (§6.4.1).
 
 **Application-level limitations, stated so they are not mistaken for constraints:**
 
@@ -2198,7 +2416,9 @@ Neither slice is authorized. No provider is selected. No payment was processed. 
 6. *An identity row without a transaction* (an orphan) — permitted by the schema, never produced by a 2A write path, refused when encountered (§6.3.1).
 7. *A conflict header without a seal* — permitted by the schema, inert by the derived definition, never produced by a 2A write path (§6.4).
 8. *Canonicality of the stored amount form* is checked, but correct parsing of the provider's original text is application logic (§10.3).
-9. *The triggers in §5.3 are proposed schema objects*, written in valid SQLite syntax; they have not been created or executed, and no test in this document has been run against them.
+9. *The identity's state at the start of the operation* is decided by the probe and a control-flow marker; the database enforces uniqueness and serializes writers but cannot record provenance (§6.3, §6.3.2).
+10. *The duplicate-content comparison* is application logic; the database enforces the structure of the conflict it produces, not the comparison itself (§6.4.1).
+11. *The triggers in §5.3 are proposed schema objects*, written in valid SQLite syntax; they have not been created or executed, and no test in this document has been run against them.
 
 **Founder decisions (unchanged and unresolved):**
 
@@ -2222,4 +2442,4 @@ It does not modify application code, tests, schemas, migrations, dependencies, w
 
 No Founder decision is resolved by this document. J.14 remains proposed and non-canonical. The canonical-decision/Project-Map approval contradiction remains open and requires separate Founder-authorized correction. Slice 2A and Slice 2B remain unauthorized for implementation.
 
-A stronger relational model is not implementation authorization. Revision 5 closes four evidence-integrity and validation defects and documents a fifth asymmetry instead of leaving it implicit; it changes no governance status and authorizes nothing. It is offered for independent architectural review of the corrected model, and for nothing further.
+A stronger relational model is not implementation authorization. Revision 5 closed four evidence-integrity and validation defects and documented a fifth asymmetry instead of leaving it implicit. Revision 6 repairs the state machine that those corrections sat on: first-time acceptance can now reach COMMIT, a pre-existing orphan still fails closed, and a duplicate observation must answer to the comparison contract before it can be correlated. Neither revision changes a governance status or authorizes anything. This one is offered for independent architectural review of the corrected model, and for nothing further.
